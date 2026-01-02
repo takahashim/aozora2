@@ -1,0 +1,5 @@
+# Rust build artifacts
+/target/
+
+# Cargo.lock is typically committed for binaries, but can be ignored
+# Cargo.lock
