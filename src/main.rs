@@ -39,7 +39,17 @@ fn main() -> io::Result<()> {
     } else {
         // 通常モード
         match &args.input {
-            Some(path) => fs::read(path)?,
+            Some(path) => {
+                let bytes = fs::read(path)?;
+                // ZIPファイルの誤用を検出
+                if is_zip_file(&bytes) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "input appears to be a ZIP file; use --zip option",
+                    ));
+                }
+                bytes
+            }
             None => {
                 let mut buf = Vec::new();
                 io::stdin().read_to_end(&mut buf)?;
@@ -58,6 +68,12 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+/// ZIPファイルかどうかをマジックバイトで判定
+fn is_zip_file(bytes: &[u8]) -> bool {
+    // ZIPマジックバイト: PK\x03\x04 (通常) または PK\x05\x06 (空アーカイブ)
+    bytes.starts_with(b"PK\x03\x04") || bytes.starts_with(b"PK\x05\x06")
 }
 
 /// ZIPから最初の.txtファイルを読み込む
