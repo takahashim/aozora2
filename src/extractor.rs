@@ -27,8 +27,8 @@ impl PlainTextExtractor {
             // コマンド: 削除
             Token::Command { .. } => String::new(),
 
-            // 外字: Unicode文字に変換
-            Token::Gaiji { description } => convert_gaiji(description).to_string(),
+            // 外字: Unicode文字列に変換
+            Token::Gaiji { description } => convert_gaiji(description),
 
             // アクセント: 内容を抽出
             Token::Accent { children } => Self::extract(children),
@@ -77,6 +77,15 @@ mod tests {
         assert_eq!(
             extract("吾輩《わがはい》は猫《ねこ》である［＃「である」に傍点］"),
             "吾輩は猫である"
+        );
+    }
+
+    #[test]
+    fn test_gaiji_multichar() {
+        // カ゚ = カ (U+30AB) + 半濁点 (U+309A)
+        assert_eq!(
+            extract("カ゚※［＃半濁点付き片仮名カ、1-05-87］のテスト"),
+            "カ゚カ゚のテスト"
         );
     }
 }

@@ -4,10 +4,11 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
 /// JISコード→Unicode変換テーブル（コンパイル時埋め込み）
-static JIS2UCS: Lazy<HashMap<&'static str, char>> =
+/// 値は &str（複数文字の合成文字に対応、例: カ゚ = カ + 半濁点）
+static JIS2UCS: Lazy<HashMap<&'static str, &'static str>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/jis2ucs_table.rs")));
 
-/// 外字説明からUnicode文字に変換
+/// 外字説明からUnicode文字列に変換
 ///
 /// # 変換優先順位
 /// 1. Unicode直接指定 (U+XXXX)
@@ -19,24 +20,24 @@ static JIS2UCS: Lazy<HashMap<&'static str, char>> =
 /// ```
 /// use aozora2text::gaiji::convert_gaiji;
 ///
-/// assert_eq!(convert_gaiji("「丸印」、U+25CB"), '○');
+/// assert_eq!(convert_gaiji("「丸印」、U+25CB"), "○");
 /// ```
-pub fn convert_gaiji(description: &str) -> char {
+pub fn convert_gaiji(description: &str) -> String {
     // 1. Unicode直接指定を探す
     if let Some(unicode_char) = extract_unicode(description) {
-        return unicode_char;
+        return unicode_char.to_string();
     }
 
     // 2. JISコードを探す
     if let Some(jis_code) = extract_jis_code(description) {
         let normalized = normalize_jis_code(&jis_code);
-        if let Some(&ch) = JIS2UCS.get(normalized.as_str()) {
-            return ch;
+        if let Some(&s) = JIS2UCS.get(normalized.as_str()) {
+            return s.to_string();
         }
     }
 
     // 3. 変換不能
-    '〓'
+    "〓".to_string()
 }
 
 /// "U+XXXX" パターンからUnicode文字を抽出
@@ -154,11 +155,30 @@ mod tests {
 
     #[test]
     fn test_convert_gaiji_unicode() {
-        assert_eq!(convert_gaiji("「丸印」、U+25CB"), '○');
+        assert_eq!(convert_gaiji("「丸印」、U+25CB"), "○");
     }
 
     #[test]
     fn test_convert_gaiji_unknown() {
-        assert_eq!(convert_gaiji("不明な外字"), '〓');
+        assert_eq!(convert_gaiji("不明な外字"), "〓");
+    }
+
+    #[test]
+    fn test_convert_gaiji_jis_multi_char() {
+        // 1-05-87 = カ (U+30AB) + 半濁点 (U+309A) = カ゚
+        assert_eq!(convert_gaiji("1-05-87"), "カ゚");
+    }
+
+    #[test]
+    fn test_extract_jis_code_with_description() {
+        assert_eq!(
+            extract_jis_code("半濁点付き片仮名カ、1-05-87"),
+            Some("1-05-87".to_string())
+        );
+    }
+
+    #[test]
+    fn test_convert_gaiji_with_full_description() {
+        assert_eq!(convert_gaiji("半濁点付き片仮名カ、1-05-87"), "カ゚");
     }
 }

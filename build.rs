@@ -16,12 +16,16 @@ fn main() {
     if let serde_json::Value::Object(map) = table {
         for (key, value) in map {
             if let serde_json::Value::String(s) = value {
-                // HTML実体参照 "&#xXXXX;" をcharに変換
-                if let Some(ch) = parse_html_entity(&s) {
+                // HTML実体参照 "&#xXXXX;" または "&#xXXXX;&#xYYYY;" を文字列に変換
+                if let Some(decoded) = parse_html_entities(&s) {
+                    // 文字列をエスケープして出力
+                    let escaped: String = decoded
+                        .chars()
+                        .map(|c| format!("\\u{{{:04X}}}", c as u32))
+                        .collect();
                     code.push_str(&format!(
-                        "    m.insert(\"{}\", '\\u{{{:04X}}}');\n",
-                        key,
-                        ch as u32
+                        "    m.insert(\"{}\", \"{}\");\n",
+                        key, escaped
                     ));
                 }
             }
@@ -36,15 +40,38 @@ fn main() {
     println!("cargo:rerun-if-changed=data/jis2ucs.json");
 }
 
-fn parse_html_entity(s: &str) -> Option<char> {
-    // "&#xXXXX;" 形式
-    if s.starts_with("&#x") && s.ends_with(';') {
-        let hex = &s[3..s.len() - 1];
-        u32::from_str_radix(hex, 16)
-            .ok()
-            .and_then(char::from_u32)
+fn parse_html_entities(s: &str) -> Option<String> {
+    let mut result = String::new();
+    let mut remaining = s;
+
+    while !remaining.is_empty() {
+        if remaining.starts_with("&#x") {
+            // &#xXXXX; 形式
+            if let Some(end) = remaining.find(';') {
+                let hex = &remaining[3..end];
+                if let Ok(code) = u32::from_str_radix(hex, 16) {
+                    if let Some(ch) = char::from_u32(code) {
+                        result.push(ch);
+                        remaining = &remaining[end + 1..];
+                        continue;
+                    }
+                }
+            }
+            return None; // パース失敗
+        } else {
+            // 直接Unicode文字
+            if let Some(ch) = remaining.chars().next() {
+                result.push(ch);
+                remaining = &remaining[ch.len_utf8()..];
+            } else {
+                break;
+            }
+        }
+    }
+
+    if result.is_empty() {
+        None
     } else {
-        // 直接Unicode文字
-        s.chars().next()
+        Some(result)
     }
 }
