@@ -75,6 +75,7 @@ version = "0.5.1"
 dependencies = [
  "clap",
  "encoding_rs",
+ "flate2",
  "once_cell",
  "serde_json",
  "zip",
