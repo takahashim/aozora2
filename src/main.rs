@@ -106,10 +106,7 @@ fn read_first_txt_from_zip(path: &Path) -> io::Result<Vec<u8>> {
 
     Err(io::Error::new(
         io::ErrorKind::NotFound,
-        format!(
-            "no .txt file found in ZIP archive: {}",
-            path.display()
-        ),
+        format!("no .txt file found in ZIP archive: {}", path.display()),
     ))
 }
 
