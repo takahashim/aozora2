@@ -89,6 +89,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "aozora2text"
+version = "0.7.0"
+dependencies = [
+ "aozora2",
+ "clap",
+]
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
