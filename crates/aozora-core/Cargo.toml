@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Core library for Aozora Bunko format processing"
+readme = "README.md"
 keywords = ["aozora", "bunko", "japanese", "text", "parser"]
 categories = ["text-processing", "parser-implementations"]
 

@@ -1,58 +1,54 @@
-//! aozora-html-converter CLI
+//! html サブコマンド
 //!
-//! 青空文庫形式のテキストをHTMLに変換するコマンドラインツール
+//! 青空文庫形式をHTMLに変換
 
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::Args as ClapArgs;
 
-use aozora_html_converter::{convert, RenderOptions};
+use aozora2::html::{self, RenderOptions};
 
-/// 青空文庫形式をHTMLに変換
-#[derive(Parser, Debug)]
-#[command(name = "aozora-html-converter")]
-#[command(about = "Convert Aozora Bunko format to HTML")]
-#[command(version)]
-struct Cli {
+/// html サブコマンドの引数
+#[derive(ClapArgs, Debug)]
+pub struct Args {
     /// 入力ファイル（省略時は標準入力）
-    input: Option<PathBuf>,
+    pub input: Option<PathBuf>,
 
     /// 出力ファイル（省略時は標準出力）
     #[arg(short, long)]
-    output: Option<PathBuf>,
+    pub output: Option<PathBuf>,
 
     /// 外字画像ディレクトリ
     #[arg(long, default_value = "../../../gaiji/")]
-    gaiji_dir: String,
+    pub gaiji_dir: String,
 
     /// CSSファイル（カンマ区切りで複数指定可）
     #[arg(long, default_value = "../../aozora.css")]
-    css_files: String,
+    pub css_files: String,
 
     /// JIS X 0213外字を数値実体参照で表示
     #[arg(long)]
-    use_jisx0213: bool,
+    pub use_jisx0213: bool,
 
     /// Unicode外字を数値実体参照で表示
     #[arg(long)]
-    use_unicode: bool,
+    pub use_unicode: bool,
 
     /// 完全なHTMLドキュメントを生成
     #[arg(long)]
-    full_document: bool,
+    pub full_document: bool,
 
     /// ドキュメントのタイトル
     #[arg(long)]
-    title: Option<String>,
+    pub title: Option<String>,
 }
 
-fn main() -> io::Result<()> {
-    let cli = Cli::parse();
-
+/// html サブコマンドを実行
+pub fn run(args: Args) -> io::Result<()> {
     // 入力読み込み
-    let input = match &cli.input {
+    let input = match &args.input {
         Some(path) => {
             let bytes = fs::read(path)?;
             aozora_core::encoding::decode_to_utf8(&bytes)
@@ -65,35 +61,35 @@ fn main() -> io::Result<()> {
     };
 
     // オプション設定
-    let css_files: Vec<String> = cli
+    let css_files: Vec<String> = args
         .css_files
         .split(',')
         .map(|s| s.trim().to_string())
         .collect();
 
     let options = RenderOptions::new()
-        .with_gaiji_dir(&cli.gaiji_dir)
+        .with_gaiji_dir(&args.gaiji_dir)
         .with_css_files(css_files)
-        .with_jisx0213(cli.use_jisx0213)
-        .with_unicode(cli.use_unicode)
-        .with_full_document(cli.full_document);
+        .with_jisx0213(args.use_jisx0213)
+        .with_unicode(args.use_unicode)
+        .with_full_document(args.full_document);
 
-    let options = if let Some(title) = &cli.title {
+    let options = if let Some(title) = &args.title {
         options.with_title(title)
     } else {
         options
     };
 
     // 変換
-    let html = convert(&input, &options);
+    let output_html = html::convert(&input, &options);
 
     // 出力
-    match &cli.output {
+    match &args.output {
         Some(path) => {
-            fs::write(path, &html)?;
+            fs::write(path, &output_html)?;
         }
         None => {
-            io::stdout().write_all(html.as_bytes())?;
+            io::stdout().write_all(output_html.as_bytes())?;
         }
     }
 

@@ -81,16 +81,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "aozora-html-converter"
+name = "aozora2"
 version = "0.1.0"
-dependencies = [
- "aozora-core",
- "clap",
-]
-
-[[package]]
-name = "aozora2text"
-version = "0.6.0"
 dependencies = [
  "aozora-core",
  "clap",

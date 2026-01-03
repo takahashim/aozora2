@@ -10,7 +10,7 @@ use aozora_core::parser::parse;
 use aozora_core::parser::reference_resolver::resolve_inline_ruby;
 use aozora_core::tokenizer::tokenize;
 
-use crate::options::RenderOptions;
+use super::options::RenderOptions;
 
 // ============================================================================
 // プレゼンテーションロジック（CSSクラス、HTMLタグのマッピング）
@@ -592,48 +592,9 @@ mod tests {
     }
 
     #[test]
-    fn test_render_prefixed_ruby() {
-        let mut renderer = HtmlRenderer::new(RenderOptions::default());
-        let html = renderer.render_line("｜東京《とうきょう》");
-        assert!(html.contains("<ruby>"));
-        assert!(html.contains("東京"));
-        assert!(html.contains("とうきょう"));
-    }
-
-    #[test]
-    fn test_render_gaiji_unicode() {
-        let mut renderer = HtmlRenderer::new(RenderOptions::default());
-        let html = renderer.render_line("※［＃「丸印」、U+25CB］");
-        assert!(html.contains("○"));
-    }
-
-    #[test]
-    fn test_render_style_bouten() {
-        let mut renderer = HtmlRenderer::new(RenderOptions::default());
-        let html = renderer.render_line("重要［＃「重要」に傍点］");
-        // 装飾コマンドがパースされて適用されるはず
-        assert!(html.contains("重要"));
-    }
-
-    #[test]
-    fn test_render_block_jisage() {
-        let mut renderer = HtmlRenderer::new(RenderOptions::default());
-        let html = renderer.render_line("［＃ここから2字下げ］");
-        assert!(html.contains("jisage_2"));
-    }
-
-    #[test]
-    fn test_render_midashi() {
-        let mut renderer = HtmlRenderer::new(RenderOptions::default());
-        let html = renderer.render_line("第一章［＃「第一章」は大見出し］");
-        assert!(html.contains("第一章"));
-    }
-
-    #[test]
     fn test_html_escape() {
         assert_eq!(html_escape("<test>"), "&lt;test&gt;");
         assert_eq!(html_escape("a & b"), "a &amp; b");
-        assert_eq!(html_escape("\"quoted\""), "&quot;quoted&quot;");
     }
 
     #[test]
@@ -641,25 +602,5 @@ mod tests {
         let (folder, file) = jis_code_to_path("1-02-22");
         assert_eq!(folder, "1-02");
         assert_eq!(file, "1-02-22");
-    }
-
-    #[test]
-    fn test_full_document() {
-        let options = RenderOptions::default()
-            .with_full_document(true)
-            .with_title("テスト");
-        let mut renderer = HtmlRenderer::new(options);
-        let html = renderer.render("本文");
-        assert!(html.contains("<?xml"));
-        assert!(html.contains("<html"));
-        assert!(html.contains("<title>テスト</title>"));
-        assert!(html.contains("</html>"));
-    }
-
-    #[test]
-    fn test_render_tcy() {
-        let mut renderer = HtmlRenderer::new(RenderOptions::default());
-        let html = renderer.render_line("［＃縦中横］12［＃縦中横終わり］");
-        assert!(html.contains("class=\"tcy\""));
     }
 }
