@@ -22,12 +22,18 @@ fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
         // 親文字が空のRubyノードを探す
-        if let Node::Ruby { children, ruby, direction: _ } = &nodes[i] {
+        if let Node::Ruby {
+            children,
+            ruby,
+            direction: _,
+        } = &nodes[i]
+        {
             if children.is_empty() && !ruby.is_empty() {
                 // 直前のノードから親文字を抽出
                 if i > 0 {
                     let preceding_nodes: Vec<Node> = nodes[..i].to_vec();
-                    if let Some((remaining, base)) = extract_ruby_base_from_nodes(&preceding_nodes) {
+                    if let Some((remaining, base)) = extract_ruby_base_from_nodes(&preceding_nodes)
+                    {
                         // 直前のノードを更新
                         let to_remove = i - (preceding_nodes.len() - remaining.len());
 
@@ -53,7 +59,12 @@ fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
 fn resolve_style_references(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
-        if let Node::UnresolvedReference { target, spec, connector } = &nodes[i] {
+        if let Node::UnresolvedReference {
+            target,
+            spec,
+            connector,
+        } = &nodes[i]
+        {
             let target_clone = target.clone();
             let spec_clone = spec.clone();
             let connector_clone = connector.clone();
@@ -95,7 +106,7 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
 
                             // インデックス調整（追加されたノード数分）
                             let adjustment = if before.is_empty() { 0 } else { 1 }
-                                           + if after.is_empty() { 0 } else { 1 };
+                                + if after.is_empty() { 0 } else { 1 };
 
                             // UnresolvedReferenceノードを削除
                             let new_i = i + adjustment;
@@ -130,10 +141,13 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
                                 if !after.is_empty() {
                                     new_nodes.push(Node::text(&after));
                                 }
-                                nodes.splice(found_node_idx..found_node_idx + 1, new_nodes.into_iter());
+                                nodes.splice(
+                                    found_node_idx..found_node_idx + 1,
+                                    new_nodes.into_iter(),
+                                );
 
                                 let adjustment = if before.is_empty() { 0 } else { 1 }
-                                               + if after.is_empty() { 0 } else { 1 };
+                                    + if after.is_empty() { 0 } else { 1 };
                                 let new_i = i + adjustment;
                                 if new_i < nodes.len() {
                                     nodes.remove(new_i);
@@ -157,17 +171,11 @@ enum SplitInfo {
     /// 完全一致
     ExactMatch,
     /// 分割が必要
-    Split {
-        before: String,
-        after: String,
-    },
+    Split { before: String, after: String },
 }
 
 /// 前方のノードから対象テキストを探す
-fn find_target_in_preceding(
-    nodes: &[Node],
-    target: &str,
-) -> Option<(usize, usize, SplitInfo)> {
+fn find_target_in_preceding(nodes: &[Node], target: &str) -> Option<(usize, usize, SplitInfo)> {
     // 後ろから探す
     for (i, node) in nodes.iter().enumerate().rev() {
         if let Node::Text(text) = node {
@@ -190,7 +198,12 @@ fn find_target_in_preceding(
 pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
-        if let Node::Ruby { children, ruby, direction } = &nodes[i] {
+        if let Node::Ruby {
+            children,
+            ruby,
+            direction,
+        } = &nodes[i]
+        {
             if children.is_empty() && !ruby.is_empty() && i > 0 {
                 // 直前のTextノードから親文字を抽出
                 if let Node::Text(text) = &nodes[i - 1] {
@@ -312,9 +325,7 @@ mod tests {
 
     #[test]
     fn test_find_target_split() {
-        let nodes = vec![
-            Node::text("これは重要なことだ"),
-        ];
+        let nodes = vec![Node::text("これは重要なことだ")];
 
         let result = find_target_in_preceding(&nodes, "重要");
         assert!(result.is_some());

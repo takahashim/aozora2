@@ -65,7 +65,11 @@ fn main() -> io::Result<()> {
     };
 
     // オプション設定
-    let css_files: Vec<String> = cli.css_files.split(',').map(|s| s.trim().to_string()).collect();
+    let css_files: Vec<String> = cli
+        .css_files
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .collect();
 
     let options = RenderOptions::new()
         .with_gaiji_dir(&cli.gaiji_dir)

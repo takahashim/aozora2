@@ -411,9 +411,8 @@ mod tests {
 
     #[test]
     fn test_multiple_tokens() {
-        let tokens = tokenize(
-            "吾輩《わがはい》は※［＃「米印」、U+203B］猫である［＃「である」に傍点］",
-        );
+        let tokens =
+            tokenize("吾輩《わがはい》は※［＃「米印」、U+203B］猫である［＃「である」に傍点］");
         assert_eq!(
             tokens,
             vec![

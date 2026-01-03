@@ -3,7 +3,9 @@
 //! ASTノードをHTMLに変換します。
 
 use aozora_core::gaiji::{parse_gaiji, GaijiResult};
-use aozora_core::node::{BlockParams, BlockType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType};
+use aozora_core::node::{
+    BlockParams, BlockType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
+};
 use aozora_core::parser::parse;
 use aozora_core::parser::reference_resolver::resolve_inline_ruby;
 use aozora_core::tokenizer::tokenize;
@@ -143,29 +145,43 @@ impl HtmlRenderer {
         match node {
             Node::Text(text) => html_escape(text),
 
-            Node::Ruby { children, ruby, direction } => {
-                self.render_ruby(children, ruby, *direction)
-            }
+            Node::Ruby {
+                children,
+                ruby,
+                direction,
+            } => self.render_ruby(children, ruby, *direction),
 
-            Node::Style { children, style_type, class_name: _ } => {
-                self.render_style(children, *style_type)
-            }
+            Node::Style {
+                children,
+                style_type,
+                class_name: _,
+            } => self.render_style(children, *style_type),
 
-            Node::Midashi { children, level, style } => {
-                self.render_midashi(children, *level, *style)
-            }
+            Node::Midashi {
+                children,
+                level,
+                style,
+            } => self.render_midashi(children, *level, *style),
 
-            Node::Gaiji { description, unicode, jis_code } => {
-                self.render_gaiji(description, unicode.as_deref(), jis_code.as_deref())
-            }
+            Node::Gaiji {
+                description,
+                unicode,
+                jis_code,
+            } => self.render_gaiji(description, unicode.as_deref(), jis_code.as_deref()),
 
-            Node::Accent { code: _, name: _, unicode } => {
-                unicode.clone().unwrap_or_default()
-            }
+            Node::Accent {
+                code: _,
+                name: _,
+                unicode,
+            } => unicode.clone().unwrap_or_default(),
 
-            Node::Img { filename, alt, css_class, width, height } => {
-                self.render_img(filename, alt, css_class, *width, *height)
-            }
+            Node::Img {
+                filename,
+                alt,
+                css_class,
+                width,
+                height,
+            } => self.render_img(filename, alt, css_class, *width, *height),
 
             Node::Tcy { children } => {
                 let inner = self.render_nodes(children);
@@ -208,7 +224,11 @@ impl HtmlRenderer {
 
             Node::BlockEnd { block_type } => {
                 // スタックから対応するブロックを探して閉じる
-                if let Some(pos) = self.block_stack.iter().rposition(|c| c.block_type == *block_type) {
+                if let Some(pos) = self
+                    .block_stack
+                    .iter()
+                    .rposition(|c| c.block_type == *block_type)
+                {
                     let ctx = self.block_stack.remove(pos);
                     self.render_block_end_tag(block_type, &ctx.params)
                 } else {
@@ -221,7 +241,11 @@ impl HtmlRenderer {
                 format!("<span class=\"notes\">［＃{}］</span>", html_escape(text))
             }
 
-            Node::UnresolvedReference { target, spec, connector } => {
+            Node::UnresolvedReference {
+                target,
+                spec,
+                connector,
+            } => {
                 // 解決できなかった参照は注記として出力
                 format!(
                     "<span class=\"notes\">［＃「{}」{}{}］</span>",
@@ -245,7 +269,12 @@ impl HtmlRenderer {
     }
 
     /// ルビをHTMLに変換
-    fn render_ruby(&mut self, children: &[Node], ruby: &[Node], direction: RubyDirection) -> String {
+    fn render_ruby(
+        &mut self,
+        children: &[Node],
+        ruby: &[Node],
+        direction: RubyDirection,
+    ) -> String {
         let base_html = self.render_nodes(children);
         let ruby_html = self.render_nodes(ruby);
 
@@ -274,7 +303,12 @@ impl HtmlRenderer {
     }
 
     /// 見出しをHTMLに変換
-    fn render_midashi(&mut self, children: &[Node], level: MidashiLevel, style: MidashiStyle) -> String {
+    fn render_midashi(
+        &mut self,
+        children: &[Node],
+        level: MidashiLevel,
+        style: MidashiStyle,
+    ) -> String {
         let inner = self.render_nodes(children);
         let tag = midashi_html_tag(level);
         let class = midashi_css_class(level);
@@ -292,9 +326,7 @@ impl HtmlRenderer {
             }
             MidashiStyle::Mado => {
                 // 窓見出し
-                format!(
-                    "<{tag} class=\"{class} mado-midashi\">{inner}</{tag}>"
-                )
+                format!("<{tag} class=\"{class} mado-midashi\">{inner}</{tag}>")
             }
         }
     }
@@ -306,13 +338,16 @@ impl HtmlRenderer {
     }
 
     /// 外字をHTMLに変換
-    fn render_gaiji(&self, description: &str, unicode: Option<&str>, jis_code: Option<&str>) -> String {
+    fn render_gaiji(
+        &self,
+        description: &str,
+        unicode: Option<&str>,
+        jis_code: Option<&str>,
+    ) -> String {
         // すでにパース済みの情報がある場合はそれを使用
         if let Some(u) = unicode {
             if self.options.use_unicode {
-                return u.chars()
-                    .map(|c| format!("&#{};", c as u32))
-                    .collect();
+                return u.chars().map(|c| format!("&#{};", c as u32)).collect();
             }
             return u.to_string();
         }
@@ -333,18 +368,17 @@ impl HtmlRenderer {
         match parse_gaiji(description) {
             GaijiResult::Unicode(s) => {
                 if self.options.use_unicode {
-                    s.chars()
-                        .map(|c| format!("&#{};", c as u32))
-                        .collect()
+                    s.chars().map(|c| format!("&#{};", c as u32)).collect()
                 } else {
                     s
                 }
             }
-            GaijiResult::JisConverted { jis_code: _, unicode: u } => {
+            GaijiResult::JisConverted {
+                jis_code: _,
+                unicode: u,
+            } => {
                 if self.options.use_jisx0213 || self.options.use_unicode {
-                    u.chars()
-                        .map(|c| format!("&#{};", c as u32))
-                        .collect()
+                    u.chars().map(|c| format!("&#{};", c as u32)).collect()
                 } else {
                     u
                 }
@@ -369,10 +403,19 @@ impl HtmlRenderer {
     }
 
     /// 画像をHTMLに変換
-    fn render_img(&self, filename: &str, alt: &str, css_class: &str, width: Option<u32>, height: Option<u32>) -> String {
+    fn render_img(
+        &self,
+        filename: &str,
+        alt: &str,
+        css_class: &str,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> String {
         let mut attrs = format!(
             "src=\"{}{}\" alt=\"{}\"",
-            self.options.gaiji_dir, filename, html_escape(alt)
+            self.options.gaiji_dir,
+            filename,
+            html_escape(alt)
         );
 
         if !css_class.is_empty() {
@@ -417,7 +460,11 @@ impl HtmlRenderer {
             BlockType::Keigakomi => "<div class=\"keigakomi\">".to_string(),
             BlockType::Midashi => {
                 if let Some(level) = params.level {
-                    format!("<{} class=\"{}\">", midashi_html_tag(level), midashi_css_class(level))
+                    format!(
+                        "<{} class=\"{}\">",
+                        midashi_html_tag(level),
+                        midashi_css_class(level)
+                    )
                 } else {
                     "<h3 class=\"o-midashi\">".to_string()
                 }
@@ -448,9 +495,13 @@ impl HtmlRenderer {
     /// ブロック終了タグを生成
     fn render_block_end_tag(&self, block_type: &BlockType, params: &BlockParams) -> String {
         match block_type {
-            BlockType::Jisage | BlockType::Chitsuki | BlockType::Jizume |
-            BlockType::Keigakomi | BlockType::Yokogumi |
-            BlockType::Futoji | BlockType::Shatai => "</div>".to_string(),
+            BlockType::Jisage
+            | BlockType::Chitsuki
+            | BlockType::Jizume
+            | BlockType::Keigakomi
+            | BlockType::Yokogumi
+            | BlockType::Futoji
+            | BlockType::Shatai => "</div>".to_string(),
             BlockType::Midashi => {
                 if let Some(level) = params.level {
                     format!("</{}>", midashi_html_tag(level))
@@ -458,8 +509,11 @@ impl HtmlRenderer {
                     "</h3>".to_string()
                 }
             }
-            BlockType::FontDai | BlockType::FontSho |
-            BlockType::Tcy | BlockType::Caption | BlockType::Warigaki => "</span>".to_string(),
+            BlockType::FontDai
+            | BlockType::FontSho
+            | BlockType::Tcy
+            | BlockType::Caption
+            | BlockType::Warigaki => "</span>".to_string(),
         }
     }
 
@@ -469,7 +523,9 @@ impl HtmlRenderer {
         output.push_str("<!DOCTYPE html PUBLIC \"-//W3C//DTD XHTML 1.1//EN\" \"http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd\">\n");
         output.push_str("<html xmlns=\"http://www.w3.org/1999/xhtml\" xml:lang=\"ja\">\n");
         output.push_str("<head>\n");
-        output.push_str("  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n");
+        output.push_str(
+            "  <meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\" />\n",
+        );
         output.push_str("  <meta http-equiv=\"Content-Style-Type\" content=\"text/css\" />\n");
 
         if let Some(title) = &self.options.title {

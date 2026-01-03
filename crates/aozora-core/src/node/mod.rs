@@ -171,12 +171,12 @@ impl Node {
             Node::Ruby { children, .. } => children.iter().map(|n| n.to_text()).collect(),
             Node::Style { children, .. } => children.iter().map(|n| n.to_text()).collect(),
             Node::Midashi { children, .. } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Gaiji { unicode, description, .. } => {
-                unicode.clone().unwrap_or_else(|| description.clone())
-            }
-            Node::Accent { unicode, name, .. } => {
-                unicode.clone().unwrap_or_else(|| name.clone())
-            }
+            Node::Gaiji {
+                unicode,
+                description,
+                ..
+            } => unicode.clone().unwrap_or_else(|| description.clone()),
+            Node::Accent { unicode, name, .. } => unicode.clone().unwrap_or_else(|| name.clone()),
             Node::Img { alt, .. } => alt.clone(),
             Node::Tcy { children } => children.iter().map(|n| n.to_text()).collect(),
             Node::Keigakomi { children } => children.iter().map(|n| n.to_text()).collect(),
@@ -189,30 +189,34 @@ impl Node {
             Node::Kaeriten(s) => s.clone(),
             Node::Okurigana(s) => s.clone(),
             Node::BlockStart { .. } | Node::BlockEnd { .. } | Node::Note(_) => String::new(),
-            Node::UnresolvedReference { target, spec, connector } => {
+            Node::UnresolvedReference {
+                target,
+                spec,
+                connector,
+            } => {
                 format!("［＃「{target}」{connector}{spec}］")
             }
-            Node::DakutenKatakana { num } => {
-                match num.as_str() {
-                    "2" => "ワ゛".to_string(),
-                    "3" => "ヰ゛".to_string(),
-                    "4" => "ヱ゛".to_string(),
-                    "5" => "ヲ゛".to_string(),
-                    _ => String::new(),
-                }
-            }
+            Node::DakutenKatakana { num } => match num.as_str() {
+                "2" => "ワ゛".to_string(),
+                "3" => "ヰ゛".to_string(),
+                "4" => "ヱ゛".to_string(),
+                "5" => "ヲ゛".to_string(),
+                _ => String::new(),
+            },
         }
     }
 
     /// ノードの最後の文字種別を取得（ルビ親文字抽出用）
     pub fn last_char_type(&self) -> Option<CharType> {
         match self {
-            Node::Text(s) => {
-                s.chars().last().map(|c| {
-                    let ct = crate::char_type::CharType::classify(c);
-                    if ct.can_be_ruby_base() { ct } else { CharType::Else }
-                })
-            }
+            Node::Text(s) => s.chars().last().map(|c| {
+                let ct = crate::char_type::CharType::classify(c);
+                if ct.can_be_ruby_base() {
+                    ct
+                } else {
+                    CharType::Else
+                }
+            }),
             Node::Gaiji { .. } => Some(CharType::Kanji),
             Node::Accent { .. } => Some(CharType::Hankaku),
             Node::DakutenKatakana { .. } => Some(CharType::Katakana),

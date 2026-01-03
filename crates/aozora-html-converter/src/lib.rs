@@ -71,7 +71,10 @@ mod tests {
 
     #[test]
     fn test_convert_midashi() {
-        let html = convert_line("第一章［＃「第一章」は大見出し］", &RenderOptions::default());
+        let html = convert_line(
+            "第一章［＃「第一章」は大見出し］",
+            &RenderOptions::default(),
+        );
         assert!(html.contains("第一章"));
         assert!(html.contains("o-midashi"));
     }

@@ -326,7 +326,10 @@ fn try_parse_image(content: &str) -> Option<CommandResult> {
         }
         if let Some(h_pos) = size_part.find('縦') {
             let h_str = &size_part[h_pos + '縦'.len_utf8()..];
-            height = h_str.trim_end_matches(|c: char| !c.is_ascii_digit()).parse().ok();
+            height = h_str
+                .trim_end_matches(|c: char| !c.is_ascii_digit())
+                .parse()
+                .ok();
         }
     }
 

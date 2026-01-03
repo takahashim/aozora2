@@ -70,7 +70,9 @@ pub fn parse_gaiji(description: &str) -> GaijiResult {
                 unicode,
             };
         }
-        return GaijiResult::JisImage { jis_code: normalized };
+        return GaijiResult::JisImage {
+            jis_code: normalized,
+        };
     }
 
     // 3. 変換不能
@@ -148,7 +150,6 @@ fn extract_jis_code(description: &str) -> Option<String> {
 
     None
 }
-
 
 #[cfg(test)]
 mod tests {

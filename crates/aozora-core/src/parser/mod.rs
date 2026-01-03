@@ -129,9 +129,7 @@ fn parse_command_to_node(content: &str) -> Node {
             }
         }
 
-        CommandResult::BlockStart { block_type, params } => {
-            Node::BlockStart { block_type, params }
-        }
+        CommandResult::BlockStart { block_type, params } => Node::BlockStart { block_type, params },
 
         CommandResult::BlockEnd { block_type } => Node::BlockEnd { block_type },
 

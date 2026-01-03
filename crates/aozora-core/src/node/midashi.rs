@@ -57,15 +57,27 @@ mod tests {
 
     #[test]
     fn test_midashi_level_from_command() {
-        assert_eq!(MidashiLevel::from_command("大見出し"), Some(MidashiLevel::O));
-        assert_eq!(MidashiLevel::from_command("中見出し"), Some(MidashiLevel::Naka));
-        assert_eq!(MidashiLevel::from_command("小見出し"), Some(MidashiLevel::Ko));
+        assert_eq!(
+            MidashiLevel::from_command("大見出し"),
+            Some(MidashiLevel::O)
+        );
+        assert_eq!(
+            MidashiLevel::from_command("中見出し"),
+            Some(MidashiLevel::Naka)
+        );
+        assert_eq!(
+            MidashiLevel::from_command("小見出し"),
+            Some(MidashiLevel::Ko)
+        );
     }
 
     #[test]
     fn test_midashi_style_from_command() {
         assert_eq!(MidashiStyle::from_command("大見出し"), MidashiStyle::Normal);
-        assert_eq!(MidashiStyle::from_command("同行大見出し"), MidashiStyle::Dogyo);
+        assert_eq!(
+            MidashiStyle::from_command("同行大見出し"),
+            MidashiStyle::Dogyo
+        );
         assert_eq!(MidashiStyle::from_command("窓大見出し"), MidashiStyle::Mado);
     }
 }
