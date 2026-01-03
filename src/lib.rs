@@ -20,13 +20,15 @@
 //! assert_eq!(plain, "吾輩は猫である");
 //! ```
 
-pub mod accent;
-pub mod document;
-pub mod encoding;
 pub mod extractor;
-pub mod gaiji;
-pub mod token;
-pub mod tokenizer;
+
+// Re-export from aozora-core
+pub use aozora_core::accent;
+pub use aozora_core::document;
+pub use aozora_core::encoding;
+pub use aozora_core::gaiji;
+pub use aozora_core::token;
+pub use aozora_core::tokenizer;
 
 /// 青空文庫形式のバイト列をプレーンテキストに変換
 ///
