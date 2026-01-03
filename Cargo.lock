@@ -70,14 +70,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "aozora2text"
-version = "0.5.1"
+name = "aozora-core"
+version = "0.1.0"
 dependencies = [
- "clap",
  "encoding_rs",
  "flate2",
  "once_cell",
  "serde_json",
+]
+
+[[package]]
+name = "aozora2text"
+version = "0.5.1"
+dependencies = [
+ "aozora-core",
+ "clap",
  "zip",
 ]
 

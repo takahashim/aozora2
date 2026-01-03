@@ -1,8 +1,8 @@
 //! プレーンテキスト抽出
 
-use crate::accent::convert_accent;
-use crate::gaiji::convert_gaiji;
-use crate::token::Token;
+use aozora_core::accent::convert_accent;
+use aozora_core::gaiji::convert_gaiji;
+use aozora_core::token::Token;
 
 /// トークン列をプレーンテキストに変換
 pub fn extract(tokens: &[Token]) -> String {
@@ -35,7 +35,7 @@ fn extract_token(token: &Token) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tokenizer::Tokenizer;
+    use aozora_core::tokenizer::Tokenizer;
 
     fn tokenize_and_extract(input: &str) -> String {
         let mut tokenizer = Tokenizer::new(input);
