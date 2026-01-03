@@ -377,4 +377,75 @@ mod tests {
             }]
         );
     }
+
+    #[test]
+    fn test_accent() {
+        let mut tokenizer = Tokenizer::new("〔E'difice〕");
+        let tokens = tokenizer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![Token::Accent {
+                children: vec![Token::Text("E'difice".to_string())]
+            }]
+        );
+    }
+
+    #[test]
+    fn test_accent_no_mark() {
+        // アクセント記号がなければテキスト扱い
+        let mut tokenizer = Tokenizer::new("〔参考〕");
+        let tokens = tokenizer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Text("〔".to_string()),
+                Token::Text("参考〕".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_prefixed_ruby_without_ruby() {
+        // ｜の後に《》がなければテキスト扱い
+        let mut tokenizer = Tokenizer::new("｜だけ");
+        let tokens = tokenizer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Text("｜".to_string()),
+                Token::Text("だけ".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn test_empty_input() {
+        let mut tokenizer = Tokenizer::new("");
+        let tokens = tokenizer.tokenize();
+        assert_eq!(tokens, vec![]);
+    }
+
+    #[test]
+    fn test_multiple_tokens() {
+        // 複数のトークンが連続するケース
+        let mut tokenizer = Tokenizer::new("吾輩《わがはい》は※［＃「米印」、U+203B］猫である［＃「である」に傍点］");
+        let tokens = tokenizer.tokenize();
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Text("吾輩".to_string()),
+                Token::Ruby {
+                    children: vec![Token::Text("わがはい".to_string())]
+                },
+                Token::Text("は".to_string()),
+                Token::Gaiji {
+                    description: "「米印」、U+203B".to_string()
+                },
+                Token::Text("猫である".to_string()),
+                Token::Command {
+                    content: "「である」に傍点".to_string()
+                }
+            ]
+        );
+    }
 }
