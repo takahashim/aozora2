@@ -1,9 +1,11 @@
 # aozora2text
 
-[![CI](https://github.com/takahashim/aozora2text/actions/workflows/ci.yml/badge.svg)](https://github.com/takahashim/aozora2text/actions/workflows/ci.yml)
+[![CI](https://github.com/takahashim/aozora2/actions/workflows/ci.yml/badge.svg)](https://github.com/takahashim/aozora2/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/aozora2text.svg)](https://crates.io/crates/aozora2text)
 
 青空文庫形式のテキスト本文をプレーンテキストに変換するCLIツールです。
+
+> **Note**: このパッケージは [aozora2](https://crates.io/crates/aozora2) の `strip` サブコマンドと同等の機能を提供する後方互換ラッパーです。新規プロジェクトでは `aozora2` の使用を推奨します。
 
 元テキストがShift_JISでもUTF-8でも、UTF-8として出力します。
 

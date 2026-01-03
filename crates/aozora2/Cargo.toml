@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Aozora Bunko format converter CLI"
+readme = "../../README.en.md"
 keywords = ["aozora", "bunko", "japanese", "text", "converter"]
 categories = ["command-line-utilities", "text-processing"]
 

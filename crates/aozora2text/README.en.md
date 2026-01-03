@@ -1,9 +1,11 @@
 # aozora2text
 
-[![CI](https://github.com/takahashim/aozora2text/actions/workflows/ci.yml/badge.svg)](https://github.com/takahashim/aozora2text/actions/workflows/ci.yml)
+[![CI](https://github.com/takahashim/aozora2/actions/workflows/ci.yml/badge.svg)](https://github.com/takahashim/aozora2/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/aozora2text.svg)](https://crates.io/crates/aozora2text)
 
 A Rust tool to convert [Aozora Bunko](https://www.aozora.gr.jp/) format text to plain text.
+
+> **Note**: This package is a backward-compatible wrapper providing the same functionality as `aozora2 strip`. For new projects, consider using [aozora2](https://crates.io/crates/aozora2) instead.
 
 [In Japanese](./README.md)
 
