@@ -27,8 +27,8 @@ impl Tokenizer {
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
 
-        while self.pos < self.chars.len() {
-            let ch = self.chars[self.pos];
+        while !self.is_eof() {
+            let ch = self.current_char().unwrap();
 
             match ch {
                 // コマンド ［＃...］ または外字 ※［＃...］の一部
@@ -38,7 +38,7 @@ impl Tokenizer {
                     } else {
                         // ［ だけならテキスト
                         tokens.push(Token::Text(ch.to_string()));
-                        self.pos += 1;
+                        self.skip(1);
                     }
                 }
 
@@ -61,7 +61,7 @@ impl Tokenizer {
                     } else {
                         // ※ だけならテキスト
                         tokens.push(Token::Text(ch.to_string()));
-                        self.pos += 1;
+                        self.skip(1);
                     }
                 }
 
@@ -72,7 +72,7 @@ impl Tokenizer {
                     } else {
                         // アクセント記号がなければテキスト
                         tokens.push(Token::Text(ch.to_string()));
-                        self.pos += 1;
+                        self.skip(1);
                     }
                 }
 
@@ -211,6 +211,11 @@ impl Tokenizer {
     }
 
     // --- カーソル操作ヘルパー ---
+
+    /// 入力の終端に達したか
+    fn is_eof(&self) -> bool {
+        self.pos >= self.chars.len()
+    }
 
     /// 現在位置から n 文字先を覗く
     fn peek_nth(&self, n: usize) -> Option<char> {
