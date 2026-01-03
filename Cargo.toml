@@ -1,9 +1,13 @@
 [package]
 name = "aozora2text"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2021"
 description = "Convert Aozora Bunko format to plain text"
 license = "MIT"
+repository = "https://github.com/takahashim/aozora2text"
+readme = "README.md"
+keywords = ["aozora", "bunko", "japanese", "text", "converter"]
+categories = ["command-line-utilities", "text-processing"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
