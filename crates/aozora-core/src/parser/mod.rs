@@ -9,8 +9,8 @@ pub mod command_parser;
 mod content_parser;
 mod reference_parser;
 pub mod reference_resolver;
-mod ruby_resolver;
 pub mod ruby_parser;
+mod ruby_resolver;
 mod style_resolver;
 mod utils;
 
@@ -21,8 +21,8 @@ use crate::token::Token;
 
 pub use command_parser::{parse_command, CommandResult};
 pub use reference_resolver::resolve_references;
-pub use ruby_resolver::resolve_inline_ruby;
 pub use ruby_parser::extract_ruby_base;
+pub use ruby_resolver::resolve_inline_ruby;
 
 /// トークン列をノード列にパース
 ///

@@ -5,9 +5,9 @@
 
 use aozora_core::document::HeaderInfo;
 
-use super::rendering_state::UnconvertedGaiji;
 use super::options::RenderOptions;
 use super::presentation::html_escape;
+use super::rendering_state::UnconvertedGaiji;
 
 /// 青空文庫パブリッシャー名
 const AOZORA_BUNKO: &str = "青空文庫";

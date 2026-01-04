@@ -2,8 +2,8 @@
 //!
 //! 1行のHTMLレンダリングとブロック制御を担当します。
 
-use aozora_core::parser::resolve_inline_ruby;
 use aozora_core::parser::parse;
+use aozora_core::parser::resolve_inline_ruby;
 use aozora_core::tokenizer::tokenize;
 
 use super::block_manager::BlockManager;
@@ -67,11 +67,7 @@ impl LineProcessor {
     }
 
     /// ぶら下げブロック内の行をラップ
-    pub fn wrap_burasage_line(
-        line_html: &str,
-        wrap_width: u32,
-        text_indent: i32,
-    ) -> String {
+    pub fn wrap_burasage_line(line_html: &str, wrap_width: u32, text_indent: i32) -> String {
         format!(
             "<div class=\"burasage\" style=\"margin-left: {wrap_width}em; text-indent: {text_indent}em;\">{line_html}</div>\r\n"
         )

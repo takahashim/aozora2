@@ -189,8 +189,12 @@ mod tests {
         let renderer = GaijiRenderer::new(&options);
         let mut state = RenderingState::new();
 
-        let result =
-            renderer.render_gaiji("「二の字点」、1-02-22", Some("〻"), Some("1-02-22"), &mut state);
+        let result = renderer.render_gaiji(
+            "「二の字点」、1-02-22",
+            Some("〻"),
+            Some("1-02-22"),
+            &mut state,
+        );
         assert!(result.contains("<img"));
         assert!(result.contains("1-02/1-02-22.png"));
         assert!(state.has_gaiji_images);

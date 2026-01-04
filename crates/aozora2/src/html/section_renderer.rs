@@ -5,9 +5,9 @@
 
 use super::block_manager::BlockManager;
 use super::document_renderer::DocumentRenderer;
+use super::line_processor::LineProcessor;
 use super::node_renderer::NodeRenderer;
 use super::presentation::auto_link;
-use super::line_processor::LineProcessor;
 
 /// セクションレンダラー
 pub struct SectionRenderer;

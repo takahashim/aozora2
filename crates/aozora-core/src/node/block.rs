@@ -89,10 +89,7 @@ impl BlockType {
         }
 
         // Jisage終了はBurasageも閉じる
-        matches!(
-            (self, other),
-            (BlockType::Jisage, BlockType::Burasage)
-        )
+        matches!((self, other), (BlockType::Jisage, BlockType::Burasage))
     }
 
     /// コマンド名からブロックタイプを取得
