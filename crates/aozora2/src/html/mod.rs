@@ -24,7 +24,8 @@ pub use renderer::HtmlRenderer;
 /// ```
 /// use aozora2::html::{convert, RenderOptions};
 ///
-/// let input = "吾輩《わがはい》は猫である";
+/// // 青空文庫形式: ヘッダー、空行、本文
+/// let input = "タイトル\n\n吾輩《わがはい》は猫である";
 /// let html = convert(input, &RenderOptions::default());
 /// assert!(html.contains("<ruby>"));
 /// ```
@@ -45,13 +46,18 @@ mod tests {
 
     #[test]
     fn test_convert_simple() {
-        let html = convert("こんにちは", &RenderOptions::default());
+        // 青空文庫形式: ヘッダー、空行、本文の構造
+        let input = "タイトル\n\nこんにちは";
+        let html = convert(input, &RenderOptions::default());
         assert!(html.contains("こんにちは"));
+        assert!(html.contains("<!DOCTYPE"));
     }
 
     #[test]
     fn test_convert_ruby() {
-        let html = convert("漢字《かんじ》", &RenderOptions::default());
+        // 青空文庫形式: ヘッダー、空行、本文の構造
+        let input = "タイトル\n\n漢字《かんじ》";
+        let html = convert(input, &RenderOptions::default());
         assert!(html.contains("<ruby>"));
         assert!(html.contains("漢字"));
         assert!(html.contains("かんじ"));

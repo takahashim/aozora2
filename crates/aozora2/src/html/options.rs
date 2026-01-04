@@ -11,8 +11,6 @@ pub struct RenderOptions {
     pub use_jisx0213: bool,
     /// Unicodeの数値実体参照を使用
     pub use_unicode: bool,
-    /// 完全なHTMLドキュメントを生成（html, head, bodyタグを含む）
-    pub full_document: bool,
     /// ドキュメントのタイトル
     pub title: Option<String>,
 }
@@ -24,7 +22,6 @@ impl Default for RenderOptions {
             css_files: vec!["../../aozora.css".to_string()],
             use_jisx0213: false,
             use_unicode: false,
-            full_document: false,
             title: None,
         }
     }
@@ -60,12 +57,6 @@ impl RenderOptions {
         self
     }
 
-    /// 完全なHTMLドキュメントを生成
-    pub fn with_full_document(mut self, full: bool) -> Self {
-        self.full_document = full;
-        self
-    }
-
     /// タイトルを設定
     pub fn with_title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
@@ -83,7 +74,6 @@ mod tests {
         assert_eq!(opts.gaiji_dir, "../../../gaiji/");
         assert!(!opts.use_jisx0213);
         assert!(!opts.use_unicode);
-        assert!(!opts.full_document);
     }
 
     #[test]
@@ -91,12 +81,10 @@ mod tests {
         let opts = RenderOptions::new()
             .with_gaiji_dir("/path/to/gaiji/")
             .with_jisx0213(true)
-            .with_full_document(true)
             .with_title("テスト");
 
         assert_eq!(opts.gaiji_dir, "/path/to/gaiji/");
         assert!(opts.use_jisx0213);
-        assert!(opts.full_document);
         assert_eq!(opts.title, Some("テスト".to_string()));
     }
 }
