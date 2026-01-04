@@ -16,7 +16,6 @@ pub fn resolve_style_references(nodes: &mut Vec<Node>) {
         {
             let target_clone = target.clone();
             let spec_clone = spec.clone();
-            let connector_clone = connector.clone();
 
             // 前方のノードから対象テキストを探す
             if let Some((_, found_node_idx, split_info)) =
@@ -37,6 +36,8 @@ pub fn resolve_style_references(nodes: &mut Vec<Node>) {
             }
 
             // 解決できなかった場合はNoteノードに変換
+            // connector は失敗時のみ必要なのでここでclone
+            let connector_clone = connector.clone();
             nodes[i] = Node::Note(format!("「{target_clone}」{connector_clone}{spec_clone}"));
         }
         i += 1;
@@ -138,7 +139,8 @@ fn find_target_in_preceding(nodes: &[Node], target: &str) -> Option<(usize, usiz
         // 末尾から連結していく
         for start_idx in (0..=end_idx).rev() {
             let text = extract_plain_text(&nodes[start_idx]);
-            combined = format!("{}{}", text, combined);
+            // format!より効率的：新規String割り当てを避ける
+            combined.insert_str(0, &text);
 
             // 対象テキストが含まれていれば
             if combined.contains(target) {

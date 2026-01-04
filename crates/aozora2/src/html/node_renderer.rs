@@ -39,12 +39,6 @@ impl<'a> NodeRenderer<'a> {
         self.state.has_notes
     }
 
-    /// 外字画像を使用したかどうか
-    #[allow(dead_code)]
-    pub fn has_gaiji_images(&self) -> bool {
-        self.state.has_gaiji_images
-    }
-
     /// アクセント記号を使用したかどうか
     pub fn has_accent(&self) -> bool {
         self.state.has_accent

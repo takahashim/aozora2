@@ -143,7 +143,6 @@ pub enum Node {
         /// ブロックタイプ
         block_type: BlockType,
         /// パラメータ（割り注用）
-        #[allow(dead_code)]
         params: BlockParams,
     },
 

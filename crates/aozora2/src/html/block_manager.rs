@@ -43,24 +43,6 @@ impl BlockManager {
         self.stack.pop()
     }
 
-    /// スタックの指定位置からブロックを削除
-    #[allow(dead_code)]
-    pub fn remove(&mut self, pos: usize) -> BlockContext {
-        self.stack.remove(pos)
-    }
-
-    /// スタックを走査してコンテキストを参照
-    #[allow(dead_code)]
-    pub fn iter(&self) -> impl Iterator<Item = &BlockContext> {
-        self.stack.iter()
-    }
-
-    /// スタックが空でないかどうか
-    #[allow(dead_code)]
-    pub fn has_blocks(&self) -> bool {
-        !self.stack.is_empty()
-    }
-
     /// 指定された長さまでスタックをポップし、終了タグを生成
     pub fn pop_to_length(&mut self, target_len: usize) -> Vec<(BlockType, BlockParams)> {
         let mut result = Vec::new();

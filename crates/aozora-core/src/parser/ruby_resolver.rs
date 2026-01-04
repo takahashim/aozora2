@@ -19,11 +19,10 @@ pub fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
             if children.is_empty() && !ruby.is_empty() {
                 // 直前のノードから親文字を抽出
                 if i > 0 {
-                    let preceding_nodes: Vec<Node> = nodes[..i].to_vec();
-                    if let Some((remaining, base)) = extract_ruby_base_from_nodes(&preceding_nodes)
-                    {
+                    let preceding_len = i;
+                    if let Some((remaining, base)) = extract_ruby_base_from_nodes(&nodes[..i]) {
                         // 直前のノードを更新
-                        let to_remove = i - (preceding_nodes.len() - remaining.len());
+                        let to_remove = i - (preceding_len - remaining.len());
 
                         // 残りのノードで前半を置き換え
                         nodes.splice(..i, remaining.into_iter());
@@ -59,12 +58,12 @@ pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
             if children.is_empty() && !ruby.is_empty() && i > 0 {
                 let ruby_clone = ruby.clone();
                 let direction_clone = *direction;
+                let preceding_len = i;
 
                 // 直前のノード列から親文字を抽出（外字も含む）
-                let preceding_nodes: Vec<Node> = nodes[..i].to_vec();
-                if let Some((remaining, base)) = extract_ruby_base_from_nodes(&preceding_nodes) {
+                if let Some((remaining, base)) = extract_ruby_base_from_nodes(&nodes[..i]) {
                     // 残りのノード数を計算
-                    let nodes_to_remove = preceding_nodes.len() - remaining.len();
+                    let nodes_to_remove = preceding_len - remaining.len();
 
                     // 前半を残りのノードで置き換え
                     let start_idx = i - nodes_to_remove;
