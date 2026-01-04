@@ -2,12 +2,16 @@
 //!
 //! トークンからASTノードへの変換を行います。
 
+mod annotation_command;
+mod annotation_resolver;
 mod block_parser;
 pub mod command_parser;
 mod content_parser;
 mod reference_parser;
 pub mod reference_resolver;
+mod ruby_resolver;
 pub mod ruby_parser;
+mod style_resolver;
 mod utils;
 
 use crate::node::{
@@ -16,7 +20,8 @@ use crate::node::{
 use crate::token::Token;
 
 pub use command_parser::{parse_command, CommandResult};
-pub use reference_resolver::{resolve_inline_ruby, resolve_references};
+pub use reference_resolver::resolve_references;
+pub use ruby_resolver::resolve_inline_ruby;
 pub use ruby_parser::extract_ruby_base;
 
 /// トークン列をノード列にパース

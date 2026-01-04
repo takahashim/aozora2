@@ -4,10 +4,14 @@
 
 mod block_manager;
 mod document_renderer;
+mod gaiji_renderer;
+mod line_processor;
 mod node_renderer;
 mod options;
 mod presentation;
 mod renderer;
+mod rendering_state;
+mod section_renderer;
 mod tag_generator;
 
 pub use options::RenderOptions;

@@ -7,15 +7,14 @@ use aozora_core::document::{
     extract_header_info,
 };
 use aozora_core::node::Node;
-use aozora_core::parser::parse;
-use aozora_core::parser::reference_resolver::resolve_inline_ruby;
-use aozora_core::tokenizer::tokenize;
 
 use super::block_manager::BlockManager;
 use super::document_renderer::DocumentRenderer;
+use super::line_processor::LineProcessor;
 use super::node_renderer::NodeRenderer;
 use super::options::RenderOptions;
-use super::presentation::{auto_link, classify_line, is_block_only_line, LineType};
+use super::presentation::LineType;
+use super::section_renderer::SectionRenderer;
 
 /// HTMLレンダラー
 #[derive(Debug, Clone)]
@@ -49,103 +48,39 @@ impl HtmlRenderer {
         // main_text開始
         doc_renderer.render_main_text_start(&mut output);
 
-        // 本文のみ抽出してレンダリング
-        let body_lines = extract_body_lines(&lines);
-        for line in &body_lines {
-            let line_html =
-                self.render_line_with_context(line, &mut node_renderer, &mut block_manager);
-
-            // ぶら下げブロック内かどうかをチェック
-            let burasage_ctx = block_manager.find_burasage_context();
-            let line_type = classify_line(&line_html);
-
-            if let Some((wrap_width, text_indent)) = burasage_ctx {
-                // ぶら下げブロック内: インライン行を個別のdivでラップ
-                if line_type == LineType::Inline {
-                    output.push_str(&format!(
-                        "<div class=\"burasage\" style=\"margin-left: {wrap_width}em; text-indent: {text_indent}em;\">{line_html}</div>"
-                    ));
-                    output.push_str("\r\n");
-                    continue;
-                }
-            }
-
-            // line_htmlが空でかつ元の行も空じゃない場合（コマンドのみの行）は何も出力しない
-            if line_html.is_empty() && !line.is_empty() {
-                continue;
-            }
-
-            output.push_str(&line_html);
-
-            // インラインブロック（is_block = false）は行末で閉じる
-            let closed_blocks = block_manager.close_inline_blocks();
-            for (block_type, params) in closed_blocks {
-                output.push_str(&block_manager.render_block_end_tag(&block_type, &params));
-            }
-
-            // ブロック開始/終了だけの行（div終わる）には<br />を追加しない
-            let ends_with_div = output.ends_with("</div>");
-
-            let needs_br = if line_html.is_empty() {
-                // line_htmlが空の場合：元の行が空白行なら<br />を追加
-                true
-            } else if ends_with_div {
-                // 現在の出力がdiv終了タグで終わる場合は<br />不要
-                false
-            } else {
-                !is_block_only_line(&line_html)
-            };
-            if needs_br {
-                output.push_str("<br />");
-            }
-            output.push_str("\r\n");
-        }
-
-        // 閉じられていないブロックを閉じる
-        while let Some(ctx) = block_manager.pop() {
-            output.push_str(&block_manager.render_block_end_tag(&ctx.block_type, &ctx.params));
-        }
+        // 本文をレンダリング
+        self.render_body(&mut output, &lines, &mut node_renderer, &mut block_manager);
 
         // main_text終了
         doc_renderer.render_main_text_end(&mut output);
 
         // 本文終わり後のテキスト（after_text）セクション
         let after_text_lines = extract_after_text_lines(&lines);
-        if !after_text_lines.is_empty() {
-            doc_renderer.render_after_text_header(&mut output);
-            for line in &after_text_lines {
-                let line_html =
-                    self.render_line_with_context(line, &mut node_renderer, &mut block_manager);
-                // 自動リンク化を適用
-                let line_html = auto_link(&line_html);
-                output.push_str(&line_html);
-                output.push_str("<br />\r\n");
-            }
-            doc_renderer.render_after_text_footer(&mut output);
-        }
+        SectionRenderer::render_after_text(
+            &mut output,
+            &after_text_lines,
+            &doc_renderer,
+            &mut node_renderer,
+            &mut block_manager,
+        );
 
         // 底本情報（bibliographical_information）セクション
         let biblio_lines = extract_bibliographical_lines(&lines);
-        if !biblio_lines.is_empty() {
-            doc_renderer.render_bibliographical_header(&mut output);
-            for line in &biblio_lines {
-                let line_html =
-                    self.render_line_with_context(line, &mut node_renderer, &mut block_manager);
-                // 自動リンク化を適用
-                let line_html = auto_link(&line_html);
-                output.push_str(&line_html);
-                output.push_str("<br />\r\n");
-            }
-            doc_renderer.render_bibliographical_footer(&mut output);
-        }
+        SectionRenderer::render_bibliographical(
+            &mut output,
+            &biblio_lines,
+            &doc_renderer,
+            &mut node_renderer,
+            &mut block_manager,
+        );
 
         // 表記について（notation_notes）セクション
         doc_renderer.render_notation_notes(
             &mut output,
-            node_renderer.has_notes,
-            node_renderer.has_jisx0213,
-            node_renderer.has_accent,
-            &node_renderer.unconverted_gaiji,
+            node_renderer.has_notes(),
+            node_renderer.has_jisx0213(),
+            node_renderer.has_accent(),
+            node_renderer.unconverted_gaiji(),
         );
 
         // 図書カードセクション
@@ -156,44 +91,45 @@ impl HtmlRenderer {
         output
     }
 
-    /// 1行をHTMLに変換（コンテキスト付き）
-    fn render_line_with_context(
+    /// 本文のレンダリング
+    fn render_body(
         &self,
-        line: &str,
+        output: &mut String,
+        lines: &[&str],
         node_renderer: &mut NodeRenderer,
         block_manager: &mut BlockManager,
-    ) -> String {
-        let tokens = tokenize(line);
-        let mut nodes = parse(&tokens);
+    ) {
+        let body_lines = extract_body_lines(lines);
 
-        // 行内ルビを解決
-        resolve_inline_ruby(&mut nodes);
+        for line in &body_lines {
+            let result = LineProcessor::render_line(line, node_renderer, block_manager);
 
-        // 行の開始時点でのブロックスタックの長さを記録
-        let stack_len_before = block_manager.stack_len();
-
-        let mut output = node_renderer.render_nodes(&nodes, block_manager);
-
-        // 行単位字下げ: 行の終わりで、その行で開いたブロックを閉じる
-        let is_line_scope_block = line.starts_with("［＃")
-            && !line.contains("ここから")
-            && (line.contains("字下げ") || line.contains("地付き") || line.contains("地から"));
-
-        if is_line_scope_block {
-            let popped = block_manager.pop_to_length(stack_len_before);
-            for (block_type, params) in popped {
-                output.push_str(&block_manager.render_block_end_tag(&block_type, &params));
+            // ぶら下げブロック内の場合
+            if let Some((wrap_width, text_indent)) = result.burasage_context {
+                if result.line_type == LineType::Inline {
+                    output.push_str(&LineProcessor::wrap_burasage_line(
+                        &result.html,
+                        wrap_width,
+                        text_indent,
+                    ));
+                    continue;
+                }
             }
+
+            // 通常の行処理
+            LineProcessor::finalize_line(output, &result.html, line, block_manager);
         }
 
-        output
+        // 閉じられていないブロックを閉じる
+        LineProcessor::close_all_blocks(output, block_manager);
     }
 
     /// 1行をHTMLに変換（公開API）
     pub fn render_line(&mut self, line: &str) -> String {
         let mut node_renderer = NodeRenderer::new(&self.options);
         let mut block_manager = BlockManager::new();
-        self.render_line_with_context(line, &mut node_renderer, &mut block_manager)
+        let result = LineProcessor::render_line(line, &mut node_renderer, &mut block_manager);
+        result.html
     }
 
     /// ノード列をHTMLに変換

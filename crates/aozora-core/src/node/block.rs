@@ -42,6 +42,59 @@ pub enum BlockType {
 }
 
 impl BlockType {
+    /// レイアウトブロック（字下げ、地付き、ぶら下げ）かどうか
+    ///
+    /// レイアウトブロックは互いに関連があり、新しいブロック開始時に
+    /// 既存のレイアウトブロックを閉じる必要がある場合があります。
+    pub fn is_layout_block(&self) -> bool {
+        matches!(
+            self,
+            BlockType::Jisage | BlockType::Chitsuki | BlockType::Burasage
+        )
+    }
+
+    /// 新しいブロック開始時にこのブロックを閉じるべきかどうか
+    ///
+    /// # Arguments
+    /// * `new_block` - 新しく開始するブロックのタイプ
+    ///
+    /// # Returns
+    /// このブロックを閉じるべきならtrue
+    pub fn should_close_for(&self, new_block: &BlockType) -> bool {
+        // レイアウトブロック以外は閉じない
+        if !new_block.is_layout_block() {
+            return false;
+        }
+
+        // 同じタイプは常に閉じる
+        if self == new_block {
+            return true;
+        }
+
+        match (self, new_block) {
+            // Burasageは他のレイアウトブロック開始時に閉じる
+            (BlockType::Burasage, _) => true,
+            // JisageはBurasage開始時に閉じる
+            (BlockType::Jisage, BlockType::Burasage) => true,
+            _ => false,
+        }
+    }
+
+    /// このブロック終了コマンドで閉じられるべきブロックタイプ
+    ///
+    /// 例: Jisage終了はBurasageも閉じる
+    pub fn closes_block(&self, other: &BlockType) -> bool {
+        if self == other {
+            return true;
+        }
+
+        // Jisage終了はBurasageも閉じる
+        matches!(
+            (self, other),
+            (BlockType::Jisage, BlockType::Burasage)
+        )
+    }
+
     /// コマンド名からブロックタイプを取得
     pub fn from_command(command: &str) -> Option<Self> {
         // 折り返しがある場合はBurasage（コマンドパーサーで先に処理されるが念のため）

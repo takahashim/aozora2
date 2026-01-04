@@ -102,21 +102,21 @@ impl BlockManager {
     ) -> Vec<(BlockType, BlockParams)> {
         let mut result = Vec::new();
 
-        if *new_block_type == BlockType::Jisage
-            || *new_block_type == BlockType::Chitsuki
-            || *new_block_type == BlockType::Burasage
+        // レイアウトブロック以外は何も閉じない
+        if !new_block_type.is_layout_block() {
+            return result;
+        }
+
+        // 閉じるべきブロックを検索して削除
+        while let Some(pos) = self
+            .stack
+            .iter()
+            .rposition(|c| c.block_type.should_close_for(new_block_type))
         {
-            while let Some(pos) = self.stack.iter().rposition(|c| {
-                c.block_type == *new_block_type
-                    || c.block_type == BlockType::Burasage
-                    || (*new_block_type == BlockType::Jisage && c.block_type == BlockType::Jisage)
-                    || (*new_block_type == BlockType::Burasage && c.block_type == BlockType::Jisage)
-            }) {
-                let ctx = self.stack.remove(pos);
-                // Burasageは終了タグを出力しない
-                if ctx.block_type != BlockType::Burasage {
-                    result.push((ctx.block_type, ctx.params));
-                }
+            let ctx = self.stack.remove(pos);
+            // Burasageは終了タグを出力しない
+            if ctx.block_type != BlockType::Burasage {
+                result.push((ctx.block_type, ctx.params));
             }
         }
 
@@ -125,11 +125,11 @@ impl BlockManager {
 
     /// 対応するブロック終了を探して削除
     pub fn find_and_close(&mut self, block_type: &BlockType) -> Option<BlockContext> {
-        // Jisage終了でBurasageも閉じる
-        let pos = self.stack.iter().rposition(|c| {
-            c.block_type == *block_type
-                || (*block_type == BlockType::Jisage && c.block_type == BlockType::Burasage)
-        });
+        // block_type.closes_block() で閉じられるべきブロックを検索
+        let pos = self
+            .stack
+            .iter()
+            .rposition(|c| block_type.closes_block(&c.block_type));
 
         pos.map(|p| self.stack.remove(p))
     }

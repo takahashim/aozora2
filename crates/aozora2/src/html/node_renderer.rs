@@ -2,53 +2,62 @@
 //!
 //! ASTノードをHTMLに変換します。
 
-use aozora_core::gaiji::{parse_gaiji, GaijiResult};
 use aozora_core::node::{
     BlockType, FontSizeType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
 };
 
 use super::block_manager::BlockManager;
+use super::gaiji_renderer::GaijiRenderer;
 use super::options::RenderOptions;
 use super::presentation::{
-    html_escape, jis_code_to_path, midashi_combined_css_class, midashi_html_tag, style_css_class,
-    style_html_tag,
+    html_escape, midashi_combined_css_class, midashi_html_tag, style_css_class, style_html_tag,
 };
-
-/// 未変換外字情報
-#[derive(Debug, Clone)]
-pub struct UnconvertedGaiji {
-    /// 外字名（説明の最後の「、」より前の部分）
-    pub gaiji_name: String,
-    /// ページ-行数（説明の最後の「、」より後の部分）
-    pub page_line: String,
-}
+use super::rendering_state::{RenderingState, UnconvertedGaiji};
 
 /// ノードレンダラー
 pub struct NodeRenderer<'a> {
-    options: &'a RenderOptions,
-    /// 注記を使用したかどうか
-    pub has_notes: bool,
-    /// 外字画像を使用したかどうか
-    pub has_gaiji_images: bool,
-    /// アクセント記号を使用したかどうか
-    pub has_accent: bool,
-    /// JIS X 0213文字を使用したかどうか
-    pub has_jisx0213: bool,
-    /// 未変換外字のリスト
-    pub unconverted_gaiji: Vec<UnconvertedGaiji>,
+    gaiji_renderer: GaijiRenderer<'a>,
+    state: RenderingState,
+    // PhantomData for lifetime - options is now only used by GaijiRenderer
+    _marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a> NodeRenderer<'a> {
     /// 新しいノードレンダラーを作成
     pub fn new(options: &'a RenderOptions) -> Self {
         Self {
-            options,
-            has_notes: false,
-            has_gaiji_images: false,
-            has_accent: false,
-            has_jisx0213: false,
-            unconverted_gaiji: Vec::new(),
+            gaiji_renderer: GaijiRenderer::new(options),
+            state: RenderingState::new(),
+            _marker: std::marker::PhantomData,
         }
+    }
+
+    // State accessors - レンダリング後の状態を取得するためのメソッド
+
+    /// 注記を使用したかどうか
+    pub fn has_notes(&self) -> bool {
+        self.state.has_notes
+    }
+
+    /// 外字画像を使用したかどうか
+    #[allow(dead_code)]
+    pub fn has_gaiji_images(&self) -> bool {
+        self.state.has_gaiji_images
+    }
+
+    /// アクセント記号を使用したかどうか
+    pub fn has_accent(&self) -> bool {
+        self.state.has_accent
+    }
+
+    /// JIS X 0213文字を使用したかどうか
+    pub fn has_jisx0213(&self) -> bool {
+        self.state.has_jisx0213
+    }
+
+    /// 未変換外字のリストを取得
+    pub fn unconverted_gaiji(&self) -> &[UnconvertedGaiji] {
+        &self.state.unconverted_gaiji
     }
 
     /// ノード列をHTMLに変換
@@ -87,32 +96,20 @@ impl<'a> NodeRenderer<'a> {
                 description,
                 unicode,
                 jis_code,
-            } => self.render_gaiji(description, unicode.as_deref(), jis_code.as_deref()),
+            } => self.gaiji_renderer.render_gaiji(
+                description,
+                unicode.as_deref(),
+                jis_code.as_deref(),
+                &mut self.state,
+            ),
 
             Node::Accent {
                 code,
                 name,
                 unicode,
-            } => {
-                self.has_accent = true;
-                if self.options.use_jisx0213 || self.options.use_unicode {
-                    if let Some(u) = unicode {
-                        u.chars().map(|c| format!("&#{};", c as u32)).collect()
-                    } else {
-                        String::new()
-                    }
-                } else {
-                    self.has_gaiji_images = true;
-                    let (folder, file) = jis_code_to_path(code);
-                    format!(
-                        "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                        self.options.gaiji_dir,
-                        folder,
-                        file,
-                        html_escape(name)
-                    )
-                }
-            }
+            } => self
+                .gaiji_renderer
+                .render_accent(code, name, unicode.as_deref(), &mut self.state),
 
             Node::Img {
                 filename,
@@ -200,7 +197,7 @@ impl<'a> NodeRenderer<'a> {
             }
 
             Node::Note(text) => {
-                self.has_notes = true;
+                self.state.has_notes = true;
                 format!("<span class=\"notes\">［＃{}］</span>", html_escape(text))
             }
 
@@ -209,7 +206,7 @@ impl<'a> NodeRenderer<'a> {
                 content,
                 suffix,
             } => {
-                self.has_notes = true;
+                self.state.has_notes = true;
                 let content_html = self.render_nodes(content, block_manager);
                 format!(
                     "<span class=\"notes\">［＃{}{}{}］</span>",
@@ -328,139 +325,6 @@ impl<'a> NodeRenderer<'a> {
             }
         };
         format!("<span class=\"{class}\" style=\"{style}\">{inner}</span>")
-    }
-
-    /// 外字をHTMLに変換
-    fn render_gaiji(
-        &mut self,
-        description: &str,
-        unicode: Option<&str>,
-        jis_code: Option<&str>,
-    ) -> String {
-        match (unicode, jis_code) {
-            // JisConverted: unicodeとjis_code両方がある場合
-            (Some(u), Some(jis)) => {
-                self.has_jisx0213 = true;
-                if self.options.use_jisx0213 || self.options.use_unicode {
-                    return u.chars().map(|c| format!("&#{};", c as u32)).collect();
-                } else {
-                    self.has_gaiji_images = true;
-                    let (folder, file) = jis_code_to_path(jis);
-                    return format!(
-                        "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                        self.options.gaiji_dir,
-                        folder,
-                        file,
-                        html_escape(description)
-                    );
-                }
-            }
-            // Unicode: unicodeだけがある場合（JISコードがない）
-            (Some(u), None) => {
-                if self.options.use_unicode {
-                    return u.chars().map(|c| format!("&#{};", c as u32)).collect();
-                }
-                // JISコードがないので画像化できない → 注記として出力
-                self.has_notes = true;
-                self.add_unconverted_gaiji(description);
-                return format!(
-                    "※<span class=\"notes\">［＃{}］</span>",
-                    html_escape(description)
-                );
-            }
-            // JisImage: jis_codeだけがある場合
-            (None, Some(jis)) => {
-                self.has_gaiji_images = true;
-                let (folder, file) = jis_code_to_path(jis);
-                return format!(
-                    "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                    self.options.gaiji_dir,
-                    folder,
-                    file,
-                    html_escape(description)
-                );
-            }
-            // 両方Noneの場合は再度パース
-            (None, None) => {}
-        }
-
-        match parse_gaiji(description) {
-            GaijiResult::Unicode(s) => {
-                if self.options.use_unicode {
-                    s.chars().map(|c| format!("&#{};", c as u32)).collect()
-                } else {
-                    self.has_notes = true;
-                    self.add_unconverted_gaiji(description);
-                    format!(
-                        "※<span class=\"notes\">［＃{}］</span>",
-                        html_escape(description)
-                    )
-                }
-            }
-            GaijiResult::JisConverted {
-                jis_code: jis,
-                unicode: u,
-            } => {
-                self.has_jisx0213 = true;
-                if self.options.use_jisx0213 || self.options.use_unicode {
-                    u.chars().map(|c| format!("&#{};", c as u32)).collect()
-                } else {
-                    self.has_gaiji_images = true;
-                    let (folder, file) = jis_code_to_path(&jis);
-                    format!(
-                        "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                        self.options.gaiji_dir,
-                        folder,
-                        file,
-                        html_escape(description)
-                    )
-                }
-            }
-            GaijiResult::JisImage { jis_code: jis } => {
-                self.has_gaiji_images = true;
-                let (folder, file) = jis_code_to_path(&jis);
-                format!(
-                    "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                    self.options.gaiji_dir,
-                    folder,
-                    file,
-                    html_escape(description)
-                )
-            }
-            GaijiResult::Unconvertible => {
-                self.has_notes = true;
-                self.add_unconverted_gaiji(description);
-                format!(
-                    "※<span class=\"notes\">［＃{}］</span>",
-                    html_escape(description)
-                )
-            }
-        }
-    }
-
-    /// 未変換外字を追加（重複を避ける）
-    fn add_unconverted_gaiji(&mut self, description: &str) {
-        // descriptionを最後の「、」で分解（外字説明とページ-行数を分離）
-        let (gaiji_name, page_line) = if let Some(last_comma_pos) = description.rfind('、') {
-            let name = &description[..last_comma_pos];
-            let line = &description[last_comma_pos + '、'.len_utf8()..];
-            (name.to_string(), line.to_string())
-        } else {
-            (description.to_string(), String::new())
-        };
-
-        // 既に追加済みの場合はスキップ
-        if self
-            .unconverted_gaiji
-            .iter()
-            .any(|g| g.gaiji_name == gaiji_name)
-        {
-            return;
-        }
-        self.unconverted_gaiji.push(UnconvertedGaiji {
-            gaiji_name,
-            page_line,
-        });
     }
 
     /// 画像をHTMLに変換
