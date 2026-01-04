@@ -8,6 +8,7 @@ description = "Aozora Bunko format converter CLI"
 readme = "../../README.en.md"
 keywords = ["aozora", "bunko", "japanese", "text", "converter"]
 categories = ["command-line-utilities", "text-processing"]
+exclude = ["tests/**"]
 
 [[bin]]
 name = "aozora2"
