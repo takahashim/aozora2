@@ -122,10 +122,7 @@ pub enum CommandResult {
     LeftAnnotationRangeEnd { annotation: String },
 
     /// 傍記（工場に「×」の傍記）
-    SideNote {
-        target: String,
-        annotation: String,
-    },
+    SideNote { target: String, annotation: String },
 
     /// 未知のコマンド
     Unknown(String),

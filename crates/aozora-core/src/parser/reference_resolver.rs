@@ -57,9 +57,9 @@ pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
                     nodes.splice(..new_i, remaining.into_iter());
 
                     // Rubyノードを更新（インデックスが変わっているので再計算）
-                    let ruby_idx = nodes.iter().position(|n| {
-                        matches!(n, Node::Ruby { children: c, .. } if c.is_empty())
-                    });
+                    let ruby_idx = nodes
+                        .iter()
+                        .position(|n| matches!(n, Node::Ruby { children: c, .. } if c.is_empty()));
 
                     if let Some(idx) = ruby_idx {
                         nodes[idx] = Node::Ruby {
@@ -75,7 +75,6 @@ pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
         i += 1;
     }
 }
-
 
 /// ルビの親文字を解決
 fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
@@ -207,7 +206,14 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
             {
                 // 解決種類を決定
                 if let Some(kind) = ResolvedKind::from_spec(&spec_clone) {
-                    apply_resolution(nodes, &mut i, found_node_idx, split_info, &target_clone, &kind);
+                    apply_resolution(
+                        nodes,
+                        &mut i,
+                        found_node_idx,
+                        split_info,
+                        &target_clone,
+                        &kind,
+                    );
                     continue;
                 }
             }
@@ -245,7 +251,8 @@ fn apply_resolution(
                 new_nodes.push(Node::text(&after));
             }
             nodes.splice(found_node_idx..found_node_idx + 1, new_nodes.into_iter());
-            let adjustment = if before.is_empty() { 0 } else { 1 } + if after.is_empty() { 0 } else { 1 };
+            let adjustment =
+                if before.is_empty() { 0 } else { 1 } + if after.is_empty() { 0 } else { 1 };
             let new_i = *i + adjustment;
             if new_i < nodes.len() {
                 nodes.remove(new_i);
@@ -291,10 +298,14 @@ fn find_target_in_preceding(nodes: &[Node], target: &str) -> Option<(usize, usiz
                 let content = extract_plain_text(node);
                 if content == target {
                     // ノード全体をラップ対象として返す
-                    return Some((i, i, SplitInfo::MultiNodeExact {
-                        start_idx: i,
-                        end_idx: i,
-                    }));
+                    return Some((
+                        i,
+                        i,
+                        SplitInfo::MultiNodeExact {
+                            start_idx: i,
+                            end_idx: i,
+                        },
+                    ));
                 }
             }
             _ => {}
@@ -318,10 +329,7 @@ fn find_target_in_preceding(nodes: &[Node], target: &str) -> Option<(usize, usiz
                     return Some((
                         start_idx,
                         end_idx,
-                        SplitInfo::MultiNodeExact {
-                            start_idx,
-                            end_idx,
-                        },
+                        SplitInfo::MultiNodeExact { start_idx, end_idx },
                     ));
                 }
                 // 部分一致の場合、対象がノード境界に一致しているかチェック
@@ -332,10 +340,7 @@ fn find_target_in_preceding(nodes: &[Node], target: &str) -> Option<(usize, usiz
                         return Some((
                             start_idx,
                             end_idx,
-                            SplitInfo::MultiNodeExact {
-                                start_idx,
-                                end_idx,
-                            },
+                            SplitInfo::MultiNodeExact { start_idx, end_idx },
                         ));
                     }
                 }
@@ -376,10 +381,7 @@ enum ResolvedKind {
         style: MidashiStyle,
     },
     /// フォントサイズ
-    FontSize {
-        size_type: FontSizeType,
-        level: u32,
-    },
+    FontSize { size_type: FontSizeType, level: u32 },
     /// インライン要素（縦中横、罫囲み、横組み、キャプション）
     Inline(InlineKind),
     /// 注記ルビ

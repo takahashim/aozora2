@@ -49,7 +49,10 @@ impl BlockType {
             Some(BlockType::Burasage)
         } else if command.contains("字下げ") {
             Some(BlockType::Jisage)
-        } else if command.contains("地付き") || command.contains("地から") || command.contains("字上げ") {
+        } else if command.contains("地付き")
+            || command.contains("地から")
+            || command.contains("字上げ")
+        {
             Some(BlockType::Chitsuki)
         } else if command.contains("字詰め") {
             Some(BlockType::Jizume)

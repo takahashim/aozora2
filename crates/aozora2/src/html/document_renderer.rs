@@ -237,10 +237,7 @@ impl<'a> DocumentRenderer<'a> {
                     gaiji_name
                 ));
                 output.push_str("\t\t\t\t<td>&nbsp;&nbsp;</td>\r\n");
-                output.push_str(&format!(
-                    "\t\t\t\t<td>\r\n{}\t\t\t\t</td>\r\n",
-                    page_line
-                ));
+                output.push_str(&format!("\t\t\t\t<td>\r\n{}\t\t\t\t</td>\r\n", page_line));
                 // コメント出力
                 output.push_str(&format!(
                     "\t\t\t\t<!--\r\n\t\t\t\t<td>\r\n\t\t\t\t　　<img src=\"../../../gaiji/others/xxxx.png\" alt=\"{}\" width=32 height=32 />\r\n\t\t\t\t</td>\r\n\t\t\t\t-->\r\n",

@@ -220,7 +220,8 @@ mod tests {
     #[test]
     fn test_auto_link_aozora() {
         let input = "青空文庫（http://www.aozora.gr.jp/）";
-        let expected = "<a href=\"http://www.aozora.gr.jp/\">青空文庫（http://www.aozora.gr.jp/）</a>";
+        let expected =
+            "<a href=\"http://www.aozora.gr.jp/\">青空文庫（http://www.aozora.gr.jp/）</a>";
         assert_eq!(auto_link(input), expected);
     }
 
@@ -269,8 +270,14 @@ mod tests {
     #[test]
     fn test_classify_line_inline() {
         assert_eq!(classify_line("plain text"), LineType::Inline);
-        assert_eq!(classify_line("<ruby>漢字<rt>かんじ</rt></ruby>"), LineType::Inline);
-        assert_eq!(classify_line("<span class=\"test\">text</span>"), LineType::Inline);
+        assert_eq!(
+            classify_line("<ruby>漢字<rt>かんじ</rt></ruby>"),
+            LineType::Inline
+        );
+        assert_eq!(
+            classify_line("<span class=\"test\">text</span>"),
+            LineType::Inline
+        );
     }
 
     #[test]

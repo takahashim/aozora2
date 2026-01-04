@@ -71,9 +71,7 @@ fn generate_jisage_start(params: &BlockParams) -> String {
 
 fn generate_chitsuki_start(params: &BlockParams) -> String {
     let width = params.width.unwrap_or(0);
-    format!(
-        "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">"
-    )
+    format!("<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">")
 }
 
 fn generate_jizume_start(params: &BlockParams) -> String {

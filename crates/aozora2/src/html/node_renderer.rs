@@ -488,7 +488,11 @@ impl<'a> NodeRenderer<'a> {
             attrs.push_str(&format!(" height=\"{h}\""));
         }
 
-        attrs.push_str(&format!(" src=\"{}\" alt=\"{}\"", filename, html_escape(alt)));
+        attrs.push_str(&format!(
+            " src=\"{}\" alt=\"{}\"",
+            filename,
+            html_escape(alt)
+        ));
 
         format!("<img {attrs} />")
     }

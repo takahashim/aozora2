@@ -497,7 +497,10 @@ mod tests {
         assert_eq!(info.title, Some("タイトル".to_string()));
         assert_eq!(info.original_title, Some("ORIGINAL TITLE".to_string()));
         assert_eq!(info.subtitle, Some("副題".to_string()));
-        assert_eq!(info.original_subtitle, Some("ORIGINAL SUBTITLE".to_string()));
+        assert_eq!(
+            info.original_subtitle,
+            Some("ORIGINAL SUBTITLE".to_string())
+        );
         assert_eq!(info.author, Some("著者名".to_string()));
         assert_eq!(info.translator, Some("訳者訳".to_string()));
     }

@@ -313,7 +313,9 @@ mod tests {
         let result = parse_accent("A'");
         assert_eq!(result.len(), 1);
         match &result[0] {
-            AccentPart::Accent { jis_code, unicode, .. } => {
+            AccentPart::Accent {
+                jis_code, unicode, ..
+            } => {
                 assert_eq!(jis_code, "1-09-24");
                 assert_eq!(unicode, "Á");
             }
