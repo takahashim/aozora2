@@ -65,6 +65,9 @@ pub use delimiters::{
     ACCENT_BEGIN, ACCENT_END, ACCENT_MARKS, COMMAND_BEGIN, COMMAND_END, GAIJI_MARK, IGETA,
     RUBY_BEGIN, RUBY_END, RUBY_PREFIX,
 };
+pub use document::{
+    extract_bibliographical_lines, extract_body_lines, extract_header_info, HeaderInfo,
+};
 pub use node::{
     BlockParams, BlockType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
 };
