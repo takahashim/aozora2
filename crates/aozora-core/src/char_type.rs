@@ -224,4 +224,72 @@ mod tests {
         // 長音記号はカタカナとして扱う
         assert_eq!(CharType::classify('ー'), CharType::Katakana);
     }
+
+    // 仕様書（02-characters.md）のテストケースを網羅
+
+    #[test]
+    fn test_spec_basic() {
+        // 基本判定
+        assert_eq!(CharType::classify('あ'), CharType::Hiragana);
+        assert_eq!(CharType::classify('ア'), CharType::Katakana);
+        assert_eq!(CharType::classify('漢'), CharType::Kanji);
+        assert_eq!(CharType::classify('Ａ'), CharType::Zenkaku);
+        assert_eq!(CharType::classify('A'), CharType::Hankaku);
+        assert_eq!(CharType::classify('.'), CharType::HankakuTerminate);
+        assert_eq!(CharType::classify('。'), CharType::Else);
+    }
+
+    #[test]
+    fn test_spec_special_chars() {
+        // 特殊文字
+        assert_eq!(CharType::classify('々'), CharType::Kanji); // 踊り字
+        assert_eq!(CharType::classify('ー'), CharType::Katakana); // 長音記号
+        assert_eq!(CharType::classify('ヶ'), CharType::Kanji); // ヶは漢字扱い
+        assert_eq!(CharType::classify('ゝ'), CharType::Hiragana); // ひらがな踊り字
+        assert_eq!(CharType::classify('ヽ'), CharType::Katakana); // カタカナ踊り字
+        assert_eq!(CharType::classify('ヴ'), CharType::Katakana); // ヴ
+        assert_eq!(CharType::classify('※'), CharType::Kanji); // 米印
+        assert_eq!(CharType::classify('仝'), CharType::Kanji); // 同上記号
+        assert_eq!(CharType::classify('〆'), CharType::Kanji); // 締め記号
+        assert_eq!(CharType::classify('〇'), CharType::Kanji); // ゼロ
+    }
+
+    #[test]
+    fn test_spec_greek_cyrillic() {
+        // ギリシャ・キリル文字
+        assert_eq!(CharType::classify('Α'), CharType::Zenkaku); // ギリシャ大文字アルファ U+0391
+        assert_eq!(CharType::classify('α'), CharType::Zenkaku); // ギリシャ小文字アルファ U+03B1
+        assert_eq!(CharType::classify('Ω'), CharType::Zenkaku); // ギリシャ大文字オメガ U+03A9
+        assert_eq!(CharType::classify('ω'), CharType::Zenkaku); // ギリシャ小文字オメガ U+03C9
+        assert_eq!(CharType::classify('А'), CharType::Zenkaku); // キリル大文字А U+0410
+        assert_eq!(CharType::classify('а'), CharType::Zenkaku); // キリル小文字а U+0430
+        assert_eq!(CharType::classify('Я'), CharType::Zenkaku); // キリル大文字Я U+042F
+        assert_eq!(CharType::classify('я'), CharType::Zenkaku); // キリル小文字я U+044F
+    }
+
+    #[test]
+    fn test_spec_hankaku_symbols() {
+        // 半角記号
+        assert_eq!(CharType::classify('#'), CharType::Hankaku);
+        assert_eq!(CharType::classify('-'), CharType::Hankaku);
+        assert_eq!(CharType::classify('&'), CharType::Hankaku);
+        assert_eq!(CharType::classify('\''), CharType::Hankaku);
+        assert_eq!(CharType::classify(','), CharType::Hankaku);
+        // 半角終端記号
+        assert_eq!(CharType::classify('?'), CharType::HankakuTerminate);
+        assert_eq!(CharType::classify('!'), CharType::HankakuTerminate);
+        assert_eq!(CharType::classify(';'), CharType::HankakuTerminate);
+        assert_eq!(CharType::classify('"'), CharType::HankakuTerminate);
+        assert_eq!(CharType::classify(')'), CharType::HankakuTerminate);
+    }
+
+    #[test]
+    fn test_spec_zenkaku_symbols() {
+        // 全角記号（仕様: −＆'，．）
+        assert_eq!(CharType::classify('−'), CharType::Zenkaku); // U+2212 MINUS SIGN
+        assert_eq!(CharType::classify('＆'), CharType::Zenkaku); // U+FF06 FULLWIDTH AMPERSAND
+        assert_eq!(CharType::classify('\u{2019}'), CharType::Zenkaku); // U+2019 RIGHT SINGLE QUOTATION MARK
+        assert_eq!(CharType::classify('，'), CharType::Zenkaku); // U+FF0C FULLWIDTH COMMA
+        assert_eq!(CharType::classify('．'), CharType::Zenkaku); // U+FF0E FULLWIDTH FULL STOP
+    }
 }
