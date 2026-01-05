@@ -112,7 +112,7 @@ pub fn try_parse_okurigana(content: &str) -> Option<String> {
     if content.starts_with('（') && content.ends_with('）') {
         let inner = &content['（'.len_utf8()..content.len() - '）'.len_utf8()];
         let char_count = inner.chars().count();
-        if char_count >= 1 && char_count <= 10 && !inner.is_empty() {
+        if (1..=10).contains(&char_count) && !inner.is_empty() {
             return Some(inner.to_string());
         }
     }

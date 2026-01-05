@@ -177,10 +177,10 @@ pub fn is_block_only_line(html: &str) -> bool {
     }
 
     // 見出し開始タグで終わる
-    if html.ends_with("\">") {
-        if html.contains("<h3") || html.contains("<h4") || html.contains("<h5") {
-            return true;
-        }
+    if html.ends_with("\">")
+        && (html.contains("<h3") || html.contains("<h4") || html.contains("<h5"))
+    {
+        return true;
     }
 
     // 全体が単一のタグ: ^<[^>]*>$

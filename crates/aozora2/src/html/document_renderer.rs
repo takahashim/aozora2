@@ -51,7 +51,7 @@ impl<'a> DocumentRenderer<'a> {
         } else {
             header_info.html_title()
         };
-        output.push_str(&format!("\t<title>{}</title>\r\n", html_title));
+        output.push_str(&format!("\t<title>{html_title}</title>\r\n"));
 
         // jQuery
         output.push_str(
@@ -73,8 +73,7 @@ impl<'a> DocumentRenderer<'a> {
             html_escape(dc_creator)
         ));
         output.push_str(&format!(
-            "\t<meta name=\"DC.Publisher\" content=\"{}\" />\r\n",
-            AOZORA_BUNKO
+            "\t<meta name=\"DC.Publisher\" content=\"{AOZORA_BUNKO}\" />\r\n"
         ));
 
         output.push_str("</head>\r\n");
@@ -233,15 +232,13 @@ impl<'a> DocumentRenderer<'a> {
                 let page_line = html_escape(&gaiji.page_line);
 
                 output.push_str(&format!(
-                    "\t\t\t\t<td>\r\n\t\t\t\t{}\r\n\t\t\t\t</td>\r\n",
-                    gaiji_name
+                    "\t\t\t\t<td>\r\n\t\t\t\t{gaiji_name}\r\n\t\t\t\t</td>\r\n"
                 ));
                 output.push_str("\t\t\t\t<td>&nbsp;&nbsp;</td>\r\n");
-                output.push_str(&format!("\t\t\t\t<td>\r\n{}\t\t\t\t</td>\r\n", page_line));
+                output.push_str(&format!("\t\t\t\t<td>\r\n{page_line}\t\t\t\t</td>\r\n"));
                 // コメント出力
                 output.push_str(&format!(
-                    "\t\t\t\t<!--\r\n\t\t\t\t<td>\r\n\t\t\t\t　　<img src=\"../../../gaiji/others/xxxx.png\" alt=\"{}\" width=32 height=32 />\r\n\t\t\t\t</td>\r\n\t\t\t\t-->\r\n",
-                    gaiji_name
+                    "\t\t\t\t<!--\r\n\t\t\t\t<td>\r\n\t\t\t\t　　<img src=\"../../../gaiji/others/xxxx.png\" alt=\"{gaiji_name}\" width=32 height=32 />\r\n\t\t\t\t</td>\r\n\t\t\t\t-->\r\n"
                 ));
                 output.push_str("\t\t\t</tr>\r\n");
             }

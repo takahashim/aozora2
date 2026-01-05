@@ -20,25 +20,25 @@ pub fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
                 let is_left = *block_type == BlockType::LeftAnnotationRange;
 
                 // 対応する終了を探す
-                let mut end_idx = None;
-                let mut annotation = None;
-                for j in (i + 1)..nodes.len() {
-                    if let Node::BlockEnd {
-                        block_type: bt,
-                        params,
-                    } = &nodes[j]
-                    {
-                        if (*bt == BlockType::AnnotationRange && !is_left)
-                            || (*bt == BlockType::LeftAnnotationRange && is_left)
+                let found = nodes[i + 1..]
+                    .iter()
+                    .enumerate()
+                    .find_map(|(offset, node)| {
+                        if let Node::BlockEnd {
+                            block_type: bt,
+                            params,
+                        } = node
                         {
-                            end_idx = Some(j);
-                            annotation = params.annotation.clone();
-                            break;
+                            if (*bt == BlockType::AnnotationRange && !is_left)
+                                || (*bt == BlockType::LeftAnnotationRange && is_left)
+                            {
+                                return Some((i + 1 + offset, params.annotation.clone()));
+                            }
                         }
-                    }
-                }
+                        None
+                    });
 
-                if let (Some(end_idx), Some(annotation)) = (end_idx, annotation) {
+                if let Some((end_idx, Some(annotation))) = found {
                     // 開始から終了までの間のノードを収集
                     let children: Vec<Node> = nodes[(i + 1)..end_idx].to_vec();
                     // 注記テキストをパース（外字を含む場合があるため）

@@ -52,7 +52,7 @@ pub fn parse(tokens: &[Token]) -> Vec<Node> {
 
 /// 直前のノードがテキストで `（` で終わるかチェック
 fn has_open_paren_before(nodes: &[Node]) -> bool {
-    nodes.last().map_or(false, |node| {
+    nodes.last().is_some_and(|node| {
         if let Node::Text(s) = node {
             s.ends_with('（')
         } else {
@@ -63,7 +63,7 @@ fn has_open_paren_before(nodes: &[Node]) -> bool {
 
 /// 直後のトークンがテキストで `）` で始まるかチェック
 fn has_close_paren_after(tokens: &[Token], current_index: usize) -> bool {
-    tokens.get(current_index + 1).map_or(false, |token| {
+    tokens.get(current_index + 1).is_some_and(|token| {
         if let Token::Text(s) = token {
             s.starts_with('）')
         } else {
@@ -287,7 +287,7 @@ fn parse_command_to_node(content: &str) -> Node {
             // 注記ルビ: 「対象」に「注記」の注記 → 後方参照として解決
             Node::UnresolvedReference {
                 target,
-                spec: format!("annotation_ruby:{}", annotation),
+                spec: format!("annotation_ruby:{annotation}"),
                 connector: "に".to_string(),
             }
         }
@@ -372,7 +372,7 @@ fn parse_command_to_node(content: &str) -> Node {
             // 傍記: 「対象」に「注記」の傍記 → 後方参照として解決（ルビに変換）
             Node::UnresolvedReference {
                 target,
-                spec: format!("side_note:{}", annotation),
+                spec: format!("side_note:{annotation}"),
                 connector: "に".to_string(),
             }
         }
@@ -392,8 +392,10 @@ fn parse_command_to_node_with_context(
 
     match parse_command(content) {
         CommandResult::WarigakiStart => {
-            let mut params = BlockParams::default();
-            params.has_open_paren = has_open_paren_before(nodes);
+            let params = BlockParams {
+                has_open_paren: has_open_paren_before(nodes),
+                ..Default::default()
+            };
             Node::BlockStart {
                 block_type: BlockType::Warigaki,
                 params,
@@ -401,8 +403,10 @@ fn parse_command_to_node_with_context(
         }
 
         CommandResult::WarigakiEnd => {
-            let mut params = BlockParams::default();
-            params.has_close_paren = has_close_paren_after(tokens, current_index);
+            let params = BlockParams {
+                has_close_paren: has_close_paren_after(tokens, current_index),
+                ..Default::default()
+            };
             Node::BlockEnd {
                 block_type: BlockType::Warigaki,
                 params,

@@ -69,7 +69,7 @@ fn apply_resolution(
             if !after.is_empty() {
                 new_nodes.push(Node::text(&after));
             }
-            nodes.splice(found_node_idx..found_node_idx + 1, new_nodes.into_iter());
+            nodes.splice(found_node_idx..found_node_idx + 1, new_nodes);
             let adjustment =
                 if before.is_empty() { 0 } else { 1 } + if after.is_empty() { 0 } else { 1 };
             let new_i = *i + adjustment;
@@ -284,8 +284,7 @@ impl ResolvedKind {
                 // 親文字の文字数を数える
                 let char_count: usize = children.iter().map(|n| n.to_text().chars().count()).sum();
                 // 注記を文字数分繰り返し、&nbsp;で区切る
-                let repeated: String = std::iter::repeat(annotation.as_str())
-                    .take(char_count.max(1))
+                let repeated: String = std::iter::repeat_n(annotation.as_str(), char_count.max(1))
                     .collect::<Vec<_>>()
                     .join("\u{00a0}"); // non-breaking space
                 Node::Ruby {

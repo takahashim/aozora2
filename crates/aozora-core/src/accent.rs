@@ -171,13 +171,13 @@ fn accent_name(key: &str) -> String {
         if base.is_lowercase() {
             format!("{}付き{}小文字", mark_name, base.to_uppercase())
         } else {
-            format!("{}付き{}", mark_name, base)
+            format!("{mark_name}付き{base}")
         }
     } else if chars.len() == 3 {
         // リガチャ
         let upper = key.starts_with(|c: char| c.is_uppercase());
         let case = if upper { "大文字" } else { "小文字" };
-        format!("リガチャ{}", case)
+        format!("リガチャ{case}")
     } else {
         key.to_string()
     }
