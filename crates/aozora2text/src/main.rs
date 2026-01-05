@@ -7,8 +7,8 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
-use aozora2::aozora_core::zip::{is_zip_file, read_first_txt_from_zip};
-use aozora2::strip;
+use aozora_core::strip;
+use aozora_core::zip::{is_zip_file, read_first_txt_from_zip};
 use clap::Parser;
 
 #[derive(Parser)]

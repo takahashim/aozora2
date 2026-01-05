@@ -2,9 +2,9 @@
 //!
 //! 1行のHTMLレンダリングとブロック制御を担当します。
 
-use aozora_core::parser::parse;
-use aozora_core::parser::resolve_inline_ruby;
-use aozora_core::tokenizer::tokenize;
+use crate::parser::parse;
+use crate::parser::resolve_inline_ruby;
+use crate::tokenizer::tokenize;
 
 use super::block_manager::BlockManager;
 use super::node_renderer::NodeRenderer;

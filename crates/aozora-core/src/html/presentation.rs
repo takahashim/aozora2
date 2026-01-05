@@ -2,7 +2,7 @@
 //!
 //! CSSクラス名とHTMLタグ名のマッピングを提供します。
 
-use aozora_core::node::{MidashiLevel, MidashiStyle, StyleType};
+use crate::node::{MidashiLevel, MidashiStyle, StyleType};
 
 /// 行のHTML出力タイプ
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

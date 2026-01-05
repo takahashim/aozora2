@@ -2,7 +2,7 @@
 //!
 //! 外字（Gaiji）とアクセント記号をHTMLに変換します。
 
-use aozora_core::gaiji::{parse_gaiji, GaijiResult};
+use crate::gaiji::{parse_gaiji, GaijiResult};
 
 use super::options::RenderOptions;
 use super::presentation::{html_escape, jis_code_to_path};

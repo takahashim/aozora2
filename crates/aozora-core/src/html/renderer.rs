@@ -2,11 +2,11 @@
 //!
 //! ASTノードをHTMLに変換します。
 
-use aozora_core::document::{
+use crate::document::{
     extract_after_text_lines, extract_bibliographical_lines, extract_body_lines,
     extract_header_info,
 };
-use aozora_core::node::Node;
+use crate::node::Node;
 
 use super::block_manager::BlockManager;
 use super::document_renderer::DocumentRenderer;

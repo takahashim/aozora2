@@ -32,7 +32,7 @@ pub use renderer::HtmlRenderer;
 /// # Examples
 ///
 /// ```
-/// use aozora2::html::{convert, RenderOptions};
+/// use aozora_core::html::{convert, RenderOptions};
 ///
 /// // 青空文庫形式: ヘッダー、空行、本文
 /// let input = "タイトル\n\n吾輩《わがはい》は猫である";

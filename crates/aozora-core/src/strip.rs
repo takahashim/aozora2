@@ -2,12 +2,12 @@
 //!
 //! 青空文庫形式のテキストからルビ・注記を除去してプレーンテキストに変換します。
 
-use aozora_core::accent::convert_accent;
-use aozora_core::document;
-use aozora_core::encoding;
-use aozora_core::gaiji::convert_gaiji;
-use aozora_core::token::Token;
-use aozora_core::tokenizer::Tokenizer;
+use crate::accent::convert_accent;
+use crate::document;
+use crate::encoding;
+use crate::gaiji::convert_gaiji;
+use crate::token::Token;
+use crate::tokenizer::Tokenizer;
 
 /// 青空文庫形式のバイト列をプレーンテキストに変換
 ///
@@ -18,7 +18,7 @@ use aozora_core::tokenizer::Tokenizer;
 ///
 /// ```
 /// let input = "タイトル\n著者\n\n本文です\n底本：青空文庫";
-/// let plain = aozora2::strip::convert(input.as_bytes());
+/// let plain = aozora_core::strip::convert(input.as_bytes());
 /// assert_eq!(plain, "本文です\n");
 /// ```
 pub fn convert(input: &[u8]) -> String {
@@ -51,7 +51,7 @@ pub fn convert(input: &[u8]) -> String {
 ///
 /// ```
 /// let input = "吾輩《わがはい》は猫《ねこ》である";
-/// let plain = aozora2::strip::convert_line(input);
+/// let plain = aozora_core::strip::convert_line(input);
 /// assert_eq!(plain, "吾輩は猫である");
 /// ```
 pub fn convert_line(input: &str) -> String {

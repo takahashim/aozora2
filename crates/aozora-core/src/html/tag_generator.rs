@@ -2,7 +2,7 @@
 //!
 //! ブロック要素のHTMLタグを生成する純粋関数を提供します。
 
-use aozora_core::node::{BlockParams, BlockType, MidashiLevel, MidashiStyle};
+use crate::node::{BlockParams, BlockType, MidashiLevel, MidashiStyle};
 
 use super::presentation::{
     midashi_combined_css_class, midashi_html_tag, style_css_class, style_html_tag,

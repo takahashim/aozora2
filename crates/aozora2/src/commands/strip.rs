@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use aozora_core::zip::{is_zip_file, read_first_txt_from_zip};
 use clap::Args as ClapArgs;
 
-use aozora2::strip;
+use aozora_core::strip;
 
 /// strip サブコマンドの引数
 #[derive(ClapArgs, Debug)]

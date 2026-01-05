@@ -2,7 +2,7 @@
 //!
 //! ブロック要素のスタック管理を行います。
 
-use aozora_core::node::{BlockParams, BlockType, MidashiLevel};
+use crate::node::{BlockParams, BlockType, MidashiLevel};
 
 use super::tag_generator::{generate_block_end_tag, generate_block_start_tag};
 

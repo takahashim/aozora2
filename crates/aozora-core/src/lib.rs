@@ -45,6 +45,8 @@
 //! - `document` - 文書構造解析
 //! - `encoding` - エンコーディング検出・変換
 //! - `zip` - ZIPファイル処理
+//! - `html` - HTML変換
+//! - `strip` - プレーンテキスト変換
 
 pub mod accent;
 pub mod char_type;
@@ -52,9 +54,11 @@ pub mod delimiters;
 pub mod document;
 pub mod encoding;
 pub mod gaiji;
+pub mod html;
 pub mod jis_table;
 pub mod node;
 pub mod parser;
+pub mod strip;
 pub mod token;
 pub mod tokenizer;
 pub mod zip;

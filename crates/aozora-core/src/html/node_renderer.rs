@@ -2,7 +2,7 @@
 //!
 //! ASTノードをHTMLに変換します。
 
-use aozora_core::node::{
+use crate::node::{
     BlockType, FontSizeType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
 };
 

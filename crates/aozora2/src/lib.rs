@@ -1,24 +1,14 @@
-//! aozora2 - 青空文庫形式の変換ライブラリ
+//! aozora2 - 青空文庫形式変換CLI
 //!
-//! このクレートは青空文庫形式のテキストを変換する機能を提供します。
-//!
-//! # 機能
-//!
-//! - `strip` - プレーンテキストへの変換（注記・ルビを除去）
-//! - `html` - HTMLへの変換
+//! このクレートは青空文庫形式のテキストを変換するCLIツールです。
+//! ライブラリとして使用する場合は `aozora-core` を直接使用してください。
 //!
 //! # 使用例
 //!
-//! ```
-//! use aozora2::strip;
+//! ```bash
+//! # HTMLに変換
+//! aozora2 html input.txt -o output.html
 //!
-//! let input = "吾輩《わがはい》は猫である";
-//! let plain = strip::convert_line(input);
-//! assert_eq!(plain, "吾輩は猫である");
+//! # プレーンテキストに変換
+//! aozora2 strip input.txt -o output.txt
 //! ```
-
-pub mod html;
-pub mod strip;
-
-// Re-export aozora-core for downstream crates
-pub use aozora_core;
