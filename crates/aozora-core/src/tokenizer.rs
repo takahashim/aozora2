@@ -127,6 +127,11 @@ impl Tokenizer {
         let content = self.slice_from(start);
         self.skip_if(RUBY_END);
 
+        // 参照実装 apply_ruby は空ルビ（《》）を《》のテキストとして戻す
+        if content.is_empty() {
+            return Token::Text("《》".to_string());
+        }
+
         // ルビ内を再帰的にトークナイズ
         let children = Tokenizer::new(&content).tokenize();
 
