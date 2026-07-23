@@ -193,26 +193,23 @@ fn detect_person_type(s: &str) -> PersonType {
 /// - JIS第1水準記号（全角スペース、句読点等）
 /// - JIS第6〜7水準（ギリシア文字、キリル文字等）
 fn is_original_title(s: &str) -> bool {
+    // 参照実装 header_element_type と同じく Shift_JIS のバイト範囲で判定する。
+    // ASCII（00-7f）、JIS 1-1〜3-25（8140-8258、記号・ラテン・仮名など）、
+    // JIS 6-1〜7-81（839f-8491、ギリシア文字・キリル文字）だけなら原題とみなす。
     s.chars().all(|c| {
-        // ASCII
-        if c.is_ascii() {
-            return true;
+        let mut buf = [0u8; 8];
+        let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
+        if had_err {
+            return false;
         }
-        // 全角スペース、記号類（JIS第1水準）
-        // U+3000-U+303F CJK Symbols and Punctuation
-        // U+FF00-U+FFEF Halfwidth and Fullwidth Forms
-        if ('\u{3000}'..='\u{303F}').contains(&c) || ('\u{FF00}'..='\u{FFEF}').contains(&c) {
-            return true;
+        match encoded.as_ref() {
+            [b] => *b <= 0x7f,
+            [hi, lo] => {
+                let code = ((*hi as u16) << 8) | *lo as u16;
+                (0x8140..=0x8258).contains(&code) || (0x839f..=0x8491).contains(&code)
+            }
+            _ => false,
         }
-        // ギリシア文字（JIS第6水準相当）
-        if ('\u{0370}'..='\u{03FF}').contains(&c) {
-            return true;
-        }
-        // キリル文字（JIS第7水準相当）
-        if ('\u{0400}'..='\u{04FF}').contains(&c) {
-            return true;
-        }
-        false
     })
 }
 
@@ -584,6 +581,16 @@ mod tests {
     fn test_is_original_title_greek() {
         // ギリシア文字は原題として判定
         assert!(is_original_title("Αβγ"));
+    }
+
+    #[test]
+    fn test_is_original_title_dashes_and_symbols() {
+        // 全角ダッシュ（U+2015, Shift_JIS 815D）を含むラテン語の原題
+        assert!(is_original_title("―― Ibi omnis effusus labor ! ――"));
+        // キリル文字も原題
+        assert!(is_original_title("Война"));
+        // 漢字が混じれば原題ではない
+        assert!(!is_original_title("―― 副題 ――"));
     }
 
     #[test]
