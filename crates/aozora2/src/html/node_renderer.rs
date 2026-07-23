@@ -603,22 +603,15 @@ impl<'a> NodeRenderer<'a> {
             css_class
         };
 
-        let mut attrs = format!("class=\"{class}\"");
+        // 参照実装 Tag::Img は幅・高さが指定されていなくても属性を出す
+        // （Ruby の文字列展開で nil が空文字になるため）
+        let w = width.map(|v| v.to_string()).unwrap_or_default();
+        let h = height.map(|v| v.to_string()).unwrap_or_default();
 
-        if let Some(w) = width {
-            attrs.push_str(&format!(" width=\"{w}\""));
-        }
-
-        if let Some(h) = height {
-            attrs.push_str(&format!(" height=\"{h}\""));
-        }
-
-        attrs.push_str(&format!(
-            " src=\"{}\" alt=\"{}\"",
+        format!(
+            "<img class=\"{class}\" width=\"{w}\" height=\"{h}\" src=\"{}\" alt=\"{}\" />",
             filename,
             html_escape(alt)
-        ));
-
-        format!("<img {attrs} />")
+        )
     }
 }
