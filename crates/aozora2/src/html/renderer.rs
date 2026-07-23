@@ -57,7 +57,7 @@ impl HtmlRenderer {
         // 本文のみ抽出してレンダリング
         let body_lines = extract_body_lines(&lines);
         for line in &body_lines {
-            let line_html =
+            let (line_html, has_multiline) =
                 self.render_line_with_context(line, &mut node_renderer, &mut block_manager);
 
             // ぶら下げブロック内かどうかをチェック
@@ -97,6 +97,11 @@ impl HtmlRenderer {
             } else if ends_with_div {
                 // 現在の出力がdiv終了タグで終わる場合は<br />不要
                 false
+            } else if has_multiline {
+                // 参照実装 terpri?: 行のバッファに Multiline タグ（ここから…終わりの
+                // ブロック級構文）があれば行末の <br /> を出さない。
+                // 同じ行で開いて閉じた横組みなどが該当する。
+                false
             } else {
                 !is_block_only_line(&line_html)
             };
@@ -123,7 +128,7 @@ impl HtmlRenderer {
             doc_renderer.render_after_text_header(&mut output);
             for line in &after_text_lines {
                 let line_html =
-                    self.render_line_with_context(line, &mut node_renderer, &mut block_manager);
+                    self.render_line_with_context(line, &mut node_renderer, &mut block_manager).0;
                 // 自動リンク化を適用
                 let line_html = auto_link(&line_html);
                 output.push_str(&line_html);
@@ -138,7 +143,7 @@ impl HtmlRenderer {
             doc_renderer.render_bibliographical_header(&mut output);
             for line in &biblio_lines {
                 let line_html =
-                    self.render_line_with_context(line, &mut node_renderer, &mut block_manager);
+                    self.render_line_with_context(line, &mut node_renderer, &mut block_manager).0;
                 // 自動リンク化を適用
                 let line_html = auto_link(&line_html);
                 output.push_str(&line_html);
@@ -166,13 +171,15 @@ impl HtmlRenderer {
         output
     }
 
-    /// 1行をHTMLに変換（コンテキスト付き）
+    /// 1行をHTMLに変換（コンテキスト付き）。
+    /// 戻り値の bool は、その行がブロック級（Multiline）の開始を含んだかどうか
+    /// （参照実装 terpri? 相当。true なら行末の <br /> を出さない）。
     fn render_line_with_context(
         &self,
         line: &str,
         node_renderer: &mut NodeRenderer,
         block_manager: &mut BlockManager,
-    ) -> String {
+    ) -> (String, bool) {
         // くの字点は注記の中に書かれることもあるので生の行から数える
         node_renderer.scan_kunoji(line);
 
@@ -181,6 +188,16 @@ impl HtmlRenderer {
 
         // 行内ルビを解決
         resolve_inline_ruby(&mut nodes);
+
+        // この行でブロック級（ここから…終わり）を開き、かつ同じ行で閉じたか。
+        // 参照実装 terpri? は行のバッファに Multiline タグが残っているかを見るが、
+        // 実際に <br /> が抑制されるのは同一行で開閉したブロック（横組みなど）で、
+        // 複数行にまたがるブロックの開始行はふつうに <br /> が付く。
+        let opened_block = nodes
+            .iter()
+            .any(|n| matches!(n, Node::BlockStart { params, .. } if params.is_block));
+        let closed_block = nodes.iter().any(|n| matches!(n, Node::BlockEnd { .. }));
+        let has_multiline = opened_block && closed_block;
 
         // 行単位字下げ ［＃N字下げ］の扱い（参照実装 apply_jisage 相当）
         if let Some(pos) = nodes
@@ -200,15 +217,17 @@ impl HtmlRenderer {
                         ..Default::default()
                     },
                 );
-                return format!(
-                    "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">"
+                return (
+                    format!("<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">"),
+                    true,
                 );
             }
             // テキストがあれば、コマンドを取り除いて行全体を字下げの div で包む
             nodes.remove(pos);
             let inner = node_renderer.render_nodes(&nodes, block_manager);
-            return format!(
-                "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">{inner}</div>"
+            return (
+                format!("<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">{inner}</div>"),
+                has_multiline,
             );
         }
 
@@ -229,7 +248,7 @@ impl HtmlRenderer {
             }
         }
 
-        output
+        (output, has_multiline)
     }
 
     /// 1行をHTMLに変換（公開API）
@@ -237,6 +256,7 @@ impl HtmlRenderer {
         let mut node_renderer = NodeRenderer::new(&self.options);
         let mut block_manager = BlockManager::new();
         self.render_line_with_context(line, &mut node_renderer, &mut block_manager)
+            .0
     }
 
     /// ノード列をHTMLに変換

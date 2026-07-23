@@ -133,6 +133,20 @@ mod tests {
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// 同じ行で開いて閉じたブロック級構文（横組みなど）の行は行末の <br /> を出さない
+    /// （参照実装 terpri? が buffer 中の Multiline タグを見て抑制する）
+    #[test]
+    fn test_same_line_block_suppresses_the_trailing_break() {
+        let html = convert(
+            "タイトル\r\n\r\n予は［＃ここから横組み］ABC［＃ここで横組み終わり］である。\r\n次の行",
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains("</div>である。\r\n次の行"),
+            "横組みを含む行に <br /> が付かないこと。実際: {html}"
+        );
+    }
+
     /// 行末の ［＃N字下げ］ は行全体を字下げの div で包む
     /// （参照実装 apply_jisage の unshift 相当）
     #[test]
