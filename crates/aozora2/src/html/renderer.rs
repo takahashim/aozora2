@@ -32,7 +32,12 @@ impl HtmlRenderer {
     /// テキスト全体をHTMLに変換
     pub fn render(&mut self, input: &str) -> String {
         let mut output = String::new();
-        let lines: Vec<&str> = input.lines().collect();
+        // 参照実装 aozora2html の Jstream は CRLF だけを行の区切りとみなし、
+        // 単独の LF は本文の文字として扱う。lines() は LF でも分割してしまう。
+        let mut lines: Vec<&str> = input.split("\r\n").collect();
+        if lines.last() == Some(&"") {
+            lines.pop();
+        }
 
         // ヘッダー情報を抽出
         let header_info = extract_header_info(&lines);

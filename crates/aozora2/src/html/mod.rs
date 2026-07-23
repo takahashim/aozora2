@@ -30,8 +30,8 @@ pub use renderer::HtmlRenderer;
 /// ```
 /// use aozora2::html::{convert, RenderOptions};
 ///
-/// // 青空文庫形式: ヘッダー、空行、本文
-/// let input = "タイトル\n\n吾輩《わがはい》は猫である";
+/// // 青空文庫形式: ヘッダー、空行、本文。行の区切りは CRLF
+/// let input = "タイトル\r\n\r\n吾輩《わがはい》は猫である";
 /// let html = convert(input, &RenderOptions::default());
 /// assert!(html.contains("<ruby>"));
 /// ```
@@ -53,7 +53,7 @@ mod tests {
     #[test]
     fn test_convert_simple() {
         // 青空文庫形式: ヘッダー、空行、本文の構造
-        let input = "タイトル\n\nこんにちは";
+        let input = "タイトル\r\n\r\nこんにちは";
         let html = convert(input, &RenderOptions::default());
         assert!(html.contains("こんにちは"));
         assert!(html.contains("<!DOCTYPE"));
@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn test_convert_ruby() {
         // 青空文庫形式: ヘッダー、空行、本文の構造
-        let input = "タイトル\n\n漢字《かんじ》";
+        let input = "タイトル\r\n\r\n漢字《かんじ》";
         let html = convert(input, &RenderOptions::default());
         assert!(html.contains("<ruby>"));
         assert!(html.contains("漢字"));
@@ -78,14 +78,14 @@ mod tests {
     /// くの字点は文字をそのまま出力し、「表記について」に注記を足す
     #[test]
     fn test_kunoji_note() {
-        let html = convert("タイトル\n\n本文でわざ／＼と使う", &RenderOptions::default());
+        let html = convert("タイトル\r\n\r\n本文でわざ／＼と使う", &RenderOptions::default());
         assert!(html.contains("<li>「くの字点」は「／＼」で表しました。</li>"));
         assert!(!html.contains("濁点付きくの字点"));
     }
 
     #[test]
     fn test_dakuten_kunoji_note() {
-        let html = convert("タイトル\n\n本文でしみ／″＼と使う", &RenderOptions::default());
+        let html = convert("タイトル\r\n\r\n本文でしみ／″＼と使う", &RenderOptions::default());
         assert!(html.contains("<li>「濁点付きくの字点」は「／″＼」で表しました。</li>"));
     }
 
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn test_both_kunoji_notes_are_combined() {
         let html = convert(
-            "タイトル\n\nわざ／＼としみ／″＼と使う",
+            "タイトル\r\n\r\nわざ／＼としみ／″＼と使う",
             &RenderOptions::default(),
         );
         assert!(html.contains(
@@ -104,7 +104,7 @@ mod tests {
     /// くの字点を使っていなければ注記は出さない
     #[test]
     fn test_no_kunoji_note_without_kunoji() {
-        let html = convert("タイトル\n\n／だけ、＼だけ", &RenderOptions::default());
+        let html = convert("タイトル\r\n\r\n／だけ、＼だけ", &RenderOptions::default());
         assert!(!html.contains("くの字点"));
     }
 
@@ -112,7 +112,7 @@ mod tests {
     #[test]
     fn test_kunoji_inside_an_editor_note_is_counted() {
         let html = convert(
-            "タイトル\n\nだぶ／＼して［＃「だぶ／＼して」は底本では「だぶ／″＼」］",
+            "タイトル\r\n\r\nだぶ／＼して［＃「だぶ／＼して」は底本では「だぶ／″＼」］",
             &RenderOptions::default(),
         );
         assert!(html.contains(
@@ -126,18 +126,26 @@ mod tests {
     #[test]
     fn test_unconvertible_gaiji_does_not_imply_an_editor_note() {
         let html = convert(
-            "タイトル\n\n陥※［＃「こざとへん＋井」、U+9631、133-8］",
+            "タイトル\r\n\r\n陥※［＃「こざとへん＋井」、U+9631、133-8］",
             &RenderOptions::default(),
         );
         assert!(!html.contains("入力者による注"), "実際: {html}");
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// 行の区切りは CRLF だけ。単独の LF は本文の文字として扱う
+    /// （参照実装 Jstream が CRLF のみを改行とみなすため）
+    #[test]
+    fn test_lone_line_feed_is_not_a_line_break() {
+        let html = convert("タイトル\r\n\r\nあ\nい", &RenderOptions::default());
+        assert!(html.contains("あ\nい<br />"), "実際: {html}");
+    }
+
     /// 句点コード指定の前方参照は対象の文字を外字画像に置き換える
     #[test]
     fn test_kuten_reference_becomes_a_gaiji_image() {
         let html = convert(
-            "タイトル\n\n全集5［＃「5」はローマ数字、1-13-25］巻",
+            "タイトル\r\n\r\n全集5［＃「5」はローマ数字、1-13-25］巻",
             &RenderOptions::default(),
         );
         assert!(
@@ -150,16 +158,16 @@ mod tests {
     #[test]
     fn test_unresolved_reference_keeps_the_original_text() {
         let src = "「麾」の「毛」に代えて「公の右上の欠けたもの」、第4水準2-94-57";
-        let html = convert(&format!("タイトル\n\n本文［＃{src}］"), &RenderOptions::default());
+        let html = convert(&format!("タイトル\r\n\r\n本文［＃{src}］"), &RenderOptions::default());
         assert!(html.contains(&format!("<span class=\"notes\">［＃{src}］</span>")), "実際: {html}");
     }
 
     /// 入力末尾の改行の有無で奥付末尾の <br /> の数が変わる
     #[test]
     fn test_trailing_newline_changes_the_final_break_count() {
-        let src = "タイトル\n\n本文\n\n底本：「甲」乙\n入力：誰か";
+        let src = "タイトル\r\n\r\n本文\r\n\r\n底本：「甲」乙\r\n入力：誰か";
         let without = convert(src, &RenderOptions::default());
-        let with = convert(&format!("{src}\n"), &RenderOptions::default());
+        let with = convert(&format!("{src}\r\n"), &RenderOptions::default());
         assert!(without.contains("入力：誰か<br />\r\n<br />\r\n</div>"), "実際: {without}");
         assert!(
             with.contains("入力：誰か<br />\r\n<br />\r\n<br />\r\n</div>"),
@@ -172,7 +180,7 @@ mod tests {
     #[test]
     fn test_gaiji_mark_only_in_the_main_text() {
         let html = convert(
-            "タイトル\n\n刺※［＃「卓＋戈」、U+39B8］\n\n底本：「甲」乙\n刺※［＃「卓＋戈」、U+39B8］\n",
+            "タイトル\r\n\r\n刺※［＃「卓＋戈」、U+39B8］\r\n\r\n底本：「甲」乙\r\n刺※［＃「卓＋戈」、U+39B8］\r\n",
             &RenderOptions::default(),
         );
         let main = html.split("bibliographical_information").next().unwrap();
@@ -186,7 +194,7 @@ mod tests {
     #[test]
     fn test_ruby_inside_a_note_is_resolved() {
         let html = convert(
-            "タイトル\n\n［＃現代語訳「松籟《しょうらい》を聞く」］",
+            "タイトル\r\n\r\n［＃現代語訳「松籟《しょうらい》を聞く」］",
             &RenderOptions::default(),
         );
         assert!(
@@ -199,7 +207,7 @@ mod tests {
     #[test]
     fn test_gaiji_list_collects_every_occurrence() {
         let html = convert(
-            "タイトル\n\n※［＃「こざとへん＋井」、U+9631、133-8］\n※［＃「こざとへん＋井」、U+9631、140-2］",
+            "タイトル\r\n\r\n※［＃「こざとへん＋井」、U+9631、133-8］\r\n※［＃「こざとへん＋井」、U+9631、140-2］",
             &RenderOptions::default(),
         );
         assert!(html.contains("133-8、140-2"), "実際: {html}");
@@ -209,7 +217,7 @@ mod tests {
     /// （参照実装の PAT_GAIJI が「、」を必須とするため）
     #[test]
     fn test_gaiji_without_a_comma_yields_an_empty_row() {
-        let html = convert("タイトル\n\n大※［＃「大※」に傍点］", &RenderOptions::default());
+        let html = convert("タイトル\r\n\r\n大※［＃「大※」に傍点］", &RenderOptions::default());
         assert!(!html.contains("「大※」に傍点</td>"), "実際: {html}");
     }
 
@@ -217,7 +225,7 @@ mod tests {
     #[test]
     fn test_note_before_ruby_becomes_the_ruby_base() {
         let html = convert(
-            "タイトル\n\n鈍［＃「鈍」は底本では「鋭」］《にぶ》い",
+            "タイトル\r\n\r\n鈍［＃「鈍」は底本では「鋭」］《にぶ》い",
             &RenderOptions::default(),
         );
         assert!(
@@ -233,7 +241,7 @@ mod tests {
     #[test]
     fn test_unconvertible_gaiji_note_moves_after_the_ruby() {
         let html = convert(
-            "タイトル\n\n陥※［＃「こざとへん＋井」、U+9631、133-8］《おとしあな》",
+            "タイトル\r\n\r\n陥※［＃「こざとへん＋井」、U+9631、133-8］《おとしあな》",
             &RenderOptions::default(),
         );
         assert!(
