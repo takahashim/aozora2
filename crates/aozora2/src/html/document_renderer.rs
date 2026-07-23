@@ -245,7 +245,7 @@ impl<'a> DocumentRenderer<'a> {
                 output.push_str("\t\t\t<tr>\r\n");
 
                 let gaiji_name = html_escape(&gaiji.gaiji_name);
-                let page_line = html_escape(&gaiji.page_line);
+                let page_line = html_escape(&gaiji.page_lines.join("、"));
 
                 output.push_str(&format!(
                     "\t\t\t\t<td>\r\n\t\t\t\t{}\r\n\t\t\t\t</td>\r\n",

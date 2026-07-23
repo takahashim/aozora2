@@ -19,8 +19,9 @@ use super::presentation::{
 pub struct UnconvertedGaiji {
     /// 外字名（説明の最後の「、」より前の部分）
     pub gaiji_name: String,
-    /// ページ-行数（説明の最後の「、」より後の部分）
-    pub page_line: String,
+    /// ページ-行数（説明の最後の「、」より後の部分）。
+    /// 同じ外字が複数回現れた場合は出現箇所を順に並べる。
+    pub page_lines: Vec<String>,
 }
 
 /// ノードレンダラー
@@ -504,28 +505,29 @@ impl<'a> NodeRenderer<'a> {
         }
     }
 
-    /// 未変換外字を追加（重複を避ける）
+    /// 未変換外字を外字一覧に記録する。同じ外字が複数回現れたら出現箇所を追記する。
     fn add_unconverted_gaiji(&mut self, description: &str) {
-        // descriptionを最後の「、」で分解（外字説明とページ-行数を分離）
-        let (gaiji_name, page_line) = if let Some(last_comma_pos) = description.rfind('、') {
-            let name = &description[..last_comma_pos];
-            let line = &description[last_comma_pos + '、'.len_utf8()..];
-            (name.to_string(), line.to_string())
-        } else {
-            (description.to_string(), String::new())
+        // descriptionを最後の「、」で外字説明とページ-行数に分解する。
+        // 参照実装の PAT_GAIJI は「、」を必須とするので、「、」がなければどちらも空。
+        let (gaiji_name, page_line) = match description.rfind('、') {
+            Some(pos) => (
+                description[..pos].to_string(),
+                description[pos + '、'.len_utf8()..].to_string(),
+            ),
+            None => (String::new(), String::new()),
         };
 
-        // 既に追加済みの場合はスキップ
-        if self
+        if let Some(existing) = self
             .unconverted_gaiji
-            .iter()
-            .any(|g| g.gaiji_name == gaiji_name)
+            .iter_mut()
+            .find(|g| g.gaiji_name == gaiji_name)
         {
+            existing.page_lines.push(page_line);
             return;
         }
         self.unconverted_gaiji.push(UnconvertedGaiji {
             gaiji_name,
-            page_line,
+            page_lines: vec![page_line],
         });
     }
 

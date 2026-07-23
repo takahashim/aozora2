@@ -133,6 +133,24 @@ mod tests {
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// 同じ外字が複数回現れたら、外字一覧には出現箇所を「、」で並べる
+    #[test]
+    fn test_gaiji_list_collects_every_occurrence() {
+        let html = convert(
+            "タイトル\n\n※［＃「こざとへん＋井」、U+9631、133-8］\n※［＃「こざとへん＋井」、U+9631、140-2］",
+            &RenderOptions::default(),
+        );
+        assert!(html.contains("133-8、140-2"), "実際: {html}");
+    }
+
+    /// 外字の説明に「、」がなければ、外字一覧の欄はどちらも空になる
+    /// （参照実装の PAT_GAIJI が「、」を必須とするため）
+    #[test]
+    fn test_gaiji_without_a_comma_yields_an_empty_row() {
+        let html = convert("タイトル\n\n大※［＃「大※」に傍点］", &RenderOptions::default());
+        assert!(!html.contains("「大※」に傍点</td>"), "実際: {html}");
+    }
+
     /// 注記の直後にルビが来ると、参照実装では注記自身がルビの親文字になる
     #[test]
     fn test_note_before_ruby_becomes_the_ruby_base() {
