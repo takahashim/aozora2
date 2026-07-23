@@ -78,6 +78,15 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
 
     // 最後のノードから文字種別を取得
     let last_node = nodes.last()?;
+
+    // 参照実装 aozora2html では、注記のようなタグが来た時点で溜めていた親文字が
+    // 確定し（RubyBuffer#push_char が文字種 :else で dump_into する）、
+    // タグ自身が新しい親文字になる。直前が注記なら注記だけが親文字。
+    if matches!(last_node, Node::Note(_)) {
+        let (remaining, base) = nodes.split_at(nodes.len() - 1);
+        return Some((remaining.to_vec(), base.to_vec()));
+    }
+
     let last_char_type = last_node.last_char_type()?;
 
     if !last_char_type.can_be_ruby_base() {

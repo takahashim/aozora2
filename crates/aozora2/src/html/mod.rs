@@ -107,4 +107,33 @@ mod tests {
         let html = convert("タイトル\n\n／だけ、＼だけ", &RenderOptions::default());
         assert!(!html.contains("くの字点"));
     }
+
+    /// 注記の直後にルビが来ると、参照実装では注記自身がルビの親文字になる
+    #[test]
+    fn test_note_before_ruby_becomes_the_ruby_base() {
+        let html = convert(
+            "タイトル\n\n鈍［＃「鈍」は底本では「鋭」］《にぶ》い",
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains(
+                "鈍<ruby><rb><span class=\"notes\">［＃「鈍」は底本では「鋭」］</span></rb>"
+            ),
+            "実際: {html}"
+        );
+    }
+
+    /// 画像化できない外字がルビの親文字にあると、親文字には ※ だけが入り
+    /// 注記は </ruby> の後ろに出る
+    #[test]
+    fn test_unconvertible_gaiji_note_moves_after_the_ruby() {
+        let html = convert(
+            "タイトル\n\n陥※［＃「こざとへん＋井」、U+9631、133-8］《おとしあな》",
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains("<ruby><rb>陥※</rb><rp>（</rp><rt>おとしあな</rt><rp>）</rp></ruby><span class=\"notes\">"),
+            "実際: {html}"
+        );
+    }
 }

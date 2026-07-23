@@ -42,6 +42,8 @@ pub struct NodeRenderer<'a> {
     pub unconverted_gaiji: Vec<UnconvertedGaiji>,
 }
 
+/// 画像化できない外字を本文中で示す記号
+const GAIJI_MARK: &str = "※";
 /// くの字点の1文字目
 const KUNOJI_KU: char = '／';
 /// くの字点の2文字目
@@ -287,7 +289,7 @@ impl<'a> NodeRenderer<'a> {
         direction: RubyDirection,
         block_manager: &mut BlockManager,
     ) -> String {
-        let base_html = self.render_nodes(children, block_manager);
+        let (base_html, trailing_notes) = self.render_ruby_base(children, block_manager);
         let ruby_html = self.render_nodes(ruby, block_manager);
         // Unicode nbsp (\u{00a0}) を HTML entity &nbsp; に変換
         let ruby_html = ruby_html.replace('\u{00a0}', "&nbsp;");
@@ -295,15 +297,43 @@ impl<'a> NodeRenderer<'a> {
         match direction {
             RubyDirection::Right => {
                 format!(
-                    "<ruby><rb>{base_html}</rb><rp>（</rp><rt>{ruby_html}</rt><rp>）</rp></ruby>"
+                    "<ruby><rb>{base_html}</rb><rp>（</rp><rt>{ruby_html}</rt><rp>）</rp></ruby>{trailing_notes}"
                 )
             }
             RubyDirection::Left => {
                 format!(
-                    "<ruby class=\"leftrb\"><rb>{base_html}</rb><rp>（</rp><rt>{ruby_html}</rt><rp>）</rp></ruby>"
+                    "<ruby class=\"leftrb\"><rb>{base_html}</rb><rp>（</rp><rt>{ruby_html}</rt><rp>）</rp></ruby>{trailing_notes}"
                 )
             }
         }
+    }
+
+    /// ルビの親文字を組み立て、(親文字, ルビの後ろに置く注記) を返す
+    ///
+    /// 参照実装 aozora2html の `RubyBuffer#create_ruby` は、親文字に画像化できない
+    /// 外字が含まれる場合、親文字には外字記号 `※` だけを入れ、その注記は
+    /// `</ruby>` の後ろへ回す。
+    fn render_ruby_base(
+        &mut self,
+        children: &[Node],
+        block_manager: &mut BlockManager,
+    ) -> (String, String) {
+        let mut base = String::new();
+        let mut trailing_notes = String::new();
+        for child in children {
+            let html = self.render_node(child, block_manager);
+            match html.strip_prefix(GAIJI_MARK) {
+                Some(note)
+                    if matches!(child, Node::Gaiji { .. })
+                        && note.starts_with("<span class=\"notes\">") =>
+                {
+                    base.push_str(GAIJI_MARK);
+                    trailing_notes.push_str(note);
+                }
+                _ => base.push_str(&html),
+            }
+        }
+        (base, trailing_notes)
     }
 
     /// 装飾をHTMLに変換
