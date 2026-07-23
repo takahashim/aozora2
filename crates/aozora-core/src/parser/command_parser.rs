@@ -42,13 +42,19 @@ pub enum CommandResult {
     },
 
     /// ブロック終了
-    BlockEnd { block_type: BlockType },
+    BlockEnd {
+        block_type: BlockType,
+    },
 
     /// 行単位字下げ
-    LineIndent { width: u32 },
+    LineIndent {
+        width: u32,
+    },
 
     /// 行単位地付き/地から
-    LineChitsuki { width: u32 },
+    LineChitsuki {
+        width: u32,
+    },
 
     /// 注記
     Note(String),
@@ -80,28 +86,46 @@ pub enum CommandResult {
     WarigakiEnd,
 
     /// 装飾開始
-    StyleStart { style_type: StyleType },
+    StyleStart {
+        style_type: StyleType,
+    },
 
     /// 装飾終了
-    StyleEnd { style_type: StyleType },
+    StyleEnd {
+        style_type: StyleType,
+    },
 
     /// 左ルビ指定
-    LeftRuby { target: String, ruby: String },
+    LeftRuby {
+        target: String,
+        ruby: String,
+    },
 
     /// 注記ルビ（「対象」に「注記」の注記）
-    AnnotationRuby { target: String, annotation: String },
+    AnnotationRuby {
+        target: String,
+        annotation: String,
+    },
 
     /// 縦中横（後方参照）
-    InlineTcy { target: String },
+    InlineTcy {
+        target: String,
+    },
 
     /// 罫囲み（後方参照）
-    InlineKeigakomi { target: String },
+    InlineKeigakomi {
+        target: String,
+    },
 
     /// 横組み（後方参照）
-    InlineYokogumi { target: String },
+    InlineYokogumi {
+        target: String,
+    },
 
     /// キャプション（後方参照）
-    InlineCaption { target: String },
+    InlineCaption {
+        target: String,
+    },
 
     /// キャプション開始
     CaptionStart,
@@ -116,13 +140,20 @@ pub enum CommandResult {
     LeftAnnotationRangeStart,
 
     /// 注記付き範囲終了
-    AnnotationRangeEnd { annotation: String },
+    AnnotationRangeEnd {
+        annotation: String,
+    },
 
     /// 左に注記付き範囲終了
-    LeftAnnotationRangeEnd { annotation: String },
+    LeftAnnotationRangeEnd {
+        annotation: String,
+    },
 
     /// 傍記（工場に「×」の傍記）
-    SideNote { target: String, annotation: String },
+    SideNote {
+        target: String,
+        annotation: String,
+    },
 
     /// 未知のコマンド
     /// 句点コード指定による外字画像（「対象」は…、面-区-点）。

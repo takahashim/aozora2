@@ -3,12 +3,12 @@
 //! ASTノードをHTMLに変換します。
 
 use aozora_core::gaiji::{parse_gaiji, GaijiResult};
-use aozora_core::parser::parse;
-use aozora_core::parser::reference_resolver::resolve_inline_ruby;
-use aozora_core::tokenizer::tokenize;
 use aozora_core::node::{
     BlockType, FontSizeType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
 };
+use aozora_core::parser::parse;
+use aozora_core::parser::reference_resolver::resolve_inline_ruby;
+use aozora_core::tokenizer::tokenize;
 
 use super::block_manager::BlockManager;
 use super::options::RenderOptions;

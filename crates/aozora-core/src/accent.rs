@@ -78,9 +78,8 @@ pub fn contains_accent_sequence(s: &str) -> bool {
     for i in 0..chars.len() {
         if i + 2 < chars.len()
             && is_accent_mark(chars[i + 2])
-            && ACCENT_TABLE.contains_key(
-                format!("{}{}{}", chars[i], chars[i + 1], chars[i + 2]).as_str(),
-            )
+            && ACCENT_TABLE
+                .contains_key(format!("{}{}{}", chars[i], chars[i + 1], chars[i + 2]).as_str())
         {
             return true;
         }

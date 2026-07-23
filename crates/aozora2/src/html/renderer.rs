@@ -127,8 +127,9 @@ impl HtmlRenderer {
         if !after_text_lines.is_empty() {
             doc_renderer.render_after_text_header(&mut output);
             for line in &after_text_lines {
-                let line_html =
-                    self.render_line_with_context(line, &mut node_renderer, &mut block_manager).0;
+                let line_html = self
+                    .render_line_with_context(line, &mut node_renderer, &mut block_manager)
+                    .0;
                 // 自動リンク化を適用
                 let line_html = auto_link(&line_html);
                 output.push_str(&line_html);
@@ -142,8 +143,9 @@ impl HtmlRenderer {
         if !biblio_lines.is_empty() {
             doc_renderer.render_bibliographical_header(&mut output);
             for line in &biblio_lines {
-                let line_html =
-                    self.render_line_with_context(line, &mut node_renderer, &mut block_manager).0;
+                let line_html = self
+                    .render_line_with_context(line, &mut node_renderer, &mut block_manager)
+                    .0;
                 // 自動リンク化を適用
                 let line_html = auto_link(&line_html);
                 output.push_str(&line_html);
@@ -226,7 +228,9 @@ impl HtmlRenderer {
             nodes.remove(pos);
             let inner = node_renderer.render_nodes(&nodes, block_manager);
             return (
-                format!("<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">{inner}</div>"),
+                format!(
+                    "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">{inner}</div>"
+                ),
                 has_multiline,
             );
         }

@@ -449,7 +449,10 @@ mod tests {
     fn test_bibliography_without_an_end_of_text_marker() {
         let lines = vec!["タイトル", "", "本文", "底本：青空文庫"];
         assert!(extract_after_text_lines(&lines).is_empty());
-        assert_eq!(extract_bibliographical_lines(&lines), vec!["底本：青空文庫"]);
+        assert_eq!(
+            extract_bibliographical_lines(&lines),
+            vec!["底本：青空文庫"]
+        );
     }
 
     /// 罫線は `-` だけからなる行に限る

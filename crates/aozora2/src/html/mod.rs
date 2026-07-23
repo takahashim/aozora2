@@ -78,14 +78,20 @@ mod tests {
     /// くの字点は文字をそのまま出力し、「表記について」に注記を足す
     #[test]
     fn test_kunoji_note() {
-        let html = convert("タイトル\r\n\r\n本文でわざ／＼と使う", &RenderOptions::default());
+        let html = convert(
+            "タイトル\r\n\r\n本文でわざ／＼と使う",
+            &RenderOptions::default(),
+        );
         assert!(html.contains("<li>「くの字点」は「／＼」で表しました。</li>"));
         assert!(!html.contains("濁点付きくの字点"));
     }
 
     #[test]
     fn test_dakuten_kunoji_note() {
-        let html = convert("タイトル\r\n\r\n本文でしみ／″＼と使う", &RenderOptions::default());
+        let html = convert(
+            "タイトル\r\n\r\n本文でしみ／″＼と使う",
+            &RenderOptions::default(),
+        );
         assert!(html.contains("<li>「濁点付きくの字点」は「／″＼」で表しました。</li>"));
     }
 
@@ -151,7 +157,10 @@ mod tests {
     /// （参照実装 apply_jisage の unshift 相当）
     #[test]
     fn test_line_end_jisage_wraps_the_whole_line() {
-        let html = convert("タイトル\r\n\r\n本文の行です［＃３字下げ］", &RenderOptions::default());
+        let html = convert(
+            "タイトル\r\n\r\n本文の行です［＃３字下げ］",
+            &RenderOptions::default(),
+        );
         assert!(
             html.contains("<div class=\"jisage_3\" style=\"margin-left: 3em\">本文の行です</div>"),
             "実際: {html}"
@@ -166,7 +175,9 @@ mod tests {
             &RenderOptions::default(),
         );
         assert!(
-            html.contains("<div class=\"jisage_3\" style=\"margin-left: 3em\">\r\n本文A<br />\r\n</div>"),
+            html.contains(
+                "<div class=\"jisage_3\" style=\"margin-left: 3em\">\r\n本文A<br />\r\n</div>"
+            ),
             "実際: {html}"
         );
     }
@@ -187,7 +198,9 @@ mod tests {
             &RenderOptions::default(),
         );
         assert!(
-            html.contains("全集<img src=\"../../../gaiji/1-13/1-13-25.png\" alt=\"※()\" class=\"gaiji\" />巻"),
+            html.contains(
+                "全集<img src=\"../../../gaiji/1-13/1-13-25.png\" alt=\"※()\" class=\"gaiji\" />巻"
+            ),
             "実際: {html}"
         );
     }
@@ -196,8 +209,14 @@ mod tests {
     #[test]
     fn test_unresolved_reference_keeps_the_original_text() {
         let src = "「麾」の「毛」に代えて「公の右上の欠けたもの」、第4水準2-94-57";
-        let html = convert(&format!("タイトル\r\n\r\n本文［＃{src}］"), &RenderOptions::default());
-        assert!(html.contains(&format!("<span class=\"notes\">［＃{src}］</span>")), "実際: {html}");
+        let html = convert(
+            &format!("タイトル\r\n\r\n本文［＃{src}］"),
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains(&format!("<span class=\"notes\">［＃{src}］</span>")),
+            "実際: {html}"
+        );
     }
 
     /// 入力末尾の改行の有無で奥付末尾の <br /> の数が変わる
@@ -206,7 +225,10 @@ mod tests {
         let src = "タイトル\r\n\r\n本文\r\n\r\n底本：「甲」乙\r\n入力：誰か";
         let without = convert(src, &RenderOptions::default());
         let with = convert(&format!("{src}\r\n"), &RenderOptions::default());
-        assert!(without.contains("入力：誰か<br />\r\n<br />\r\n</div>"), "実際: {without}");
+        assert!(
+            without.contains("入力：誰か<br />\r\n<br />\r\n</div>"),
+            "実際: {without}"
+        );
         assert!(
             with.contains("入力：誰か<br />\r\n<br />\r\n<br />\r\n</div>"),
             "実際: {with}"
@@ -223,8 +245,14 @@ mod tests {
         );
         let main = html.split("bibliographical_information").next().unwrap();
         let tail = html.split("bibliographical_information").nth(1).unwrap();
-        assert!(main.contains("刺※<span class=\"notes\">"), "本文には ※ が付く");
-        assert!(tail.contains("刺<span class=\"notes\">"), "奥付には ※ が付かない");
+        assert!(
+            main.contains("刺※<span class=\"notes\">"),
+            "本文には ※ が付く"
+        );
+        assert!(
+            tail.contains("刺<span class=\"notes\">"),
+            "奥付には ※ が付かない"
+        );
     }
 
     /// 注記の中身もルビや外字を解決する
@@ -255,7 +283,10 @@ mod tests {
     /// （参照実装の PAT_GAIJI が「、」を必須とするため）
     #[test]
     fn test_gaiji_without_a_comma_yields_an_empty_row() {
-        let html = convert("タイトル\r\n\r\n大※［＃「大※」に傍点］", &RenderOptions::default());
+        let html = convert(
+            "タイトル\r\n\r\n大※［＃「大※」に傍点］",
+            &RenderOptions::default(),
+        );
         assert!(!html.contains("「大※」に傍点</td>"), "実際: {html}");
     }
 

@@ -18,8 +18,7 @@ fn is_reference_target(s: &str) -> bool {
         (None, Some(_)) => false,
         (Some(open), Some(close)) if close > open => {
             // 最初の「より前と、最後の」より後には「」を含まない
-            !s[..open].contains('」')
-                && !s[close + '」'.len_utf8()..].contains(['「', '」'])
+            !s[..open].contains('」') && !s[close + '」'.len_utf8()..].contains(['「', '」'])
         }
         _ => false,
     }
