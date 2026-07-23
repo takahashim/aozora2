@@ -216,11 +216,17 @@ fn is_original_title(s: &str) -> bool {
     })
 }
 
+/// 注記セクションの区切りに使われる罫線（`-` だけからなる行）かどうか
+fn is_rule_line(line: &str) -> bool {
+    !line.is_empty() && line.chars().all(|c| c == '-')
+}
+
 /// 文書から本文行を抽出
 ///
 /// # 文書構造
 /// - 前付け: 最初の空行まで（タイトル、著者名など）
-/// - 注記: 空行後、`---`で囲まれたセクション（【テキスト中に現れる記号について】など）
+/// - 注記: 空行の直後が罫線で始まる場合、罫線で囲まれたセクション
+///   （【テキスト中に現れる記号について】など）
 /// - 本文: 注記後から「底本：」まで
 /// - 後付け: 「底本：」以降（底本情報、入力者情報など）
 ///
@@ -250,23 +256,26 @@ pub fn extract_body_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
                 }
             }
             SectionType::AfterHeader => {
-                // 空行後、---で始まれば注記セクション、そうでなければ本文
-                if line.starts_with("---") {
+                // ヘッダー終端の空行の「次の1行」だけで注記セクションかどうかが決まる。
+                // 罫線（-だけの行）なら注記セクション、それ以外はその行から本文。
+                // 本文が空行以外で始まる場合、参照実装は本文の先頭に <br /> を1つ出すので、
+                // 空行を1行足して同じ出力にする。
+                if is_rule_line(line) {
                     section = SectionType::Chuuki;
-                } else if line.is_empty() {
-                    // 連続する空行はスキップ
                 } else {
-                    // 本文開始
                     if line.starts_with("底本：") {
                         break;
+                    }
+                    if !line.is_empty() {
+                        result.push("");
                     }
                     result.push(*line);
                     section = SectionType::Body;
                 }
             }
             SectionType::Chuuki => {
-                // ---で注記セクション終了
-                if line.starts_with("---") {
+                // 罫線で注記セクション終了
+                if is_rule_line(line) {
                     section = SectionType::Body;
                 }
             }
@@ -330,6 +339,8 @@ pub fn extract_bibliographical_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
 mod tests {
     use super::*;
 
+    /// 注記セクションがなく本文が直接始まる場合、参照実装 aozora2html は
+    /// 本文の先頭に <br /> を 1 つ出す。ここでは空行 1 行として表現する。
     #[test]
     fn test_basic_structure() {
         let lines = vec![
@@ -342,7 +353,7 @@ mod tests {
             "底本：青空文庫",
         ];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文1行目", "本文2行目", ""]);
+        assert_eq!(body, vec!["", "本文1行目", "本文2行目", ""]);
     }
 
     #[test]
@@ -369,14 +380,14 @@ mod tests {
     fn test_no_header() {
         let lines = vec!["", "本文1行目", "本文2行目", "", "底本：青空文庫"];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文1行目", "本文2行目", ""]);
+        assert_eq!(body, vec!["", "本文1行目", "本文2行目", ""]);
     }
 
     #[test]
     fn test_no_footer() {
         let lines = vec!["タイトル", "", "本文1行目", "本文2行目"];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文1行目", "本文2行目"]);
+        assert_eq!(body, vec!["", "本文1行目", "本文2行目"]);
     }
 
     #[test]
@@ -387,14 +398,19 @@ mod tests {
     }
 
     #[test]
+    /// ヘッダー終端の次が空行なら、その空行自体が本文の先頭の <br /> になる
+    #[test]
     fn test_multiple_blank_lines() {
         let lines = vec!["タイトル", "", "", "本文", "", "底本：青空文庫"];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文", ""]);
+        assert_eq!(body, vec!["", "本文", ""]);
     }
 
+    /// 注記セクションかどうかはヘッダー終端の「次の 1 行」だけで決まる。
+    /// 空行が挟まると、続く罫線は注記の開始ではなく本文として扱われる
+    /// （参照実装 aozora2html の judge_chuuki と同じ）。
     #[test]
-    fn test_chuuki_with_multiple_blanks() {
+    fn test_chuuki_is_decided_by_the_line_right_after_the_header() {
         let lines = vec![
             "タイトル",
             "",
@@ -406,7 +422,17 @@ mod tests {
             "底本：青空文庫",
         ];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文"]);
+        assert_eq!(body, vec!["", "---", "注記内容", "---", "本文"]);
+    }
+
+    /// 罫線は `-` だけからなる行に限る
+    #[test]
+    fn test_rule_line_must_be_all_dashes() {
+        assert!(is_rule_line("-"));
+        assert!(is_rule_line("-------"));
+        assert!(!is_rule_line(""));
+        assert!(!is_rule_line("--- 注記"));
+        assert!(!is_rule_line("―――"));
     }
 
     // ヘッダー情報抽出テスト
