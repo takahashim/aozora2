@@ -193,12 +193,13 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
         if let Node::UnresolvedReference {
             target,
             spec,
-            connector,
+            connector: _,
+            raw,
         } = &nodes[i]
         {
             let target_clone = target.clone();
             let spec_clone = spec.clone();
-            let connector_clone = connector.clone();
+            let raw_clone = raw.clone();
 
             // 前方のノードから対象テキストを探す
             if let Some((_, found_node_idx, split_info)) =
@@ -218,8 +219,8 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
                 }
             }
 
-            // 解決できなかった場合はNoteノードに変換
-            nodes[i] = Node::Note(format!("「{target_clone}」{connector_clone}{spec_clone}"));
+            // 解決できなかった場合は、もとの文字列のまま注記にする
+            nodes[i] = Node::Note(raw_clone);
         }
         i += 1;
     }
@@ -388,11 +389,19 @@ enum ResolvedKind {
     AnnotationRuby { annotation: String },
     /// 傍記（ルビとして表示）
     SideNote { annotation: String },
+    /// 句点コード指定による外字画像。対象の文字は画像に置き換わる。
+    EmbeddedGaiji { jis_code: String },
 }
 
 impl ResolvedKind {
     /// 参照スペックを解析して解決された種類を返す
     fn from_spec(spec: &str) -> Option<Self> {
+        // 句点コード指定による外字画像。参照実装 exec_style は他の記法より先に
+        // kuten2png を試すので、ここでも最初に見る。
+        if let Some(jis_code) = super::utils::parse_kuten_gaiji(spec) {
+            return Some(ResolvedKind::EmbeddedGaiji { jis_code });
+        }
+
         // 注記ルビ（annotation_ruby:注記内容）
         if let Some(annotation) = spec.strip_prefix("annotation_ruby:") {
             return Some(ResolvedKind::AnnotationRuby {
@@ -439,6 +448,13 @@ impl ResolvedKind {
     /// 子ノード列からノードを作成
     fn create_node_with_children(&self, children: Vec<Node>) -> Node {
         match self {
+            // 対象の文字は画像に置き換わるので children は使わない。
+            // 参照実装は説明文を取り出す gsub! が nil を返すため alt が空になる。
+            ResolvedKind::EmbeddedGaiji { jis_code } => Node::Gaiji {
+                description: String::new(),
+                unicode: None,
+                jis_code: Some(jis_code.clone()),
+            },
             ResolvedKind::Style(style_type) => Node::Style {
                 children,
                 style_type: *style_type,
@@ -625,6 +641,7 @@ mod tests {
                 target: "重要".to_string(),
                 spec: "sesame_dot".to_string(),
                 connector: "に".to_string(),
+                raw: "「重要」にsesame_dot".to_string(),
             },
         ];
 

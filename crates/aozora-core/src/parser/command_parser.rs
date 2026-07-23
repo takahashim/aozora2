@@ -125,6 +125,14 @@ pub enum CommandResult {
     SideNote { target: String, annotation: String },
 
     /// 未知のコマンド
+    /// 句点コード指定による外字画像（「対象」は…、面-区-点）。
+    /// 対象が見つからなければ注記として元の文字列を出すので spec は原文のまま持つ。
+    KutenGaiji {
+        target: String,
+        connector: String,
+        spec: String,
+    },
+
     Unknown(String),
 }
 

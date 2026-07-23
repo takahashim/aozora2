@@ -397,7 +397,6 @@ mod tests {
         assert!(body.is_empty());
     }
 
-    #[test]
     /// ヘッダー終端の次が空行なら、その空行自体が本文の先頭の <br /> になる
     #[test]
     fn test_multiple_blank_lines() {

@@ -168,6 +168,9 @@ pub enum Node {
         spec: String,
         /// 接続詞（に、は、の）
         connector: String,
+        /// 注記のもとの文字列。対象が前方に見つからなかったときは
+        /// これをそのまま注記として出す（組み立て直すと元と変わることがある）。
+        raw: String,
     },
 
     /// 濁点カタカナ参照
@@ -279,6 +282,7 @@ impl Node {
                 target,
                 spec,
                 connector,
+                raw: _,
             } => {
                 format!("［＃「{target}」{connector}{spec}］")
             }

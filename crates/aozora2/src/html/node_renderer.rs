@@ -290,16 +290,13 @@ impl<'a> NodeRenderer<'a> {
             }
 
             Node::UnresolvedReference {
-                target,
-                spec,
-                connector,
+                target: _,
+                spec: _,
+                connector: _,
+                raw,
             } => {
-                format!(
-                    "<span class=\"notes\">［＃「{}」{}{}］</span>",
-                    html_escape(target),
-                    html_escape(connector),
-                    html_escape(spec)
-                )
+                // 解決されずに残った参照は、もとの文字列のまま注記にする
+                format!("<span class=\"notes\">［＃{}］</span>", html_escape(raw))
             }
 
             Node::DakutenKatakana { num } => match num.as_str() {

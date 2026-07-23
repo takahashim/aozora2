@@ -133,6 +133,27 @@ mod tests {
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// 句点コード指定の前方参照は対象の文字を外字画像に置き換える
+    #[test]
+    fn test_kuten_reference_becomes_a_gaiji_image() {
+        let html = convert(
+            "タイトル\n\n全集5［＃「5」はローマ数字、1-13-25］巻",
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains("全集<img src=\"../../../gaiji/1-13/1-13-25.png\" alt=\"※()\" class=\"gaiji\" />巻"),
+            "実際: {html}"
+        );
+    }
+
+    /// 対象が前方に見つからなければ、もとの文字列のまま注記にする
+    #[test]
+    fn test_unresolved_reference_keeps_the_original_text() {
+        let src = "「麾」の「毛」に代えて「公の右上の欠けたもの」、第4水準2-94-57";
+        let html = convert(&format!("タイトル\n\n本文［＃{src}］"), &RenderOptions::default());
+        assert!(html.contains(&format!("<span class=\"notes\">［＃{src}］</span>")), "実際: {html}");
+    }
+
     /// 入力末尾の改行の有無で奥付末尾の <br /> の数が変わる
     #[test]
     fn test_trailing_newline_changes_the_final_break_count() {

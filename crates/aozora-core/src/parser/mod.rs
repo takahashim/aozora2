@@ -165,8 +165,20 @@ fn parse_command_to_node(content: &str) -> Node {
                 target,
                 spec: style_type.command_name().to_string(),
                 connector,
+                raw: content.to_string(),
             }
         }
+
+        CommandResult::KutenGaiji {
+            target,
+            connector,
+            spec,
+        } => Node::UnresolvedReference {
+            target,
+            spec,
+            connector,
+            raw: content.to_string(),
+        },
 
         CommandResult::Midashi {
             target,
@@ -190,6 +202,7 @@ fn parse_command_to_node(content: &str) -> Node {
                 target,
                 spec: spec.to_string(),
                 connector: "は".to_string(),
+                raw: content.to_string(),
             }
         }
 
@@ -208,6 +221,7 @@ fn parse_command_to_node(content: &str) -> Node {
                 target,
                 spec,
                 connector: "は".to_string(),
+                raw: content.to_string(),
             }
         }
 
@@ -284,6 +298,7 @@ fn parse_command_to_node(content: &str) -> Node {
                 target,
                 spec: format!("annotation_ruby:{}", annotation),
                 connector: "に".to_string(),
+                raw: content.to_string(),
             }
         }
 
@@ -291,24 +306,28 @@ fn parse_command_to_node(content: &str) -> Node {
             target,
             spec: "縦中横".to_string(),
             connector: "は".to_string(),
+            raw: content.to_string(),
         },
 
         CommandResult::InlineKeigakomi { target } => Node::UnresolvedReference {
             target,
             spec: "罫囲み".to_string(),
             connector: "は".to_string(),
+            raw: content.to_string(),
         },
 
         CommandResult::InlineYokogumi { target } => Node::UnresolvedReference {
             target,
             spec: "横組み".to_string(),
             connector: "は".to_string(),
+            raw: content.to_string(),
         },
 
         CommandResult::InlineCaption { target } => Node::UnresolvedReference {
             target,
             spec: "キャプション".to_string(),
             connector: "は".to_string(),
+            raw: content.to_string(),
         },
 
         CommandResult::CaptionStart => Node::BlockStart {
@@ -369,6 +388,7 @@ fn parse_command_to_node(content: &str) -> Node {
                 target,
                 spec: format!("side_note:{}", annotation),
                 connector: "に".to_string(),
+                raw: content.to_string(),
             }
         }
 
