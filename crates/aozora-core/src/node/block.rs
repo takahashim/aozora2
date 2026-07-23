@@ -58,7 +58,9 @@ impl BlockType {
             Some(BlockType::Jizume)
         } else if command.contains("罫囲み") {
             Some(BlockType::Keigakomi)
-        } else if command.contains("見出し") {
+        // 参照実装は終了時に「開始コマンドが終了コマンド名を含むか」で照合するため、
+        // 「中見出終わり」のように送り仮名を欠く表記も見出しとして扱う
+        } else if command.contains("見出") {
             Some(BlockType::Midashi)
         } else if command.contains("横組み") {
             Some(BlockType::Yokogumi)
