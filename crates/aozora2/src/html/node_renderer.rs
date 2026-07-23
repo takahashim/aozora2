@@ -34,9 +34,20 @@ pub struct NodeRenderer<'a> {
     pub has_accent: bool,
     /// JIS X 0213文字を使用したかどうか
     pub has_jisx0213: bool,
+    /// くの字点（／＼）を使用したかどうか
+    pub has_kunoji: bool,
+    /// 濁点付きくの字点（／″＼）を使用したかどうか
+    pub has_dakuten_kunoji: bool,
     /// 未変換外字のリスト
     pub unconverted_gaiji: Vec<UnconvertedGaiji>,
 }
+
+/// くの字点の1文字目
+const KUNOJI_KU: char = '／';
+/// くの字点の2文字目
+const KUNOJI_NOJI: char = '＼';
+/// 濁点付きくの字点の濁点
+const KUNOJI_DAKUTEN: char = '″';
 
 impl<'a> NodeRenderer<'a> {
     /// 新しいノードレンダラーを作成
@@ -47,7 +58,30 @@ impl<'a> NodeRenderer<'a> {
             has_gaiji_images: false,
             has_accent: false,
             has_jisx0213: false,
+            has_kunoji: false,
+            has_dakuten_kunoji: false,
             unconverted_gaiji: Vec::new(),
+        }
+    }
+
+    /// くの字点はそのまま出力するので、フッタの「表記について」に
+    /// 注記を出すかどうかのフラグだけ立てる
+    fn scan_kunoji(&mut self, text: &str) {
+        if self.has_kunoji && self.has_dakuten_kunoji {
+            return;
+        }
+        let chars: Vec<char> = text.chars().collect();
+        for (i, c) in chars.iter().enumerate() {
+            if *c != KUNOJI_KU {
+                continue;
+            }
+            match chars.get(i + 1) {
+                Some(&KUNOJI_NOJI) => self.has_kunoji = true,
+                Some(&KUNOJI_DAKUTEN) if chars.get(i + 2) == Some(&KUNOJI_NOJI) => {
+                    self.has_dakuten_kunoji = true
+                }
+                _ => {}
+            }
         }
     }
 
@@ -63,7 +97,10 @@ impl<'a> NodeRenderer<'a> {
     /// 単一ノードをHTMLに変換
     pub fn render_node(&mut self, node: &Node, block_manager: &mut BlockManager) -> String {
         match node {
-            Node::Text(text) => html_escape(text),
+            Node::Text(text) => {
+                self.scan_kunoji(text);
+                html_escape(text)
+            }
 
             Node::Ruby {
                 children,

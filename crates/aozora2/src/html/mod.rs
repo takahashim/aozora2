@@ -74,4 +74,37 @@ mod tests {
         let html = convert_line("猫《ねこ》", &RenderOptions::default());
         assert!(html.contains("<ruby>"));
     }
+
+    /// くの字点は文字をそのまま出力し、「表記について」に注記を足す
+    #[test]
+    fn test_kunoji_note() {
+        let html = convert("タイトル\n\n本文でわざ／＼と使う", &RenderOptions::default());
+        assert!(html.contains("<li>「くの字点」は「／＼」で表しました。</li>"));
+        assert!(!html.contains("濁点付きくの字点"));
+    }
+
+    #[test]
+    fn test_dakuten_kunoji_note() {
+        let html = convert("タイトル\n\n本文でしみ／″＼と使う", &RenderOptions::default());
+        assert!(html.contains("<li>「濁点付きくの字点」は「／″＼」で表しました。</li>"));
+    }
+
+    /// 両方使った場合は 1 行にまとめる
+    #[test]
+    fn test_both_kunoji_notes_are_combined() {
+        let html = convert(
+            "タイトル\n\nわざ／＼としみ／″＼と使う",
+            &RenderOptions::default(),
+        );
+        assert!(html.contains(
+            "<li>「くの字点」は「／＼」で、「濁点付きくの字点」は「／″＼」で表しました。</li>"
+        ));
+    }
+
+    /// くの字点を使っていなければ注記は出さない
+    #[test]
+    fn test_no_kunoji_note_without_kunoji() {
+        let html = convert("タイトル\n\n／だけ、＼だけ", &RenderOptions::default());
+        assert!(!html.contains("くの字点"));
+    }
 }

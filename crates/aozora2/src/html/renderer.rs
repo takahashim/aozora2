@@ -145,6 +145,8 @@ impl HtmlRenderer {
             node_renderer.has_notes,
             node_renderer.has_jisx0213,
             node_renderer.has_accent,
+            node_renderer.has_kunoji,
+            node_renderer.has_dakuten_kunoji,
             &node_renderer.unconverted_gaiji,
         );
 

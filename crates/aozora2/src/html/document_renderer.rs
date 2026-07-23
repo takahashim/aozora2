@@ -185,6 +185,8 @@ impl<'a> DocumentRenderer<'a> {
         has_notes: bool,
         has_jisx0213: bool,
         has_accent: bool,
+        has_kunoji: bool,
+        has_dakuten_kunoji: bool,
         unconverted_gaiji: &[UnconvertedGaiji],
     ) {
         output.push_str("<div class=\"notation_notes\">\r\n");
@@ -201,6 +203,19 @@ impl<'a> DocumentRenderer<'a> {
         // 注記を使用した場合
         if has_notes {
             output.push_str("\t<li>［＃…］は、入力者による注を表す記号です。</li>\r\n");
+        }
+
+        // くの字点を使用した場合
+        if has_kunoji {
+            if has_dakuten_kunoji {
+                output.push_str(
+                    "\t<li>「くの字点」は「／＼」で、「濁点付きくの字点」は「／″＼」で表しました。</li>\r\n",
+                );
+            } else {
+                output.push_str("\t<li>「くの字点」は「／＼」で表しました。</li>\r\n");
+            }
+        } else if has_dakuten_kunoji {
+            output.push_str("\t<li>「濁点付きくの字点」は「／″＼」で表しました。</li>\r\n");
         }
 
         // JIS X 0213文字を画像化した場合
