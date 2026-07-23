@@ -10,6 +10,12 @@ use super::utils::extract_number;
 /// ブロック開始を解析
 pub fn parse_block_start(content: &str) -> CommandResult {
     let content = content.trim_start_matches("ここから");
+
+    // 参照実装 exec_block_start_command は割り注を扱わないので注記のまま出す
+    // （インラインの ［＃割り注］…［＃割り注終わり］ だけが割り注になる）
+    if content.contains("割り注") {
+        return CommandResult::Note(format!("ここから{content}"));
+    }
     let mut params = BlockParams::default();
     params.is_block = true; // ここから pattern is block-level
 
@@ -75,6 +81,10 @@ fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<Command
 
 /// ブロック終了を解析
 pub fn parse_block_end(content: &str) -> CommandResult {
+    // 参照実装は「ここで割り注終わり」も扱わないので注記のまま出す
+    if content.contains("割り注") {
+        return CommandResult::Note(content.to_string());
+    }
     let content = content
         .trim_start_matches("ここで")
         .trim_end_matches("終わり");
@@ -169,6 +179,22 @@ pub fn try_parse_font_size_start(content: &str) -> Option<CommandResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 参照実装は「ここから割り注」を扱わないので注記のまま出す。
+    /// 割り注になるのはインラインの ［＃割り注］…［＃割り注終わり］ だけ。
+    #[test]
+    fn test_block_warichu_stays_a_note() {
+        assert_eq!(
+            parse_block_start("ここから割り注"),
+            CommandResult::Note("ここから割り注".to_string())
+        );
+        assert_eq!(
+            parse_block_end("ここで割り注終わり"),
+            CommandResult::Note("ここで割り注終わり".to_string())
+        );
+        // インラインの終了は従来どおり割り注として扱う
+        assert_eq!(parse_inline_end("割り注終わり"), CommandResult::WarigakiEnd);
+    }
 
     /// 地付きは「地から」に限らず末尾が「字上げ」なら成立する
     #[test]
