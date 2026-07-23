@@ -133,6 +133,20 @@ mod tests {
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// 画像化できない外字の ※ は本文セクションでだけ付く。
+    /// 参照実装の tail_output は general_output と違い ※ を出さない。
+    #[test]
+    fn test_gaiji_mark_only_in_the_main_text() {
+        let html = convert(
+            "タイトル\n\n刺※［＃「卓＋戈」、U+39B8］\n\n底本：「甲」乙\n刺※［＃「卓＋戈」、U+39B8］\n",
+            &RenderOptions::default(),
+        );
+        let main = html.split("bibliographical_information").next().unwrap();
+        let tail = html.split("bibliographical_information").nth(1).unwrap();
+        assert!(main.contains("刺※<span class=\"notes\">"), "本文には ※ が付く");
+        assert!(tail.contains("刺<span class=\"notes\">"), "奥付には ※ が付かない");
+    }
+
     /// 注記の中身もルビや外字を解決する
     /// （参照実装は read_to_nest で注記の中身を TagParser に渡す）
     #[test]

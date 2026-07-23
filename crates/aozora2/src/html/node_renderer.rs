@@ -46,6 +46,12 @@ pub struct NodeRenderer<'a> {
     pub unconverted_gaiji: Vec<UnconvertedGaiji>,
     /// 注記の中身をパースし直す入れ子の深さ
     note_depth: usize,
+    /// 本文（main_text）を抜けたあとのセクションを処理中かどうか。
+    /// 参照実装の tail_output は general_output と違い外字記号を出さない。
+    in_tail: bool,
+    /// ルビの親文字を組み立て中かどうか。親文字の中では外字記号を
+    /// 個別に出さず、親文字側にまとめて置く。
+    in_ruby_base: bool,
 }
 
 /// 画像化できない外字を本文中で示す記号
@@ -70,6 +76,23 @@ impl<'a> NodeRenderer<'a> {
             has_dakuten_kunoji: false,
             unconverted_gaiji: Vec::new(),
             note_depth: 0,
+            in_tail: false,
+            in_ruby_base: false,
+        }
+    }
+
+    /// 本文を抜けたことを伝える（after_text・底本情報のレンダリング前に呼ぶ）
+    pub fn enter_tail(&mut self) {
+        self.in_tail = true;
+    }
+
+    /// 画像化できない外字の直前に置く外字記号。
+    /// 本文セクションで、かつルビの親文字の外にあるときだけ付く。
+    fn gaiji_mark_prefix(&self) -> &'static str {
+        if self.in_tail || self.in_ruby_base {
+            ""
+        } else {
+            GAIJI_MARK
         }
     }
 
@@ -327,10 +350,16 @@ impl<'a> NodeRenderer<'a> {
             return html_escape(text);
         }
         self.note_depth += 1;
+        // 注記の中身は参照実装では別の TagParser が処理し、そちらは
+        // 本文かどうかに関わらず外字記号を出す
+        let outer_tail = std::mem::replace(&mut self.in_tail, false);
+        let outer_ruby_base = std::mem::replace(&mut self.in_ruby_base, false);
         let tokens = tokenize(text);
         let mut nodes = parse(&tokens);
         resolve_inline_ruby(&mut nodes);
         let html = self.render_nodes(&nodes, block_manager);
+        self.in_ruby_base = outer_ruby_base;
+        self.in_tail = outer_tail;
         self.note_depth -= 1;
         html
     }
@@ -347,19 +376,17 @@ impl<'a> NodeRenderer<'a> {
     ) -> (String, String) {
         let mut base = String::new();
         let mut trailing_notes = String::new();
+        let outer = std::mem::replace(&mut self.in_ruby_base, true);
         for child in children {
             let html = self.render_node(child, block_manager);
-            match html.strip_prefix(GAIJI_MARK) {
-                Some(note)
-                    if matches!(child, Node::Gaiji { .. })
-                        && note.starts_with("<span class=\"notes\">") =>
-                {
-                    base.push_str(GAIJI_MARK);
-                    trailing_notes.push_str(note);
-                }
-                _ => base.push_str(&html),
+            if matches!(child, Node::Gaiji { .. }) && html.starts_with("<span class=\"notes\">") {
+                base.push_str(GAIJI_MARK);
+                trailing_notes.push_str(&html);
+            } else {
+                base.push_str(&html);
             }
         }
+        self.in_ruby_base = outer;
         (base, trailing_notes)
     }
 
@@ -459,7 +486,8 @@ impl<'a> NodeRenderer<'a> {
                 // ここでも has_notes は立てない。
                 self.add_unconverted_gaiji(description);
                 return format!(
-                    "※<span class=\"notes\">［＃{}］</span>",
+                    "{}<span class=\"notes\">［＃{}］</span>",
+                    self.gaiji_mark_prefix(),
                     html_escape(description)
                 );
             }
@@ -486,7 +514,8 @@ impl<'a> NodeRenderer<'a> {
                 } else {
                     self.add_unconverted_gaiji(description);
                     format!(
-                        "※<span class=\"notes\">［＃{}］</span>",
+                        "{}<span class=\"notes\">［＃{}］</span>",
+                        self.gaiji_mark_prefix(),
                         html_escape(description)
                     )
                 }
@@ -524,7 +553,8 @@ impl<'a> NodeRenderer<'a> {
             GaijiResult::Unconvertible => {
                 self.add_unconverted_gaiji(description);
                 format!(
-                    "※<span class=\"notes\">［＃{}］</span>",
+                    "{}<span class=\"notes\">［＃{}］</span>",
+                    self.gaiji_mark_prefix(),
                     html_escape(description)
                 )
             }

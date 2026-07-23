@@ -109,6 +109,9 @@ impl HtmlRenderer {
         // main_text終了
         doc_renderer.render_main_text_end(&mut output);
 
+        // ここから先は参照実装の tail_output に相当するセクション
+        node_renderer.enter_tail();
+
         // 本文終わり後のテキスト（after_text）セクション
         let after_text_lines = extract_after_text_lines(&lines);
         if !after_text_lines.is_empty() {
