@@ -257,8 +257,14 @@ fn parse_command_to_node(content: &str) -> Node {
             height,
         } => Node::Img {
             filename,
+            // 参照実装 exec_img_command は説明に「写真」が入っていれば photo、
+            // そうでなければ illustration をクラスにする
+            css_class: if alt.contains("写真") {
+                "photo".to_string()
+            } else {
+                "illustration".to_string()
+            },
             alt,
-            css_class: String::new(),
             width,
             height,
         },
