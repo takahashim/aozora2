@@ -42,18 +42,17 @@ pub fn extract_ruby_base(text: &str) -> Option<RubyBaseResult> {
     let last_char = *chars.last()?;
     let last_char_type = last_char.char_type();
 
-    // ルビ親文字になれない種別の場合はNone
-    if !last_char_type.can_be_ruby_base() {
-        return None;
-    }
-
-    // 後ろから同じ種別の文字を探す
-    let mut base_start = chars.len();
-    for i in (0..chars.len()).rev() {
-        if chars[i].char_type() == last_char_type {
-            base_start = i;
-        } else {
-            break;
+    // 後ろから同じ種別の文字を探す。
+    // 参照実装 RubyBuffer#push_char は文字種 :else の文字を毎回フラッシュして
+    // 1 文字ずつ独立させるので、:else のときは直前の 1 文字だけを親文字にする。
+    let mut base_start = chars.len() - 1;
+    if last_char_type != CharType::Else {
+        for i in (0..chars.len()).rev() {
+            if chars[i].char_type() == last_char_type {
+                base_start = i;
+            } else {
+                break;
+            }
         }
     }
 
@@ -88,10 +87,6 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
     }
 
     let last_char_type = last_node.last_char_type()?;
-
-    if !last_char_type.can_be_ruby_base() {
-        return None;
-    }
 
     let mut base_nodes = Vec::new();
     let mut remaining_nodes = Vec::new();
@@ -215,11 +210,17 @@ mod tests {
         assert_eq!(result.char_type, CharType::Katakana);
     }
 
+    /// 参照実装では文字種 :else の文字（。○ など）も 1 文字だけ親文字になる
     #[test]
-    fn test_extract_ruby_base_no_valid() {
-        // 記号で終わる場合
-        let result = extract_ruby_base("テスト。");
-        assert!(result.is_none());
+    fn test_ruby_base_else_char_is_single() {
+        let result = extract_ruby_base("テスト。").unwrap();
+        assert_eq!(result.base, "。");
+        assert_eq!(result.remaining, "テスト");
+        assert_eq!(result.char_type, CharType::Else);
+
+        let result = extract_ruby_base("ふう○").unwrap();
+        assert_eq!(result.base, "○");
+        assert_eq!(result.remaining, "ふう");
     }
 
     #[test]
