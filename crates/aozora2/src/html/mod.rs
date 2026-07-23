@@ -133,6 +133,19 @@ mod tests {
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// 入力末尾の改行の有無で奥付末尾の <br /> の数が変わる
+    #[test]
+    fn test_trailing_newline_changes_the_final_break_count() {
+        let src = "タイトル\n\n本文\n\n底本：「甲」乙\n入力：誰か";
+        let without = convert(src, &RenderOptions::default());
+        let with = convert(&format!("{src}\n"), &RenderOptions::default());
+        assert!(without.contains("入力：誰か<br />\r\n<br />\r\n</div>"), "実際: {without}");
+        assert!(
+            with.contains("入力：誰か<br />\r\n<br />\r\n<br />\r\n</div>"),
+            "実際: {with}"
+        );
+    }
+
     /// 画像化できない外字の ※ は本文セクションでだけ付く。
     /// 参照実装の tail_output は general_output と違い ※ を出さない。
     #[test]

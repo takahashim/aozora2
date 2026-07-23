@@ -172,8 +172,14 @@ impl<'a> DocumentRenderer<'a> {
     }
 
     /// 底本情報セクションフッターを出力
-    pub fn render_bibliographical_footer(&self, output: &mut String) {
-        output.push_str("<br />\r\n");
+    ///
+    /// 参照実装では、入力末尾の改行が作る空行も 1 行として `<br />` になり、
+    /// そのあとに hyoki が `<br />` を 1 つ出す。入力が改行で終わっていなければ
+    /// 空行がないぶん `<br />` は 1 つ少なくなる。
+    pub fn render_bibliographical_footer(&self, output: &mut String, input_ends_with_newline: bool) {
+        if input_ends_with_newline {
+            output.push_str("<br />\r\n");
+        }
         output.push_str("<br />\r\n");
         output.push_str("</div>\r\n");
     }

@@ -139,7 +139,7 @@ impl HtmlRenderer {
                 output.push_str(&line_html);
                 output.push_str("<br />\r\n");
             }
-            doc_renderer.render_bibliographical_footer(&mut output);
+            doc_renderer.render_bibliographical_footer(&mut output, input.ends_with('\n'));
         }
 
         // 表記について（notation_notes）セクション
