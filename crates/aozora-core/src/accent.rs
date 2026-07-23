@@ -10,6 +10,11 @@ use crate::jis_table::jis_to_unicode;
 static ACCENT_TABLE: Lazy<HashMap<&'static str, &'static str>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/accent_table.rs")));
 
+/// アクセント文字の説明文。参照実装 aozora2html の accent_table.yml 由来で、
+/// 規則から組み立てられない表記（ドイツ語エスツェット など）も含む。
+static ACCENT_NAME_TABLE: Lazy<HashMap<&'static str, &'static str>> =
+    Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/accent_name_table.rs")));
+
 /// アクセント分解記法を変換
 ///
 /// `cafe'` → `café` のように、基底文字+アクセント記号を
@@ -180,6 +185,11 @@ fn lookup_accent_with_code(key: &str) -> Option<(String, String)> {
 
 /// アクセント記号のパターンから説明文字列を生成
 fn accent_name(key: &str) -> String {
+    // 参照実装の表にあればそれを使う
+    if let Some(name) = ACCENT_NAME_TABLE.get(key) {
+        return name.to_string();
+    }
+
     let chars: Vec<char> = key.chars().collect();
     if chars.len() == 2 {
         let base = chars[0];
@@ -238,13 +248,19 @@ mod tests {
         ));
     }
 
-    /// リガチャの説明文は参照実装 aozora2html の accent_table.yml に合わせる
+    /// 説明文は参照実装 aozora2html の accent_table.yml をそのまま使う。
+    /// 規則から組み立てられない表記が混じっているため。
     #[test]
-    fn test_ligature_names() {
+    fn test_accent_names_come_from_the_reference_table() {
         assert_eq!(accent_name("AE&"), "リガチャAE");
         assert_eq!(accent_name("OE&"), "リガチャOE大文字");
         assert_eq!(accent_name("ae&"), "リガチャAE小文字");
         assert_eq!(accent_name("oe&"), "リガチャOE小文字");
+        // エスツェット。規則どおりなら「アクセント付きS小文字」になってしまう
+        assert_eq!(accent_name("s&"), "ドイツ語エスツェット");
+        // 参照実装の表記ゆれ（A が落ちている）もそのまま再現する
+        assert_eq!(accent_name("A^"), "サーカムフレックスアクセント付き");
+        assert_eq!(accent_name("!@"), "逆感嘆符");
     }
 
     #[test]
