@@ -490,6 +490,9 @@ impl<'a> NodeRenderer<'a> {
             }
             // JisImage: jis_codeだけがある場合
             (None, Some(jis)) => {
+                // 参照実装の kuten2png は面-区-点から画像を作るとき必ず
+                // :newjis を立てるので、「表記について」の項目もそれに合わせる
+                self.has_jisx0213 = true;
                 self.has_gaiji_images = true;
                 let (folder, file) = jis_code_to_path(jis);
                 return format!(
@@ -537,6 +540,7 @@ impl<'a> NodeRenderer<'a> {
                 }
             }
             GaijiResult::JisImage { jis_code: jis } => {
+                self.has_jisx0213 = true;
                 self.has_gaiji_images = true;
                 let (folder, file) = jis_code_to_path(&jis);
                 format!(
