@@ -3,6 +3,9 @@
 //! ASTノードをHTMLに変換します。
 
 use aozora_core::gaiji::{parse_gaiji, GaijiResult};
+use aozora_core::parser::parse;
+use aozora_core::parser::reference_resolver::resolve_inline_ruby;
+use aozora_core::tokenizer::tokenize;
 use aozora_core::node::{
     BlockType, FontSizeType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
 };
@@ -41,6 +44,8 @@ pub struct NodeRenderer<'a> {
     pub has_dakuten_kunoji: bool,
     /// 未変換外字のリスト
     pub unconverted_gaiji: Vec<UnconvertedGaiji>,
+    /// 注記の中身をパースし直す入れ子の深さ
+    note_depth: usize,
 }
 
 /// 画像化できない外字を本文中で示す記号
@@ -64,6 +69,7 @@ impl<'a> NodeRenderer<'a> {
             has_kunoji: false,
             has_dakuten_kunoji: false,
             unconverted_gaiji: Vec::new(),
+            note_depth: 0,
         }
     }
 
@@ -241,7 +247,8 @@ impl<'a> NodeRenderer<'a> {
 
             Node::Note(text) => {
                 self.has_notes = true;
-                format!("<span class=\"notes\">［＃{}］</span>", html_escape(text))
+                let inner = self.render_note_content(text, block_manager);
+                format!("<span class=\"notes\">［＃{inner}］</span>")
             }
 
             Node::AnnotationEnd {
@@ -307,6 +314,25 @@ impl<'a> NodeRenderer<'a> {
                 )
             }
         }
+    }
+
+    /// 注記の中身をレンダリングする。
+    ///
+    /// 参照実装 aozora2html は `read_to_nest` で注記の中身を TagParser に渡し、
+    /// ルビや外字を通常の本文と同じように解決する。ここでも同じように
+    /// パースし直す。入れ子の注記で無限に潜らないよう深さを制限する。
+    fn render_note_content(&mut self, text: &str, block_manager: &mut BlockManager) -> String {
+        const MAX_DEPTH: usize = 4;
+        if self.note_depth >= MAX_DEPTH {
+            return html_escape(text);
+        }
+        self.note_depth += 1;
+        let tokens = tokenize(text);
+        let mut nodes = parse(&tokens);
+        resolve_inline_ruby(&mut nodes);
+        let html = self.render_nodes(&nodes, block_manager);
+        self.note_depth -= 1;
+        html
     }
 
     /// ルビの親文字を組み立て、(親文字, ルビの後ろに置く注記) を返す

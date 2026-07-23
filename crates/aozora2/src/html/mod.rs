@@ -133,6 +133,20 @@ mod tests {
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// 注記の中身もルビや外字を解決する
+    /// （参照実装は read_to_nest で注記の中身を TagParser に渡す）
+    #[test]
+    fn test_ruby_inside_a_note_is_resolved() {
+        let html = convert(
+            "タイトル\n\n［＃現代語訳「松籟《しょうらい》を聞く」］",
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains("<ruby><rb>松籟</rb><rp>（</rp><rt>しょうらい</rt><rp>）</rp></ruby>"),
+            "実際: {html}"
+        );
+    }
+
     /// 同じ外字が複数回現れたら、外字一覧には出現箇所を「、」で並べる
     #[test]
     fn test_gaiji_list_collects_every_occurrence() {
