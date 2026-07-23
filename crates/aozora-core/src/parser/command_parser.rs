@@ -147,7 +147,15 @@ pub fn parse_command(content: &str) -> CommandResult {
         }
     }
 
-    // 2. 後方参照パターン: 「対象」に/は/の 装飾
+    // 2. 画像。参照実装の dispatch_aozora_command は fig…png の判定を
+    //    前方参照より先に置くので、ここでも先に見る。
+    if content.ends_with("入る") {
+        if let Some(result) = try_parse_image(content) {
+            return result;
+        }
+    }
+
+    // 3. 後方参照パターン: 「対象」に/は/の 装飾
     if let Some(result) = try_parse_reference(content) {
         return result;
     }
@@ -200,13 +208,6 @@ pub fn parse_command(content: &str) -> CommandResult {
     // 10. 訓点送り仮名（説明付き）
     if content.starts_with("訓点送り仮名") {
         return CommandResult::Note(content.to_string());
-    }
-
-    // 11. 画像
-    if content.ends_with("入る") {
-        if let Some(result) = try_parse_image(content) {
-            return result;
-        }
     }
 
     // 12. 縦中横

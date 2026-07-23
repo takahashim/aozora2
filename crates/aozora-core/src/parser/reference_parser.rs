@@ -31,6 +31,14 @@ pub fn try_parse_reference(content: &str) -> Option<CommandResult> {
         });
     }
 
+    // 以降の順序は参照実装 exec_style に合わせる。
+    // 縦中横などのインライン要素は見出し・装飾より先に見る。
+    if !is_left {
+        if let Some(result) = try_parse_inline_element(target, spec) {
+            return Some(result);
+        }
+    }
+
     // 見出しかどうか
     if connector == "は" {
         if let Some(level) = MidashiLevel::from_command(spec) {
@@ -43,20 +51,7 @@ pub fn try_parse_reference(content: &str) -> Option<CommandResult> {
         }
     }
 
-    // 装飾タイプを取得
-    if let Some(mut style_type) = StyleType::from_command(spec) {
-        // 「の左に」パターンの場合は_After変種に変換
-        if is_left {
-            style_type = style_type.to_after_variant();
-        }
-        return Some(CommandResult::Style {
-            target: target.to_string(),
-            connector: connector.to_string(),
-            style_type,
-        });
-    }
-
-    // フォントサイズを取得（「対象」は/のN段階大きな/小さな文字）
+    // フォントサイズ（「対象」は/のN段階大きな/小さな文字）
     if let Some((size_type, level)) = FontSizeType::from_command(spec) {
         return Some(CommandResult::FontSize {
             target: target.to_string(),
@@ -73,9 +68,17 @@ pub fn try_parse_reference(content: &str) -> Option<CommandResult> {
         }
     }
 
-    // インライン要素
-    if let Some(result) = try_parse_inline_element(target, spec) {
-        return Some(result);
+    // 装飾タイプ
+    if let Some(mut style_type) = StyleType::from_command(spec) {
+        // 「の左に」パターンの場合は_After変種に変換
+        if is_left {
+            style_type = style_type.to_after_variant();
+        }
+        return Some(CommandResult::Style {
+            target: target.to_string(),
+            connector: connector.to_string(),
+            style_type,
+        });
     }
 
     None
@@ -128,25 +131,24 @@ fn parse_connector<'a>(_target: &str, rest: &'a str) -> Option<(&'static str, &'
 
 /// インライン要素（縦中横、罫囲み、横組み、キャプション）を解析
 fn try_parse_inline_element(target: &str, spec: &str) -> Option<CommandResult> {
-    // 参照実装 exec_style は command.match? で部分一致を見る。ただし他の記法と
-    // 誤って重なるのを避けるため、ここでは末尾一致に留める
-    // （「２日～10日の下に縦中横」のような前置き付きを拾うのが目的）。
-    if spec.ends_with("縦中横") {
+    // 参照実装 exec_style は command.match? で部分一致を見る。
+    // 「縦中横、行右小書き」のように後ろに指定が続くものも拾う。
+    if spec.contains("縦中横") {
         return Some(CommandResult::InlineTcy {
             target: target.to_string(),
         });
     }
-    if spec.ends_with("横組み") {
+    if spec.contains("横組み") {
         return Some(CommandResult::InlineYokogumi {
             target: target.to_string(),
         });
     }
-    if spec.ends_with("罫囲み") {
+    if spec.contains("罫囲み") {
         return Some(CommandResult::InlineKeigakomi {
             target: target.to_string(),
         });
     }
-    if spec.ends_with("キャプション") {
+    if spec.contains("キャプション") {
         return Some(CommandResult::InlineCaption {
             target: target.to_string(),
         });
