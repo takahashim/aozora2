@@ -123,12 +123,16 @@ pub fn try_parse_line_indent(content: &str) -> Option<CommandResult> {
 
 /// 行単位地付き/地からを解析
 pub fn try_parse_line_chitsuki(content: &str) -> Option<CommandResult> {
-    if content.contains("地付き") {
+    // 参照実装の PAT_CHITSUKI は /(地付き|字上げ)(終わり)*$/ なので、
+    // 「地から」に限らず「地より２字上げ」なども地付き扱いになる。
+    let body = content.trim_end_matches("終わり");
+
+    if body.ends_with("地付き") {
         return Some(CommandResult::LineChitsuki { width: 0 });
     }
 
-    if content.contains("地から") && content.contains("字上げ") {
-        let width = extract_number(content).unwrap_or(0);
+    if body.ends_with("字上げ") {
+        let width = extract_number(body).unwrap_or(0);
         return Some(CommandResult::LineChitsuki { width });
     }
 
@@ -165,6 +169,24 @@ pub fn try_parse_font_size_start(content: &str) -> Option<CommandResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 地付きは「地から」に限らず末尾が「字上げ」なら成立する
+    #[test]
+    fn test_line_chitsuki_accepts_any_jiage_suffix() {
+        assert_eq!(
+            try_parse_line_chitsuki("地より２字上げ"),
+            Some(CommandResult::LineChitsuki { width: 2 })
+        );
+        assert_eq!(
+            try_parse_line_chitsuki("地から3字上げ"),
+            Some(CommandResult::LineChitsuki { width: 3 })
+        );
+        assert_eq!(
+            try_parse_line_chitsuki("地付き"),
+            Some(CommandResult::LineChitsuki { width: 0 })
+        );
+        assert_eq!(try_parse_line_chitsuki("ここから２字下げ"), None);
+    }
 
     #[test]
     fn test_parse_block_start_jisage() {

@@ -88,14 +88,18 @@ fn try_parse_annotation_ruby(target: &str, spec: &str) -> Option<CommandResult> 
         return None;
     }
 
-    // 「」で囲まれた注記内容を抽出
-    let start = spec.find('「')?;
-    let end = spec.find('」')?;
+    // 「」で囲まれた注記内容を抽出する。参照実装の /「(.+?)」の注記/ と同じく、
+    // 「」の注記」が続く位置まで伸ばす。注記の中に「」が入れ子になっていても切らない。
+    let start = spec.find('「')? + '「'.len_utf8();
+    let end = spec[start..]
+        .match_indices("」の注記")
+        .map(|(i, _)| start + i)
+        .next()?;
     if end <= start {
         return None;
     }
 
-    let annotation = &spec[start + '「'.len_utf8()..end];
+    let annotation = &spec[start..end];
     Some(CommandResult::AnnotationRuby {
         target: target.to_string(),
         annotation: annotation.to_string(),
