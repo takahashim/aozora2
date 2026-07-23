@@ -150,6 +150,14 @@ pub enum Node {
     /// 注記（編集者注）
     Note(String),
 
+    /// 行単位字下げ ［＃N字下げ］。
+    /// 行に単独ならその行から複数行ブロックになり、テキストが同じ行にあれば
+    /// 行全体をこの字下げで包む（参照実装 apply_jisage の unshift 相当）。
+    LineJisage {
+        /// 字下げ幅（em）
+        width: u32,
+    },
+
     /// 注記付き範囲の終了マーカー（外字を含む可能性がある）
     AnnotationEnd {
         /// 前置テキスト（「左に「」など）
@@ -277,6 +285,7 @@ impl Node {
             Node::BlockStart { .. }
             | Node::BlockEnd { .. }
             | Node::Note(_)
+            | Node::LineJisage { .. }
             | Node::AnnotationEnd { .. } => String::new(),
             Node::UnresolvedReference {
                 target,

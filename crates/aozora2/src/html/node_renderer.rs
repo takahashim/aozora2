@@ -268,6 +268,12 @@ impl<'a> NodeRenderer<'a> {
                 }
             }
 
+            // 行単位字下げは renderer 側で行全体を包む形で処理するので、
+            // ここに来ることは通常ない
+            Node::LineJisage { width } => {
+                format!("<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">")
+            }
+
             Node::Note(text) => {
                 self.has_notes = true;
                 let inner = self.render_note_content(text, block_manager);

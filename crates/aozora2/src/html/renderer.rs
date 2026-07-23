@@ -6,7 +6,7 @@ use aozora_core::document::{
     extract_after_text_lines, extract_bibliographical_lines, extract_body_lines,
     extract_header_info,
 };
-use aozora_core::node::Node;
+use aozora_core::node::{BlockParams, BlockType, Node};
 use aozora_core::parser::parse;
 use aozora_core::parser::reference_resolver::resolve_inline_ruby;
 use aozora_core::tokenizer::tokenize;
@@ -182,15 +182,45 @@ impl HtmlRenderer {
         // 行内ルビを解決
         resolve_inline_ruby(&mut nodes);
 
+        // 行単位字下げ ［＃N字下げ］の扱い（参照実装 apply_jisage 相当）
+        if let Some(pos) = nodes
+            .iter()
+            .position(|n| matches!(n, Node::LineJisage { .. }))
+        {
+            let Node::LineJisage { width } = nodes[pos] else {
+                unreachable!()
+            };
+            // 行にこのコマンドしかなければ、その行から複数行ブロックを開く
+            if nodes.len() == 1 {
+                block_manager.push(
+                    BlockType::Jisage,
+                    BlockParams {
+                        width: Some(width),
+                        is_block: true,
+                        ..Default::default()
+                    },
+                );
+                return format!(
+                    "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">"
+                );
+            }
+            // テキストがあれば、コマンドを取り除いて行全体を字下げの div で包む
+            nodes.remove(pos);
+            let inner = node_renderer.render_nodes(&nodes, block_manager);
+            return format!(
+                "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">{inner}</div>"
+            );
+        }
+
         // 行の開始時点でのブロックスタックの長さを記録
         let stack_len_before = block_manager.stack_len();
 
         let mut output = node_renderer.render_nodes(&nodes, block_manager);
 
-        // 行単位字下げ: 行の終わりで、その行で開いたブロックを閉じる
+        // 行単位地付き: 行の終わりで、その行で開いたブロックを閉じる
         let is_line_scope_block = line.starts_with("［＃")
             && !line.contains("ここから")
-            && (line.contains("字下げ") || line.contains("地付き") || line.contains("地から"));
+            && (line.contains("地付き") || line.contains("地から"));
 
         if is_line_scope_block {
             let popped = block_manager.pop_to_length(stack_len_before);

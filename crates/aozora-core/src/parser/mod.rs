@@ -232,13 +232,7 @@ fn parse_command_to_node(content: &str) -> Node {
             params: BlockParams::default(),
         },
 
-        CommandResult::LineIndent { width } => Node::BlockStart {
-            block_type: BlockType::Jisage,
-            params: BlockParams {
-                width: Some(width),
-                ..Default::default()
-            },
-        },
+        CommandResult::LineIndent { width } => Node::LineJisage { width },
 
         CommandResult::LineChitsuki { width } => Node::BlockStart {
             block_type: BlockType::Chitsuki,

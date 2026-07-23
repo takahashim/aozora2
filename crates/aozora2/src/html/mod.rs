@@ -133,6 +133,30 @@ mod tests {
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// 行末の ［＃N字下げ］ は行全体を字下げの div で包む
+    /// （参照実装 apply_jisage の unshift 相当）
+    #[test]
+    fn test_line_end_jisage_wraps_the_whole_line() {
+        let html = convert("タイトル\r\n\r\n本文の行です［＃３字下げ］", &RenderOptions::default());
+        assert!(
+            html.contains("<div class=\"jisage_3\" style=\"margin-left: 3em\">本文の行です</div>"),
+            "実際: {html}"
+        );
+    }
+
+    /// ［＃N字下げ］が行に単独なら、その行から複数行ブロックになる
+    #[test]
+    fn test_bare_line_jisage_opens_a_block() {
+        let html = convert(
+            "タイトル\r\n\r\n［＃３字下げ］\r\n本文A\r\n［＃字下げ終わり］",
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains("<div class=\"jisage_3\" style=\"margin-left: 3em\">\r\n本文A<br />\r\n</div>"),
+            "実際: {html}"
+        );
+    }
+
     /// 行の区切りは CRLF だけ。単独の LF は本文の文字として扱う
     /// （参照実装 Jstream が CRLF のみを改行とみなすため）
     #[test]
