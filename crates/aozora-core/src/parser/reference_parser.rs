@@ -6,16 +6,46 @@ use crate::node::{FontSizeType, MidashiLevel, MidashiStyle, StyleType};
 
 use super::command_parser::CommandResult;
 
+/// 参照実装の PAT_FRONTREF が対象部分に許す形
+/// `[^「」]*(?:「.+」)*[^「」]*` かどうか。
+///
+/// 対象の中に「」の組をひとつ含められる（「魔境「蕨の切り株」」は中見出し など）。
+fn is_reference_target(s: &str) -> bool {
+    match (s.find('「'), s.rfind('」')) {
+        // 「」をまったく含まない
+        (None, None) => true,
+        // 閉じだけがあるのは対象の途中で切れている
+        (None, Some(_)) => false,
+        (Some(open), Some(close)) if close > open => {
+            // 最初の「より前と、最後の」より後には「」を含まない
+            !s[..open].contains('」')
+                && !s[close + '」'.len_utf8()..].contains(['「', '」'])
+        }
+        _ => false,
+    }
+}
+
+/// 対象の終わりの `」` を探す。参照実装の正規表現は貪欲なので、
+/// 接続詞が続きかつ対象の形が成立する位置のうち最も後ろを選ぶ。
+fn find_target_end(content: &str, start: usize) -> Option<usize> {
+    content[start..]
+        .match_indices('」')
+        .map(|(i, _)| start + i)
+        .filter(|&i| {
+            let rest = &content[i + '」'.len_utf8()..];
+            ["に", "は", "の"].iter().any(|c| rest.starts_with(c))
+                && is_reference_target(&content[start..i])
+        })
+        .next_back()
+}
+
 /// 後方参照パターンを解析
 pub fn try_parse_reference(content: &str) -> Option<CommandResult> {
     // パターン: 「対象」に/は/の 装飾
-    let start = content.find('「')?;
-    let end = content.find('」')?;
-    if end <= start {
-        return None;
-    }
+    let start = content.find('「')? + '「'.len_utf8();
+    let end = find_target_end(content, start)?;
 
-    let target = &content[start + '「'.len_utf8()..end];
+    let target = &content[start..end];
     let rest = &content[end + '」'.len_utf8()..];
 
     // 接続詞を探す
@@ -189,6 +219,41 @@ pub fn try_parse_left_ruby(content: &str) -> Option<CommandResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 対象に「」の組を含む前方参照。参照実装の PAT_FRONTREF は
+    /// [^「」]*(?:「.+」)*[^「」]* を対象として許す。
+    #[test]
+    fn test_reference_target_can_contain_nested_brackets() {
+        assert_eq!(
+            try_parse_reference("「魔境「蕨の切り株」」は中見出し"),
+            Some(CommandResult::Midashi {
+                target: "魔境「蕨の切り株」".to_string(),
+                level: MidashiLevel::Naka,
+                style: MidashiStyle::Normal,
+            })
+        );
+    }
+
+    /// 接続詞のあとに「」が続く形（注記など）では対象を伸ばさない
+    #[test]
+    fn test_reference_target_stops_before_the_connector() {
+        assert_eq!(
+            try_parse_reference("「喋」に「ママ」の注記"),
+            Some(CommandResult::AnnotationRuby {
+                target: "喋".to_string(),
+                annotation: "ママ".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_is_reference_target() {
+        assert!(is_reference_target("魔境「蕨の切り株」"));
+        assert!(is_reference_target("ふつうの文字列"));
+        assert!(is_reference_target(""));
+        assert!(!is_reference_target("A」に「B"));
+        assert!(!is_reference_target("閉じだけ」"));
+    }
 
     #[test]
     fn test_parse_style_bouten() {
