@@ -165,6 +165,9 @@ impl HtmlRenderer {
         node_renderer: &mut NodeRenderer,
         block_manager: &mut BlockManager,
     ) -> String {
+        // くの字点は注記の中に書かれることもあるので生の行から数える
+        node_renderer.scan_kunoji(line);
+
         let tokens = tokenize(line);
         let mut nodes = parse(&tokens);
 

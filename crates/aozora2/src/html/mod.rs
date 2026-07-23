@@ -108,6 +108,31 @@ mod tests {
         assert!(!html.contains("くの字点"));
     }
 
+    /// くの字点は ［＃…］ の注記の中に書かれていても数える
+    #[test]
+    fn test_kunoji_inside_an_editor_note_is_counted() {
+        let html = convert(
+            "タイトル\n\nだぶ／＼して［＃「だぶ／＼して」は底本では「だぶ／″＼」］",
+            &RenderOptions::default(),
+        );
+        assert!(html.contains(
+            "<li>「くの字点」は「／＼」で、「濁点付きくの字点」は「／″＼」で表しました。</li>"
+        ));
+    }
+
+    /// 画像化できない外字は「表記について」に外字一覧を出すが、
+    /// 「［＃…］は、入力者による注」の項目は出さない
+    /// （参照実装の escape_gaiji は :chuki フラグを立てない）
+    #[test]
+    fn test_unconvertible_gaiji_does_not_imply_an_editor_note() {
+        let html = convert(
+            "タイトル\n\n陥※［＃「こざとへん＋井」、U+9631、133-8］",
+            &RenderOptions::default(),
+        );
+        assert!(!html.contains("入力者による注"), "実際: {html}");
+        assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
+    }
+
     /// 注記の直後にルビが来ると、参照実装では注記自身がルビの親文字になる
     #[test]
     fn test_note_before_ruby_becomes_the_ruby_base() {

@@ -67,8 +67,11 @@ impl<'a> NodeRenderer<'a> {
     }
 
     /// くの字点はそのまま出力するので、フッタの「表記について」に
-    /// 注記を出すかどうかのフラグだけ立てる
-    fn scan_kunoji(&mut self, text: &str) {
+    /// 注記を出すかどうかのフラグだけ立てる。
+    ///
+    /// 参照実装 aozora2html は `［＃…］` の注記の中に書かれたくの字点も数えるため、
+    /// パース後のテキストノードではなく行の生テキストを渡すこと。
+    pub fn scan_kunoji(&mut self, text: &str) {
         if self.has_kunoji && self.has_dakuten_kunoji {
             return;
         }
@@ -99,10 +102,7 @@ impl<'a> NodeRenderer<'a> {
     /// 単一ノードをHTMLに変換
     pub fn render_node(&mut self, node: &Node, block_manager: &mut BlockManager) -> String {
         match node {
-            Node::Text(text) => {
-                self.scan_kunoji(text);
-                html_escape(text)
-            }
+            Node::Text(text) => html_escape(text),
 
             Node::Ruby {
                 children,
@@ -427,8 +427,9 @@ impl<'a> NodeRenderer<'a> {
                 if self.options.use_unicode {
                     return u.chars().map(|c| format!("&#{};", c as u32)).collect();
                 }
-                // JISコードがないので画像化できない → 注記として出力
-                self.has_notes = true;
+                // JISコードがないので画像化できない → 注記として出力。
+                // 参照実装の escape_gaiji は「入力者による注」のフラグを立てないので、
+                // ここでも has_notes は立てない。
                 self.add_unconverted_gaiji(description);
                 return format!(
                     "※<span class=\"notes\">［＃{}］</span>",
@@ -456,7 +457,6 @@ impl<'a> NodeRenderer<'a> {
                 if self.options.use_unicode {
                     s.chars().map(|c| format!("&#{};", c as u32)).collect()
                 } else {
-                    self.has_notes = true;
                     self.add_unconverted_gaiji(description);
                     format!(
                         "※<span class=\"notes\">［＃{}］</span>",
@@ -495,7 +495,6 @@ impl<'a> NodeRenderer<'a> {
                 )
             }
             GaijiResult::Unconvertible => {
-                self.has_notes = true;
                 self.add_unconverted_gaiji(description);
                 format!(
                     "※<span class=\"notes\">［＃{}］</span>",
