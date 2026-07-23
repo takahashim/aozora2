@@ -200,9 +200,9 @@ impl Tokenizer {
         Some(Token::Accent { children })
     }
 
-    /// 文字列がアクセント記号を含むか判定
+    /// 文字列がアクセント表にある組み合わせを含むか判定
     fn contains_accent_marks(s: &str) -> bool {
-        s.chars().any(|c| ACCENT_MARKS.contains(&c))
+        crate::accent::contains_accent_sequence(s)
     }
 
     // --- カーソル操作ヘルパー ---

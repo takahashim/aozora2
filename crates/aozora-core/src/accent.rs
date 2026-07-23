@@ -62,6 +62,33 @@ pub fn is_accent_mark(c: char) -> bool {
     ACCENT_MARKS.contains(&c)
 }
 
+/// 文字列にアクセント表に載っている組み合わせが含まれるか
+///
+/// 参照実装 aozora2html の AccentParser は、アクセント表に載っている
+/// 「基底文字＋記号」の並びを見つけたときだけアクセントとして扱い、
+/// ひとつも見つからなければ `〔` `〕` をそのまま出力する。
+/// 記号文字が含まれるだけでは足りない（英文中のカンマなどで誤判定するため）。
+pub fn contains_accent_sequence(s: &str) -> bool {
+    let chars: Vec<char> = s.chars().collect();
+    for i in 0..chars.len() {
+        if i + 2 < chars.len()
+            && is_accent_mark(chars[i + 2])
+            && ACCENT_TABLE.contains_key(
+                format!("{}{}{}", chars[i], chars[i + 1], chars[i + 2]).as_str(),
+            )
+        {
+            return true;
+        }
+        if i + 1 < chars.len()
+            && is_accent_mark(chars[i + 1])
+            && ACCENT_TABLE.contains_key(format!("{}{}", chars[i], chars[i + 1]).as_str())
+        {
+            return true;
+        }
+    }
+    false
+}
+
 /// アクセントテーブルを検索してUnicode文字を返す
 fn lookup_accent(key: &str) -> Option<String> {
     ACCENT_TABLE
@@ -198,6 +225,18 @@ fn accent_name(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// アクセント表にある組み合わせがなければアクセント記法とみなさない。
+    /// 英文中のカンマなどを記号と誤認しないため。
+    #[test]
+    fn test_contains_accent_sequence() {
+        assert!(contains_accent_sequence("E'difice"));
+        assert!(contains_accent_sequence("ae&"));
+        assert!(!contains_accent_sequence("参考"));
+        assert!(!contains_accent_sequence(
+            "欄外 Emil Brunner, Erlebnis, Erkenntnis und Glaube, 1923."
+        ));
+    }
 
     /// リガチャの説明文は参照実装 aozora2html の accent_table.yml に合わせる
     #[test]
