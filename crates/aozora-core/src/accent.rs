@@ -174,10 +174,22 @@ fn accent_name(key: &str) -> String {
             format!("{}付き{}", mark_name, base)
         }
     } else if chars.len() == 3 {
-        // リガチャ
-        let upper = key.starts_with(|c: char| c.is_uppercase());
-        let case = if upper { "大文字" } else { "小文字" };
-        format!("リガチャ{}", case)
+        // リガチャ。参照実装 aozora2html の accent_table.yml に合わせる。
+        // AE の大文字だけ「大文字」が付かない。
+        match key {
+            "AE&" => "リガチャAE".to_string(),
+            "OE&" => "リガチャOE大文字".to_string(),
+            "ae&" => "リガチャAE小文字".to_string(),
+            "oe&" => "リガチャOE小文字".to_string(),
+            _ => {
+                let case = if key.starts_with(|c: char| c.is_uppercase()) {
+                    "大文字"
+                } else {
+                    "小文字"
+                };
+                format!("リガチャ{}{}", key[..2].to_uppercase(), case)
+            }
+        }
     } else {
         key.to_string()
     }
@@ -186,6 +198,15 @@ fn accent_name(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// リガチャの説明文は参照実装 aozora2html の accent_table.yml に合わせる
+    #[test]
+    fn test_ligature_names() {
+        assert_eq!(accent_name("AE&"), "リガチャAE");
+        assert_eq!(accent_name("OE&"), "リガチャOE大文字");
+        assert_eq!(accent_name("ae&"), "リガチャAE小文字");
+        assert_eq!(accent_name("oe&"), "リガチャOE小文字");
+    }
 
     #[test]
     fn test_simple_accent() {
