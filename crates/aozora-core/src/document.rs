@@ -306,9 +306,6 @@ pub fn extract_after_text_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
             continue; // ［＃本文終わり］自体は含めない
         }
         if in_after_text {
-            if line.starts_with("底本：") {
-                break;
-            }
             result.push(*line);
         }
     }
@@ -319,11 +316,18 @@ pub fn extract_after_text_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
 /// 文書から底本情報（bibliographical information）を抽出
 ///
 /// 「底本：」で始まる行から最後までを抽出します。
+///
+/// `［＃本文終わり］` が先にある場合は空を返す。参照実装では
+/// `［＃本文終わり］` の時点で後付けのセクションに移り、そのあとの
+/// 「底本：」は新しいセクションを開かずそのまま後付けに入るため。
 pub fn extract_bibliographical_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
     let mut result = Vec::new();
     let mut in_biblio = false;
 
     for line in lines {
+        if *line == "［＃本文終わり］" {
+            return Vec::new();
+        }
         if line.starts_with("底本：") {
             in_biblio = true;
         }
@@ -422,6 +426,33 @@ mod tests {
         ];
         let body = extract_body_lines(&lines);
         assert_eq!(body, vec!["", "---", "注記内容", "---", "本文"]);
+    }
+
+    /// ［＃本文終わり］があると、そのあとの「底本：」は独立した節を作らず
+    /// 後付けに入る（参照実装では本文終わりの時点で :tail に移るため）
+    #[test]
+    fn test_after_text_absorbs_the_bibliography() {
+        let lines = vec![
+            "タイトル",
+            "",
+            "本文",
+            "［＃本文終わり］",
+            "底本：青空文庫",
+            "入力：誰か",
+        ];
+        assert_eq!(
+            extract_after_text_lines(&lines),
+            vec!["底本：青空文庫", "入力：誰か"]
+        );
+        assert!(extract_bibliographical_lines(&lines).is_empty());
+    }
+
+    /// ［＃本文終わり］がなければ従来どおり底本情報の節になる
+    #[test]
+    fn test_bibliography_without_an_end_of_text_marker() {
+        let lines = vec!["タイトル", "", "本文", "底本：青空文庫"];
+        assert!(extract_after_text_lines(&lines).is_empty());
+        assert_eq!(extract_bibliographical_lines(&lines), vec!["底本：青空文庫"]);
     }
 
     /// 罫線は `-` だけからなる行に限る
