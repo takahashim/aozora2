@@ -60,8 +60,11 @@ pub fn parse_block_start(content: &str) -> CommandResult {
     }
 }
 
-/// ぶら下げパターンを解析
-fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<CommandResult> {
+/// ぶら下げパターンを解析。参照実装 dispatch_aozora_command は
+/// `折り返して`（ORIKAESHI_COMMAND）を含むコマンドを他のどの分岐より先に
+/// apply_burasage へ回す。`ここから` の有無に関係なくぶら下げになるので、
+/// parse_command からも直接呼べるよう pub にしている。
+pub fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<CommandResult> {
     // 参照実装 apply_burasage は先に漢数字を数字化してからパターン照合する。
     let content = convert_japanese_number(content);
     let parts: Vec<&str> = content.split("折り返して").collect();

@@ -5,8 +5,9 @@
 use crate::node::{BlockParams, BlockType, FontSizeType, MidashiLevel, MidashiStyle, StyleType};
 
 use super::block_parser::{
-    parse_block_end, parse_block_start, parse_inline_end, try_parse_font_size_start,
-    try_parse_line_chitsuki, try_parse_line_indent, try_parse_midashi_start,
+    parse_block_end, parse_block_start, parse_inline_end, try_parse_burasage,
+    try_parse_font_size_start, try_parse_line_chitsuki, try_parse_line_indent,
+    try_parse_midashi_start,
 };
 use super::content_parser::{is_kaeriten, try_parse_image, try_parse_okurigana};
 use super::reference_parser::{try_parse_left_ruby, try_parse_reference};
@@ -172,6 +173,20 @@ pub enum CommandResult {
 /// コマンド文字列を解析
 pub fn parse_command(content: &str) -> CommandResult {
     let content = content.trim();
+
+    // 0. ぶら下げ（折り返して）。参照実装 dispatch_aozora_command は
+    //    ORIKAESHI_COMMAND（折り返して）を他のどの分岐より先に判定して
+    //    apply_burasage へ回す。`ここから` の有無に関係なくぶら下げになる
+    //    （例:「［＃改行天付き、折り返して５字下げ］」）ので最初に見る。
+    if content.contains("折り返して") {
+        let mut params = BlockParams {
+            is_block: true,
+            ..Default::default()
+        };
+        if let Some(result) = try_parse_burasage(content, &mut params) {
+            return result;
+        }
+    }
 
     // 1. 左ルビパターン（後方参照より先にチェック）
     if content.contains("の左に") && content.contains("のルビ") {
@@ -426,6 +441,39 @@ mod tests {
                 target: "一".to_string(),
                 level: MidashiLevel::Naka,
                 style: MidashiStyle::Dogyo,
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_bare_burasage_without_kokokara() {
+        // 「ここから」の無い「［＃改行天付き、折り返して５字下げ］」も、参照実装が
+        // ORIKAESHI を最優先で見るのでぶら下げになる（jisage ブロックにしない）。
+        let result = parse_command("改行天付き、折り返して５字下げ");
+        assert_eq!(
+            result,
+            CommandResult::BlockStart {
+                block_type: BlockType::Burasage,
+                params: BlockParams {
+                    width: Some(0),
+                    wrap_width: Some(5),
+                    is_block: true,
+                    ..Default::default()
+                },
+            }
+        );
+        // 「ここから」ありの従来形も引き続きぶら下げになる。
+        let result = parse_command("ここから改行天付き、折り返して５字下げ");
+        assert_eq!(
+            result,
+            CommandResult::BlockStart {
+                block_type: BlockType::Burasage,
+                params: BlockParams {
+                    width: Some(0),
+                    wrap_width: Some(5),
+                    is_block: true,
+                    ..Default::default()
+                },
             }
         );
     }
