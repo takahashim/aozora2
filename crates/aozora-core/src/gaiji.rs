@@ -103,63 +103,61 @@ fn extract_unicode(description: &str) -> Option<char> {
     None
 }
 
-/// "X-XX-XX" パターンからJISコードを抽出
+/// 句点コード（面-区-点）を抽出する。
+///
+/// 参照実装 kuten2png は `/[12]-\d{1,2}-\d{1,2}/` に一致する最初の部分文字列
+/// だけを句点コードとして画像化する。面（先頭）は 1 か 2 の**1桁**、区・点は
+/// それぞれ 1〜2桁。したがって面が無効な `24-1-3`（これは底本の位置参照で
+/// あって句点コードではない）や `第4水準` の 4 などは一致せず、画像化されず
+/// 注記のまま出る。従来は `\d+-\d+-\d+` を無条件に拾って `24-1-3` まで画像化
+/// していたためオラクルと乖離していた。
 fn extract_jis_code(description: &str) -> Option<String> {
-    // JISコードのパターン: 数字-数字-数字
-    // 例: 1-2-22, 2-14-75
-    let mut chars = description.chars().peekable();
-    let mut result = String::new();
-
-    while let Some(c) = chars.next() {
-        if c.is_ascii_digit() {
-            result.push(c);
-
-            // 続く数字を読む
-            while let Some(&next) = chars.peek() {
-                if next.is_ascii_digit() {
-                    result.push(chars.next()?);
-                } else {
-                    break;
-                }
-            }
-
-            // ハイフンが続くか確認
-            if chars.peek() == Some(&'-') {
-                result.push(chars.next()?);
-
-                // 2番目の数字
-                while let Some(&next) = chars.peek() {
-                    if next.is_ascii_digit() {
-                        result.push(chars.next()?);
-                    } else {
-                        break;
-                    }
-                }
-
-                // 2番目のハイフン
-                if chars.peek() == Some(&'-') {
-                    result.push(chars.next()?);
-
-                    // 3番目の数字
-                    while let Some(&next) = chars.peek() {
-                        if next.is_ascii_digit() {
-                            result.push(chars.next()?);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    // パターン "X-XX-XX" が完成
-                    if result.matches('-').count() == 2 {
-                        return Some(result);
-                    }
-                }
-            }
-
-            result.clear();
+    let chars: Vec<char> = description.chars().collect();
+    let n = chars.len();
+    for start in 0..n {
+        // 面: [12]（1桁）。直後は '-'。
+        if chars[start] != '1' && chars[start] != '2' {
+            continue;
         }
+        if start + 1 >= n || chars[start + 1] != '-' {
+            continue;
+        }
+        // 区: \d{1,2} の直後に '-'（正規表現の貪欲一致＋バックトラックを再現。
+        // 2桁を先に試し、ダメなら1桁）。
+        let Some(ku_hyphen) = match_digits_then_hyphen(&chars, start + 2) else {
+            continue;
+        };
+        // 点: \d{1,2}（貪欲に最大2桁、後続の制約なし）。1桁以上必須。
+        let ten_start = ku_hyphen + 1;
+        let mut j = ten_start;
+        while j < n && j - ten_start < 2 && chars[j].is_ascii_digit() {
+            j += 1;
+        }
+        if j == ten_start {
+            continue;
+        }
+        return Some(chars[start..j].iter().collect());
     }
 
+    None
+}
+
+/// `pos` から数字を貪欲に 1〜2 桁読み、その直後が '-' ならその '-' の位置を返す。
+/// 参照実装の正規表現 `\d{1,2}-` のバックトラック（2桁優先、ダメなら1桁）を再現。
+fn match_digits_then_hyphen(chars: &[char], pos: usize) -> Option<usize> {
+    let n = chars.len();
+    // 2桁 + '-'
+    if pos + 2 < n
+        && chars[pos].is_ascii_digit()
+        && chars[pos + 1].is_ascii_digit()
+        && chars[pos + 2] == '-'
+    {
+        return Some(pos + 2);
+    }
+    // 1桁 + '-'
+    if pos + 1 < n && chars[pos].is_ascii_digit() && chars[pos + 1] == '-' {
+        return Some(pos + 1);
+    }
     None
 }
 
@@ -185,6 +183,29 @@ mod tests {
             Some("2-14-75".to_string())
         );
         assert_eq!(extract_jis_code("テスト"), None);
+    }
+
+    #[test]
+    fn test_extract_jis_code_rejects_invalid_men() {
+        // 参照実装 kuten2png は /[12]-\d{1,2}-\d{1,2}/ にしか一致しないので、
+        // 面が 1・2 以外（24 など）や3桁以上のものは句点コードにしない。
+        // 24-1-3 は底本位置参照であって句点コードではない → 画像化されず注記のまま。
+        assert_eq!(extract_jis_code("「未」の「二」に代えて「三」、24-1-3"), None);
+        assert_eq!(extract_jis_code("説明、3-14-11"), None); // 面3は無効
+        assert_eq!(extract_jis_code("説明、4-94-51"), None); // 面4は無効
+        // 面が 1・2 の正しい句点コードは従来どおり拾う。
+        assert_eq!(
+            extract_jis_code("「にんべん＋憂」、第3水準1-14-11"),
+            Some("1-14-11".to_string())
+        );
+        assert_eq!(
+            extract_jis_code("説明、2-94-51"),
+            Some("2-94-51".to_string())
+        );
+        // 区・点は1〜2桁。1桁でも拾う。
+        assert_eq!(extract_jis_code("説明、1-2-3"), Some("1-2-3".to_string()));
+        // 面が多桁でも内部に [12]-\d{1,2}-\d{1,2} を含まなければ不一致。
+        assert_eq!(extract_jis_code("24-1-3"), None);
     }
 
     #[test]
