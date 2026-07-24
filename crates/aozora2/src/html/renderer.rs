@@ -31,10 +31,14 @@ pub struct HtmlRenderer {
 fn nodes_have_inline_text(nodes: &[Node]) -> bool {
     nodes.iter().any(|n| match n {
         Node::Text(s) => !s.is_empty(),
+        // ブロック制御ノードと注記はテキスト（空でない String）を持たない扱い。
+        // 参照実装では ［＃改ページ］等の注記だけの行は blank_type が true になり
+        // ぶら下げで包まれず <br /> になる。
         Node::BlockStart { .. }
         | Node::BlockEnd { .. }
         | Node::Midashi { .. }
-        | Node::LineJisage { .. } => false,
+        | Node::LineJisage { .. }
+        | Node::Note(_) => false,
         _ => true,
     })
 }
