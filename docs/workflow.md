@@ -277,10 +277,31 @@ CRC 不良 zip 等の処理不能、残差 different 259）。
 参照実装の `(\d*)字下げ` に合わせ `extract_number_before` で単位キーワード
 直前の数字だけを取るよう修正（burasage +2、字下げ +4）。
 
-**残差の現状（byte-exact 17204/17509 = 98.26%, error 56, different 249）**:
+**残差の現状（byte-exact 17221/17509 = 98.36%, error 56, different 232）**:
 2026-07 のループAで潰した一般バグ: ヘッダのエスケープ（Quirk, +13）、
 幅の数字連結（burasage +2 / 字下げ +4）、字下げ幅の漢数字化（+2、校正注記
 `一字下げ忘れか？` の誤コマンド化も解消）、ブロック終止の仮名「おわり」受理（+2）。
+
+**burasage per-line モデル移植（2026-07, 段2c 最大リスク着手）**: 参照実装
+general_output の per-line indent-stack モデルを移植。真理値表 A〜G を実測し、
+以下を修正（合計 +17）:
+- 行の包み判定を出力HTML（classify_line）から AST 由来の has_inline_text
+  （blank_type 相当）へ。`テキスト［＃地付き］右` のような行中インラインブロックを
+  含む行も包める（000072 脚本群、改善19・悪化0）。
+- 行中インラインブロックが close_related_blocks で burasage を閉じる不具合を
+  is_block=true 限定で修正。close_inline_blocks を包み判定前に line_html へ取り込み。
+- コンマなし `折り返してN字下げ` の幅を空に（find_burasage_context を Option 化）。
+- burasage は最上位ブロックのときだけ包む（入れ子横組み等の内側を包まない）。
+
+**確定した限界（入れ子ブロック閉じ行の空 burasage div）**: 参照は横組み/小さな文字
+等が burasage 内で閉じる行を、閉じタグを String 扱いして空の
+`<div class="burasage"></div>` で包む（真理値表 E/G）。これを
+`line_html.starts_with("</")` で近似実装したところ悪化162（正常な閉じ行を
+誤って包む）で revert。出力HTMLからは String/Multiline を区別できず、
+参照の TagObject 型モデルを持たない限り安全に再現できない。残差 different の
+かなりの割合がこのエッジ。将来やるなら renderer が per-line のトークン列
+（String/Multiline/OnelineIndent の型）を保持する構造へ作り替える必要がある。
+
 different を再クラスタした結果、大きく2群:
 - **burasage モデル（約72件）**: no-comma 時の空幅・入れ子ブロック内での
   非包み・ブロック境界の空 burasage div など、参照の per-line indent-stack
