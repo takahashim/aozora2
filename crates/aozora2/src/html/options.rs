@@ -36,6 +36,11 @@ pub struct Quirks {
     /// も対応する CSS 規則が無いので、意味の無い出力になる。オフにすると空幅を
     /// 出さず妥当な CSS にする（jisage は `class="jisage"`、ぶら下げは margin-left 0）。
     pub empty_indent_css: bool,
+    /// 参照実装 Tag::Img は alt 属性を素の文字列のまま出力し `&<>"` を
+    /// エスケープしない（`alt="#{@alt}"`）。キャプションに `"` を含むと属性値が
+    /// 途中で閉じるなど不正な HTML になる（例: `alt="…from "The Triumph of Death"…"`）。
+    /// オフにすると alt を HTML エスケープして妥当な属性値にする。
+    pub raw_image_alt: bool,
 }
 
 impl Default for Quirks {
@@ -47,6 +52,7 @@ impl Default for Quirks {
             accent_name_typos: true,
             raw_header_metadata: true,
             empty_indent_css: true,
+            raw_image_alt: true,
         }
     }
 }
@@ -60,6 +66,7 @@ impl Quirks {
             accent_name_typos: false,
             raw_header_metadata: false,
             empty_indent_css: false,
+            raw_image_alt: false,
         }
     }
 }

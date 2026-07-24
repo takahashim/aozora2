@@ -101,6 +101,27 @@ mod tests {
         );
     }
 
+    /// quirk raw_image_alt: 参照実装 Tag::Img は alt を無エスケープで出す。
+    /// キャプションに `"` や `&` を含むと属性値が壊れる不正な HTML になる。
+    /// 既定（オン）では再現し、オフでは HTML エスケープする。
+    #[test]
+    fn test_raw_image_alt_quirk() {
+        let src =
+            "タイトル\r\n\r\n［＃「from \"X\" & Y」のキャプション付きの図（fig001_01.png、横1×縦1）入る］";
+
+        let on = convert(src, &RenderOptions::default());
+        assert!(
+            on.contains("alt=\"「from \"X\" & Y」のキャプション付きの図\""),
+            "実際: {on}"
+        );
+
+        let off = convert(src, &RenderOptions::new().with_quirks(Quirks::none()));
+        assert!(
+            off.contains("alt=\"「from &quot;X&quot; &amp; Y」のキャプション付きの図\""),
+            "実際: {off}"
+        );
+    }
+
     /// quirk empty_image_dimensions: 幅・高さのない画像で参照実装は
     /// width="" height="" と空の属性を出す。既定（オン）では再現し、
     /// オフでは幅・高さの属性を出さない。

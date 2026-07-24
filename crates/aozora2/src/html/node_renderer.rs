@@ -716,11 +716,14 @@ impl<'a> NodeRenderer<'a> {
             d
         };
 
-        format!(
-            "<img class=\"{class}\"{dimensions} src=\"{}\" alt=\"{}\" />",
-            filename,
+        // 参照実装 Tag::Img は alt を無エスケープで出す（quirk raw_image_alt）。
+        // オフのときだけ規格どおり HTML エスケープする。
+        let alt_out = if self.options.quirks.raw_image_alt {
+            alt.to_string()
+        } else {
             html_escape(alt)
-        )
+        };
+        format!("<img class=\"{class}\"{dimensions} src=\"{}\" alt=\"{}\" />", filename, alt_out)
     }
 }
 

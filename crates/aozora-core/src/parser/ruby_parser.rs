@@ -309,7 +309,7 @@ mod tests {
             Node::text("持っている。"),
             Node::Style {
                 children: vec![Node::text("公事根源")],
-                style_type: crate::node::StyleType::Shatai,
+                style_type: crate::node::StyleType::Italic,
             },
         ];
         let (remaining, base) = extract_ruby_base_from_nodes(&nodes).unwrap();
