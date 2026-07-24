@@ -3,6 +3,8 @@
 //! 画像、返り点、送り仮名などの特殊コマンドを解析します。
 
 use super::command_parser::CommandResult;
+use once_cell::sync::Lazy;
+use regex::Regex;
 
 /// 画像コマンドを解析
 pub fn try_parse_image(content: &str) -> Option<CommandResult> {
@@ -52,28 +54,11 @@ fn is_image_filename(filename: &str) -> bool {
 /// 注記内に `fig<数字>_<数字>.png` を含むかどうか（画像コマンド判定用）。
 /// 参照はこのパターンで画像ルートへ回すため、`PAT_IMAGE`（`）入る`）が
 /// 末尾アンカー無しで一致すれば、`入る` の後ろに `。` 等が続いても画像化される。
+/// Ruby(SJIS) の `\d` は ASCII 0-9 のみなので `[0-9]` で固定する。
+static PAT_FIG_PNG: Lazy<Regex> = Lazy::new(|| Regex::new(r"fig[0-9]+_[0-9]+\.png").unwrap());
+
 pub fn contains_fig_png(content: &str) -> bool {
-    let bytes = content.as_bytes();
-    let mut i = 0;
-    while let Some(rel) = content[i..].find("fig") {
-        let mut p = i + rel + 3;
-        let d1 = p;
-        while p < bytes.len() && bytes[p].is_ascii_digit() {
-            p += 1;
-        }
-        if p > d1 && p < bytes.len() && bytes[p] == b'_' {
-            p += 1;
-            let d2 = p;
-            while p < bytes.len() && bytes[p].is_ascii_digit() {
-                p += 1;
-            }
-            if p > d2 && content[p..].starts_with(".png") {
-                return true;
-            }
-        }
-        i += rel + 3;
-    }
-    false
+    PAT_FIG_PNG.is_match(content)
 }
 
 /// 画像サイズを解析

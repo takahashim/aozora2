@@ -1,6 +1,18 @@
 //! 外字（JIS外文字）の変換
 
 use crate::jis_table::{jis_to_unicode, normalize_jis_code};
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+/// 参照実装 kuten2png の句点コード判定 `/[12]-\d{1,2}-\d{1,2}/`。
+/// Ruby(SJIS) の `\d` は ASCII 0-9 のみなので `[0-9]` で固定する
+/// （Rust regex の `\d` は全角０-９も拾うため）。
+static PAT_KUTEN_CODE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"[12]-[0-9]{1,2}-[0-9]{1,2}").unwrap());
+/// 参照 NON_0213_GAIJI。含む場合は画像化しない。
+static NON_0213_GAIJI: &str = "非0213外字";
+/// 参照 PAT_KUTEN_DUAL `※.*※`。※ が2つ以上ある説明は画像化しない。
+static PAT_KUTEN_DUAL: Lazy<Regex> = Lazy::new(|| Regex::new(r"※.*※").unwrap());
 
 /// 外字説明からUnicode文字列に変換
 ///
@@ -116,60 +128,17 @@ fn extract_unicode(description: &str) -> Option<char> {
 /// 注記のまま出る。従来は `\d+-\d+-\d+` を無条件に拾って `24-1-3` まで画像化
 /// していたためオラクルと乖離していた。
 fn extract_jis_code(description: &str) -> Option<String> {
-    // 参照実装 kuten2png は説明に NON_0213_GAIJI = 「非0213外字」を含む場合、
-    // たとえ [12]-\d{1,2}-\d{1,2} に見える部分（つくりの水準参照など）があっても
-    // 画像化しない（注記のまま出す）。例:
-    // ※［＃非0213外字：「厂＋菫」、ただし「菫」は第3水準1-92-16のつくりの形、…］
-    if description.contains("非0213外字") {
+    // 参照実装 kuten2png と同じ判定:
+    //   matched = desc.match(/[12]-\d{1,2}-\d{1,2}/)
+    //   if matched && !desc.match?(NON_0213_GAIJI) && !desc.match?(PAT_KUTEN_DUAL)
+    // - NON_0213_GAIJI「非0213外字」: つくりの水準参照 1-92-16 等があっても画像化しない。
+    // - PAT_KUTEN_DUAL「※.*※」: ※ が2つ以上ある説明は画像化しない。
+    if description.contains(NON_0213_GAIJI) || PAT_KUTEN_DUAL.is_match(description) {
         return None;
     }
-    let chars: Vec<char> = description.chars().collect();
-    let n = chars.len();
-    for start in 0..n {
-        // 面: [12]（1桁）。直後は '-'。
-        if chars[start] != '1' && chars[start] != '2' {
-            continue;
-        }
-        if start + 1 >= n || chars[start + 1] != '-' {
-            continue;
-        }
-        // 区: \d{1,2} の直後に '-'（正規表現の貪欲一致＋バックトラックを再現。
-        // 2桁を先に試し、ダメなら1桁）。
-        let Some(ku_hyphen) = match_digits_then_hyphen(&chars, start + 2) else {
-            continue;
-        };
-        // 点: \d{1,2}（貪欲に最大2桁、後続の制約なし）。1桁以上必須。
-        let ten_start = ku_hyphen + 1;
-        let mut j = ten_start;
-        while j < n && j - ten_start < 2 && chars[j].is_ascii_digit() {
-            j += 1;
-        }
-        if j == ten_start {
-            continue;
-        }
-        return Some(chars[start..j].iter().collect());
-    }
-
-    None
-}
-
-/// `pos` から数字を貪欲に 1〜2 桁読み、その直後が '-' ならその '-' の位置を返す。
-/// 参照実装の正規表現 `\d{1,2}-` のバックトラック（2桁優先、ダメなら1桁）を再現。
-fn match_digits_then_hyphen(chars: &[char], pos: usize) -> Option<usize> {
-    let n = chars.len();
-    // 2桁 + '-'
-    if pos + 2 < n
-        && chars[pos].is_ascii_digit()
-        && chars[pos + 1].is_ascii_digit()
-        && chars[pos + 2] == '-'
-    {
-        return Some(pos + 2);
-    }
-    // 1桁 + '-'
-    if pos + 1 < n && chars[pos].is_ascii_digit() && chars[pos + 1] == '-' {
-        return Some(pos + 1);
-    }
-    None
+    PAT_KUTEN_CODE
+        .find(description)
+        .map(|m| m.as_str().to_string())
 }
 
 #[cfg(test)]
@@ -244,6 +213,20 @@ mod tests {
         assert_eq!(extract_jis_code("説明、1-2-3"), Some("1-2-3".to_string()));
         // 面が多桁でも内部に [12]-\d{1,2}-\d{1,2} を含まなければ不一致。
         assert_eq!(extract_jis_code("24-1-3"), None);
+    }
+
+    #[test]
+    fn test_extract_jis_code_rejects_dual_gaiji() {
+        // 参照 PAT_KUTEN_DUAL「※.*※」: ※ が2つ以上ある説明は句点コードにしない。
+        assert_eq!(
+            extract_jis_code("「※」の左に「※」、1-2-22"),
+            None
+        );
+        // ※ が1つ以下なら従来どおり拾う。
+        assert_eq!(
+            extract_jis_code("「※」に代わる字、1-2-22"),
+            Some("1-2-22".to_string())
+        );
     }
 
     #[test]
