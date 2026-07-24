@@ -246,10 +246,17 @@ impl HtmlRenderer {
 
         let mut output = node_renderer.render_nodes(&nodes, block_manager);
 
-        // 行単位地付き: 行の終わりで、その行で開いたブロックを閉じる
-        let is_line_scope_block = line.starts_with("［＃")
-            && !line.contains("ここから")
-            && (line.contains("地付き") || line.contains("地から"));
+        // 行単位地付き/地から（LineChitsuki）: 行頭のコマンドでその行だけの
+        // ブロックを開き、行末で閉じる。パーサが行スコープ（is_block=false）と
+        // ブロックスコープ（［＃ここから…］= is_block=true）を型で区別済みなので、
+        // 生文字列を詮索せず先頭ノードで判定する（本文中の「地付き」に誤反応しない）。
+        let is_line_scope_block = matches!(
+            nodes.first(),
+            Some(Node::BlockStart {
+                block_type: BlockType::Chitsuki,
+                params,
+            }) if !params.is_block
+        );
 
         if is_line_scope_block {
             let popped = block_manager.pop_to_length(stack_len_before);
