@@ -571,7 +571,7 @@ impl<'a> NodeRenderer<'a> {
                 // JISコードがないので画像化できない → 注記として出力。
                 // 参照実装の escape_gaiji は「入力者による注」のフラグを立てないので、
                 // ここでも has_notes は立てない。
-                self.add_unconverted_gaiji(description);
+                self.add_unconverted_gaiji(description, had_igeta);
                 return format!(
                     "{}<span class=\"notes\">［{}{}］</span>",
                     self.gaiji_mark_prefix(),
@@ -601,7 +601,7 @@ impl<'a> NodeRenderer<'a> {
                 if self.options.use_unicode {
                     s.chars().map(|c| format!("&#{};", c as u32)).collect()
                 } else {
-                    self.add_unconverted_gaiji(description);
+                    self.add_unconverted_gaiji(description, had_igeta);
                     format!(
                         "{}<span class=\"notes\">［{}{}］</span>",
                         self.gaiji_mark_prefix(),
@@ -638,7 +638,7 @@ impl<'a> NodeRenderer<'a> {
                 )
             }
             GaijiResult::Unconvertible => {
-                self.add_unconverted_gaiji(description);
+                self.add_unconverted_gaiji(description, had_igeta);
                 format!(
                     "{}<span class=\"notes\">［{}{}］</span>",
                     self.gaiji_mark_prefix(),
@@ -650,15 +650,22 @@ impl<'a> NodeRenderer<'a> {
     }
 
     /// 未変換外字を外字一覧に記録する。同じ外字が複数回現れたら出現箇所を追記する。
-    fn add_unconverted_gaiji(&mut self, description: &str) {
-        // descriptionを最後の「、」で外字説明とページ-行数に分解する。
-        // 参照実装の PAT_GAIJI は「、」を必須とするので、「、」がなければどちらも空。
-        let (gaiji_name, page_line) = match description.rfind('、') {
-            Some(pos) => (
-                description[..pos].to_string(),
-                description[pos + '、'.len_utf8()..].to_string(),
-            ),
-            None => (String::new(), String::new()),
+    fn add_unconverted_gaiji(&mut self, description: &str, had_igeta: bool) {
+        // 参照実装 escape_gaiji は command を PAT_GAIJI = /(?:＃)(.*)(?:、)(.*)/ で
+        // 分解する。先頭の ＃ が必須なので、＃無し外字（※［...］）ではマッチが失敗し
+        // kanji=nil, line=nil（＝外字一覧の名前・行が空セル）になる。これを再現する。
+        let (gaiji_name, page_line) = if !had_igeta {
+            (String::new(), String::new())
+        } else {
+            // descriptionを最後の「、」で外字説明とページ-行数に分解する。
+            // 参照実装の PAT_GAIJI は「、」を必須とするので、「、」がなければどちらも空。
+            match description.rfind('、') {
+                Some(pos) => (
+                    description[..pos].to_string(),
+                    description[pos + '、'.len_utf8()..].to_string(),
+                ),
+                None => (String::new(), String::new()),
+            }
         };
 
         if let Some(existing) = self
