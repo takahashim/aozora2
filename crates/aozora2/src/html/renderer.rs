@@ -54,6 +54,11 @@ fn nodes_have_inline_text(nodes: &[Node]) -> bool {
         | Node::Ruby { .. }
         | Node::Style { .. }
         | Node::FontSize { .. }
+        // 前方参照の縦中横（「32」は縦中横）は対象を Node::Tcy に取り込むので
+        // 行全体がそれだけなら String を残さず包まれない。明示形
+        // ［＃縦中横］32［＃縦中横終わり］は BlockStart/BlockEnd＋Text になり、
+        // Text が残るので従来どおり包まれる（Node::Tcy にはならない）。
+        | Node::Tcy { .. }
         | Node::Note(_) => false,
         _ => true,
     })
@@ -617,6 +622,30 @@ mod tests {
             html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">半分<span class=\"futoji\">太字</span>のこり</div>")
                 || html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">半分太字<span class=\"futoji\">太字</span>のこり</div>"),
             "平文＋装飾の行が包まれていない: {html}"
+        );
+    }
+
+    #[test]
+    fn test_burasage_tcy_frontref_vs_explicit() {
+        // 前方参照の縦中横（「32」は縦中横）は対象をタグに取り込むので、行全体が
+        // それだけなら包まれず <br />。明示形 ［＃縦中横］32［＃縦中横終わり］は
+        // 32 が String として残るので従来どおり包まれる。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから１字下げ、折り返して３字下げ］\r\n\
+            32［＃「32」は縦中横］\r\n\
+            ［＃縦中横］32［＃縦中横終わり］\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        // 前方参照形: 包まれず <br />
+        assert!(
+            html.contains("<span dir=\"ltr\">32</span><br />"),
+            "前方参照の縦中横だけの行が包まれず <br /> になっていない: {html}"
+        );
+        // 明示形: burasage で包まれる
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\"><span dir=\"ltr\">32</span></div>"),
+            "明示形の縦中横の行が包まれていない: {html}"
         );
     }
 
