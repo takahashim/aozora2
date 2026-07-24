@@ -30,6 +30,7 @@ pub fn generate_block_start_tag(
         BlockType::FontSho => generate_font_sho_start(params),
         BlockType::Tcy => "<span dir=\"ltr\">".to_string(),
         BlockType::Caption => generate_caption_start(params),
+        BlockType::Warigaki => generate_warigaki_start(params),
         BlockType::Warichu => generate_warichu_start(params),
         BlockType::Burasage => generate_burasage_start(params),
         BlockType::Style => generate_style_block_start(params),
@@ -53,6 +54,7 @@ pub fn generate_block_end_tag(block_type: &BlockType, params: &BlockParams) -> S
         BlockType::FontDai | BlockType::FontSho => generate_font_end(params),
         BlockType::Tcy => "</span>".to_string(),
         BlockType::Caption => generate_caption_end(params),
+        BlockType::Warigaki => generate_warigaki_end(params),
         BlockType::Warichu => generate_warichu_end(params),
         BlockType::Style => generate_style_block_end(params),
         // 注記付き範囲はパース段階でRubyノードに解決されるので、ここには来ない
@@ -110,6 +112,17 @@ fn generate_yokogumi_start(params: &BlockParams) -> String {
     } else {
         "<span class=\"yokogumi\">".to_string()
     }
+}
+
+/// 割書開始。参照 WARIGAKI_COMMAND は style_stack に積むインラインスタイルで、
+/// 常に <span class="warigaki"> を出す（yokogumi 等と同様）。
+fn generate_warigaki_start(_params: &BlockParams) -> String {
+    "<span class=\"warigaki\">".to_string()
+}
+
+/// 割書終了。style_stack のクローズは常に </span>。
+fn generate_warigaki_end(_params: &BlockParams) -> String {
+    "</span>".to_string()
 }
 
 fn generate_yokogumi_end(params: &BlockParams) -> String {

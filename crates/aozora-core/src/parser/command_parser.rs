@@ -308,6 +308,14 @@ pub fn parse_command(content: &str) -> CommandResult {
         };
     }
 
+    // 13.7. 割書（インライン）。参照 WARIGAKI_COMMAND='割書' → <span class="warigaki">。
+    if content == "割書" {
+        return CommandResult::BlockStart {
+            block_type: BlockType::Warigaki,
+            params: BlockParams::default(),
+        };
+    }
+
     // 14. 装飾開始
     if let Some(style_type) = StyleType::from_command(content) {
         return CommandResult::StyleStart { style_type };
@@ -597,6 +605,26 @@ mod tests {
     fn test_parse_warichu() {
         assert_eq!(parse_command("割り注"), CommandResult::WarichuStart);
         assert_eq!(parse_command("割り注終わり"), CommandResult::WarichuEnd);
+    }
+
+    #[test]
+    fn test_parse_warigaki() {
+        // 参照 WARIGAKI_COMMAND='割書' はインラインスタイル（<span class="warigaki">）。
+        // 割り注(warichu)とは別コマンド。
+        assert_eq!(
+            parse_command("割書"),
+            CommandResult::BlockStart {
+                block_type: BlockType::Warigaki,
+                params: BlockParams::default(),
+            }
+        );
+        assert_eq!(
+            parse_command("割書終わり"),
+            CommandResult::BlockEnd {
+                block_type: BlockType::Warigaki,
+                explicit: false,
+            }
+        );
     }
 
     #[test]

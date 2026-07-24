@@ -29,6 +29,8 @@ pub enum BlockType {
     Tcy,
     /// キャプション
     Caption,
+    /// 割書（<span class="warigaki">）。参照 WARIGAKI_COMMAND='割書'。
+    Warigaki,
     /// 割り注
     Warichu,
     /// ぶら下げ（折り返し字下げ）
@@ -76,6 +78,9 @@ impl BlockType {
             Some(BlockType::Tcy)
         } else if command.contains("キャプション") {
             Some(BlockType::Caption)
+        // 「割り注」より先に「割書」を判定（部分文字列の取り違え防止）。
+        } else if command.contains("割書") {
+            Some(BlockType::Warigaki)
         } else if command.contains("割り注") {
             Some(BlockType::Warichu)
         } else {
