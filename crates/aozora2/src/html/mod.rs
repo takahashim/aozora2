@@ -168,6 +168,17 @@ mod tests {
         );
     }
 
+    /// 画像の説明に「写真」を含めば photo クラス、含まなければ illustration クラス
+    #[test]
+    fn test_image_class_is_photo_only_when_alt_mentions_photo() {
+        let html = convert(
+            "タイトル\r\n\r\n［＃人物写真（fig01_01.png）入る］\r\n［＃地図（fig01_02.png）入る］",
+            &RenderOptions::default(),
+        );
+        assert!(html.contains("<img class=\"photo\""), "実際: {html}");
+        assert!(html.contains("<img class=\"illustration\""), "実際: {html}");
+    }
+
     /// くの字点は文字をそのまま出力し、「表記について」に注記を足す
     #[test]
     fn test_kunoji_note() {
