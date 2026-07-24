@@ -69,6 +69,38 @@ mod tests {
         );
     }
 
+    /// quirk raw_header_metadata: 参照実装はタイトル・著者を生のまま出し
+    /// `&<>"` をエスケープしない。既定（オン）では再現し、オフでは
+    /// エスケープする。
+    #[test]
+    fn test_raw_header_metadata_quirk() {
+        let src = "THE \"DOOM\" SERIES\r\n著者<A&B>\r\n\r\n本文\r\n";
+
+        let on = convert(src, &RenderOptions::default());
+        assert!(
+            on.contains("<h1 class=\"title\">THE \"DOOM\" SERIES</h1>"),
+            "実際: {on}"
+        );
+        assert!(
+            on.contains("<h2 class=\"author\">著者<A&B></h2>"),
+            "実際: {on}"
+        );
+        assert!(
+            on.contains("<meta name=\"DC.Title\" content=\"THE \"DOOM\" SERIES\" />"),
+            "実際: {on}"
+        );
+
+        let off = convert(src, &RenderOptions::new().with_quirks(Quirks::none()));
+        assert!(
+            off.contains("<h1 class=\"title\">THE &quot;DOOM&quot; SERIES</h1>"),
+            "実際: {off}"
+        );
+        assert!(
+            off.contains("<h2 class=\"author\">著者&lt;A&amp;B&gt;</h2>"),
+            "実際: {off}"
+        );
+    }
+
     /// quirk empty_image_dimensions: 幅・高さのない画像で参照実装は
     /// width="" height="" と空の属性を出す。既定（オン）では再現し、
     /// オフでは幅・高さの属性を出さない。

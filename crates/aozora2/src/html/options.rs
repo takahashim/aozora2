@@ -24,6 +24,11 @@ pub struct Quirks {
     /// （E^〜U^ は「…付きE」等と字母付きなので、A^ だけの誤植）。
     /// オフにすると「サーカムフレックスアクセント付きA」に訂正する。
     pub accent_name_typos: bool,
+    /// 参照実装はヘッダのタイトル・著者等（h1.title / h2.author など、および
+    /// DC.Title / DC.Creator メタ）を素の文字列のまま出力し、`&<>"` を
+    /// エスケープしない。タイトルに `"` を含む場合、meta 属性値が壊れるなど
+    /// 規格上不正な HTML になりうる。オフにするとこれらをエスケープする。
+    pub raw_header_metadata: bool,
 }
 
 impl Default for Quirks {
@@ -33,6 +38,7 @@ impl Default for Quirks {
             nested_gaiji_in_alt: true,
             empty_image_dimensions: true,
             accent_name_typos: true,
+            raw_header_metadata: true,
         }
     }
 }
@@ -44,6 +50,7 @@ impl Quirks {
             nested_gaiji_in_alt: false,
             empty_image_dimensions: false,
             accent_name_typos: false,
+            raw_header_metadata: false,
         }
     }
 }

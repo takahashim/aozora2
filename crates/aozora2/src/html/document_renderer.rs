@@ -23,6 +23,16 @@ impl<'a> DocumentRenderer<'a> {
         Self { options }
     }
 
+    /// ヘッダのタイトル・著者等をエスケープする。参照実装は生のまま出すので、
+    /// Quirk `raw_header_metadata` がオンのときはエスケープしない。
+    fn header_text(&self, s: &str) -> String {
+        if self.options.quirks.raw_header_metadata {
+            s.to_string()
+        } else {
+            html_escape(s)
+        }
+    }
+
     /// HTMLヘッダーを出力
     pub fn render_html_head(&self, output: &mut String, header_info: &HeaderInfo) {
         // XML宣言とDOCTYPE
@@ -47,7 +57,7 @@ impl<'a> DocumentRenderer<'a> {
 
         // タイトル
         let html_title = if let Some(title) = &self.options.title {
-            html_escape(title)
+            self.header_text(title)
         } else {
             header_info.html_title()
         };
@@ -66,11 +76,11 @@ impl<'a> DocumentRenderer<'a> {
         let dc_creator = header_info.author.as_deref().unwrap_or("");
         output.push_str(&format!(
             "\t<meta name=\"DC.Title\" content=\"{}\" />\r\n",
-            html_escape(dc_title)
+            self.header_text(dc_title)
         ));
         output.push_str(&format!(
             "\t<meta name=\"DC.Creator\" content=\"{}\" />\r\n",
-            html_escape(dc_creator)
+            self.header_text(dc_creator)
         ));
         output.push_str(&format!(
             "\t<meta name=\"DC.Publisher\" content=\"{}\" />\r\n",
@@ -88,56 +98,56 @@ impl<'a> DocumentRenderer<'a> {
         if let Some(title) = &header_info.title {
             output.push_str(&format!(
                 "<h1 class=\"title\">{}</h1>\r\n",
-                html_escape(title)
+                self.header_text(title)
             ));
         }
 
         if let Some(original_title) = &header_info.original_title {
             output.push_str(&format!(
                 "<h2 class=\"original_title\">{}</h2>\r\n",
-                html_escape(original_title)
+                self.header_text(original_title)
             ));
         }
 
         if let Some(subtitle) = &header_info.subtitle {
             output.push_str(&format!(
                 "<h2 class=\"subtitle\">{}</h2>\r\n",
-                html_escape(subtitle)
+                self.header_text(subtitle)
             ));
         }
 
         if let Some(original_subtitle) = &header_info.original_subtitle {
             output.push_str(&format!(
                 "<h2 class=\"original_subtitle\">{}</h2>\r\n",
-                html_escape(original_subtitle)
+                self.header_text(original_subtitle)
             ));
         }
 
         if let Some(author) = &header_info.author {
             output.push_str(&format!(
                 "<h2 class=\"author\">{}</h2>\r\n",
-                html_escape(author)
+                self.header_text(author)
             ));
         }
 
         if let Some(editor) = &header_info.editor {
             output.push_str(&format!(
                 "<h2 class=\"editor\">{}</h2>\r\n",
-                html_escape(editor)
+                self.header_text(editor)
             ));
         }
 
         if let Some(translator) = &header_info.translator {
             output.push_str(&format!(
                 "<h2 class=\"translator\">{}</h2>\r\n",
-                html_escape(translator)
+                self.header_text(translator)
             ));
         }
 
         if let Some(henyaku) = &header_info.henyaku {
             output.push_str(&format!(
                 "<h2 class=\"editor-translator\">{}</h2>\r\n",
-                html_escape(henyaku)
+                self.header_text(henyaku)
             ));
         }
 
