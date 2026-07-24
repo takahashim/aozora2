@@ -127,6 +127,19 @@ impl<'a> NodeRenderer<'a> {
         out
     }
 
+    /// アクセント文字の説明文（画像の alt に入る）。
+    ///
+    /// 参照実装の表は A^（サーカムフレックス付き A）の説明で字母 A を落として
+    /// いる。quirk `accent_name_typos` がオフのときだけこれを訂正する。
+    /// 対象の buggy な文字列は他と重複しないので、文字列一致で判定できる。
+    fn accent_name(&self, name: &str) -> String {
+        if !self.options.quirks.accent_name_typos && name == "サーカムフレックスアクセント付き"
+        {
+            return "サーカムフレックスアクセント付きA".to_string();
+        }
+        name.to_string()
+    }
+
     /// 画像化できない外字の直前に置く外字記号。
     /// 本文セクションで、かつルビの親文字の外にあるときだけ付く。
     fn gaiji_mark_prefix(&self) -> &'static str {
@@ -219,7 +232,7 @@ impl<'a> NodeRenderer<'a> {
                         self.options.gaiji_dir,
                         folder,
                         file,
-                        html_escape(name)
+                        html_escape(&self.accent_name(name))
                     )
                 }
             }

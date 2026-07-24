@@ -50,6 +50,25 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
 mod tests {
     use super::*;
 
+    /// quirk accent_name_typos: 参照実装の表は A^ の説明で字母 A を落としている。
+    /// 既定（オン）では再現し、オフでは「…付きA」に訂正する。
+    #[test]
+    fn test_accent_name_typo_quirk() {
+        let src = "タイトル\r\n\r\n〔A^〕";
+
+        let on = convert(src, &RenderOptions::default());
+        assert!(
+            on.contains("※(サーカムフレックスアクセント付き)"),
+            "実際: {on}"
+        );
+
+        let off = convert(src, &RenderOptions::new().with_quirks(Quirks::none()));
+        assert!(
+            off.contains("※(サーカムフレックスアクセント付きA)"),
+            "実際: {off}"
+        );
+    }
+
     /// quirk empty_image_dimensions: 幅・高さのない画像で参照実装は
     /// width="" height="" と空の属性を出す。既定（オン）では再現し、
     /// オフでは幅・高さの属性を出さない。

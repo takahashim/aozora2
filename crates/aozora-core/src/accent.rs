@@ -257,7 +257,8 @@ mod tests {
         assert_eq!(accent_name("oe&"), "リガチャOE小文字");
         // エスツェット。規則どおりなら「アクセント付きS小文字」になってしまう
         assert_eq!(accent_name("s&"), "ドイツ語エスツェット");
-        // 参照実装の表記ゆれ（A が落ちている）もそのまま再現する
+        // 参照実装の表記ゆれ（A^ だけ字母 A が落ちている）もデータどおり再現する。
+        // 訂正は quirk accent_name_typos オフ時にレンダラ側で行う。
         assert_eq!(accent_name("A^"), "サーカムフレックスアクセント付き");
         assert_eq!(accent_name("!@"), "逆感嘆符");
     }

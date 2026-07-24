@@ -19,6 +19,11 @@ pub struct Quirks {
     /// 空の属性を出す（Ruby の nil 展開の副産物で、意味のない属性）。
     /// オフにすると幅・高さが指定されたときだけ属性を出す。
     pub empty_image_dimensions: bool,
+    /// 参照実装のアクセント表 accent_table.yml では、サーカムフレックス付き A の
+    /// 説明が「サーカムフレックスアクセント付き」と字母 A を落としている
+    /// （E^〜U^ は「…付きE」等と字母付きなので、A^ だけの誤植）。
+    /// オフにすると「サーカムフレックスアクセント付きA」に訂正する。
+    pub accent_name_typos: bool,
 }
 
 impl Default for Quirks {
@@ -27,6 +32,7 @@ impl Default for Quirks {
         Self {
             nested_gaiji_in_alt: true,
             empty_image_dimensions: true,
+            accent_name_typos: true,
         }
     }
 }
@@ -37,6 +43,7 @@ impl Quirks {
         Self {
             nested_gaiji_in_alt: false,
             empty_image_dimensions: false,
+            accent_name_typos: false,
         }
     }
 }
