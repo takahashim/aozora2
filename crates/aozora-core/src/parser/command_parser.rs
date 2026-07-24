@@ -228,13 +228,13 @@ pub fn parse_command(content: &str) -> CommandResult {
         return parse_block_start(content);
     }
 
-    // 4. ブロック終了: ここで...終わり／…おわり
-    // 参照実装 exec_block_end_command は detect_command_mode でキーワード
-    // （字下げ等）だけを見て閉じるので、終止は「終わり」でも仮名「おわり」でも
-    // よい。ここでは観測された仮名「おわり」も受理する。
-    if content.starts_with("ここで")
-        && (content.ends_with("終わり") || content.ends_with("おわり"))
-    {
+    // 4. ブロック終了: ここで...
+    // 参照実装 dispatch は「ここで」で始まる命令を exec_block_end_command へ回し、
+    // detect_command_mode がキーワード（字下げ等）だけを見て閉じる。終止語（終わり）
+    // の綴りは不問で、「字下げ終り」（送り仮名欠き）や「字下げ終わり」」（余分な 」）
+    // でも字下げ終了になる。よって「ここで」で始まれば parse_block_end に回し、
+    // キーワードが無ければ parse_block_end 側で注記化する。
+    if content.starts_with("ここで") {
         return parse_block_end(content);
     }
 
@@ -536,6 +536,24 @@ mod tests {
                 explicit: true,
             }
         );
+    }
+
+    #[test]
+    fn test_parse_block_end_lenient_suffix() {
+        // 参照 detect_command_mode はキーワードだけで閉じるので、終止語の綴りは不問。
+        // 送り仮名欠き「終り」や余分な 」 でも字下げ終了になる。
+        for cmd in ["ここで字下げ終り", "ここで字下げ終わり」", "ここで字下げ"] {
+            assert_eq!(
+                parse_command(cmd),
+                CommandResult::BlockEnd {
+                    block_type: BlockType::Jisage,
+                    explicit: true,
+                },
+                "{cmd} が字下げ終了にならない"
+            );
+        }
+        // キーワードの無い「ここで…」は注記のまま。
+        assert!(matches!(parse_command("ここで何か"), CommandResult::Note(_)));
     }
 
     #[test]
