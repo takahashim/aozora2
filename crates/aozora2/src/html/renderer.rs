@@ -57,7 +57,7 @@ impl HtmlRenderer {
         // 本文のみ抽出してレンダリング
         let body_lines = extract_body_lines(&lines);
         for line in &body_lines {
-            let (line_html, has_multiline) =
+            let (line_html, has_explicit_close) =
                 self.render_line_with_context(line, &mut node_renderer, &mut block_manager);
 
             // ぶら下げブロック内かどうかをチェック
@@ -94,13 +94,11 @@ impl HtmlRenderer {
             let needs_br = if line_html.is_empty() {
                 // line_htmlが空の場合：元の行が空白行なら<br />を追加
                 true
+            } else if has_explicit_close {
+                // ［＃ここで…終わり］の行は @terprip=false で行末 <br /> を出さない
+                false
             } else if ends_with_div {
                 // 現在の出力がdiv終了タグで終わる場合は<br />不要
-                false
-            } else if has_multiline {
-                // 参照実装 terpri?: 行のバッファに Multiline タグ（ここから…終わりの
-                // ブロック級構文）があれば行末の <br /> を出さない。
-                // 同じ行で開いて閉じた横組みなどが該当する。
                 false
             } else {
                 !is_block_only_line(&line_html)
@@ -174,8 +172,8 @@ impl HtmlRenderer {
     }
 
     /// 1行をHTMLに変換（コンテキスト付き）。
-    /// 戻り値の bool は、その行がブロック級（Multiline）の開始を含んだかどうか
-    /// （参照実装 terpri? 相当。true なら行末の <br /> を出さない）。
+    /// 戻り値の bool は、その行が ［＃ここで…終わり］でブロックを閉じたか
+    /// （参照実装の @terprip=false 相当。true なら行末の <br /> を出さない）。
     fn render_line_with_context(
         &self,
         line: &str,
@@ -191,15 +189,13 @@ impl HtmlRenderer {
         // 行内ルビを解決
         resolve_inline_ruby(&mut nodes);
 
-        // この行でブロック級（ここから…終わり）を開き、かつ同じ行で閉じたか。
-        // 参照実装 terpri? は行のバッファに Multiline タグが残っているかを見るが、
-        // 実際に <br /> が抑制されるのは同一行で開閉したブロック（横組みなど）で、
-        // 複数行にまたがるブロックの開始行はふつうに <br /> が付く。
-        let opened_block = nodes
+        // ［＃ここで…終わり］形式でブロックを閉じた行かどうか。
+        // 参照実装 exec_block_end_command はこの形式で @terprip=false を立て、
+        // その行の行末 <br /> を抑制する（同一行で開閉した横組みや、複数行
+        // ブロックの閉じ行が該当する）。bare ［＃…終わり］は抑制しない。
+        let has_explicit_close = nodes
             .iter()
-            .any(|n| matches!(n, Node::BlockStart { params, .. } if params.is_block));
-        let closed_block = nodes.iter().any(|n| matches!(n, Node::BlockEnd { .. }));
-        let has_multiline = opened_block && closed_block;
+            .any(|n| matches!(n, Node::BlockEnd { params, .. } if params.explicit_close));
 
         // 行単位字下げ ［＃N字下げ］の扱い（参照実装 apply_jisage 相当）
         if let Some(pos) = nodes
@@ -231,7 +227,7 @@ impl HtmlRenderer {
                 format!(
                     "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">{inner}</div>"
                 ),
-                has_multiline,
+                has_explicit_close,
             );
         }
 
@@ -252,7 +248,7 @@ impl HtmlRenderer {
             }
         }
 
-        (output, has_multiline)
+        (output, has_explicit_close)
     }
 
     /// 1行をHTMLに変換（公開API）

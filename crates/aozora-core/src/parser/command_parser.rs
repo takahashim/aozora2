@@ -44,6 +44,8 @@ pub enum CommandResult {
     /// ブロック終了
     BlockEnd {
         block_type: BlockType,
+        /// ［＃ここで…終わり］形式で閉じたか（行末 <br /> を抑制する）
+        explicit: bool,
     },
 
     /// 行単位字下げ
@@ -446,6 +448,7 @@ mod tests {
             result,
             CommandResult::BlockEnd {
                 block_type: BlockType::Jisage,
+                explicit: true,
             }
         );
     }

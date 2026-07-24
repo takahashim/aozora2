@@ -227,9 +227,15 @@ fn parse_command_to_node(content: &str) -> Node {
 
         CommandResult::BlockStart { block_type, params } => Node::BlockStart { block_type, params },
 
-        CommandResult::BlockEnd { block_type } => Node::BlockEnd {
+        CommandResult::BlockEnd {
             block_type,
-            params: BlockParams::default(),
+            explicit,
+        } => Node::BlockEnd {
+            block_type,
+            params: BlockParams {
+                explicit_close: explicit,
+                ..Default::default()
+            },
         },
 
         CommandResult::LineIndent { width } => Node::LineJisage { width },

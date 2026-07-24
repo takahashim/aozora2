@@ -90,7 +90,10 @@ pub fn parse_block_end(content: &str) -> CommandResult {
         .trim_end_matches("終わり");
 
     if let Some(block_type) = BlockType::from_command(content) {
-        CommandResult::BlockEnd { block_type }
+        CommandResult::BlockEnd {
+            block_type,
+            explicit: true,
+        }
     } else {
         CommandResult::Note(format!("ここで{content}終わり"))
     }
@@ -113,9 +116,12 @@ pub fn parse_inline_end(content: &str) -> CommandResult {
         return CommandResult::StyleEnd { style_type };
     }
 
-    // ブロック終了
+    // ブロック終了（bare ［＃…終わり］形式）
     if let Some(block_type) = BlockType::from_command(content) {
-        return CommandResult::BlockEnd { block_type };
+        return CommandResult::BlockEnd {
+            block_type,
+            explicit: false,
+        };
     }
 
     CommandResult::Note(format!("{content}終わり"))
@@ -237,6 +243,7 @@ mod tests {
             result,
             CommandResult::BlockEnd {
                 block_type: BlockType::Jisage,
+                explicit: true,
             }
         );
     }

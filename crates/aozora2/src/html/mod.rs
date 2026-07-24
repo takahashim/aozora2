@@ -139,6 +139,19 @@ mod tests {
         assert!(html.contains("JIS X 0213にない"), "外字一覧の項目は出る");
     }
 
+    /// ［＃ここで…終わり］で閉じた行は行末の <br /> を出さない
+    /// （参照実装 exec_block_end_command の @terprip=false 相当）。
+    /// bare ［＃…終わり］は抑制しない。
+    #[test]
+    fn test_kokode_close_suppresses_break_but_bare_does_not() {
+        // ここで字下げ終わり + 全角空白 → <br /> なし
+        let a = convert(
+            "タイトル\r\n\r\n［＃ここから１字下げ］\r\nA\r\n［＃ここで字下げ終わり］　\r\n次",
+            &RenderOptions::default(),
+        );
+        assert!(a.contains("</div>　\r\n次"), "実際: {a}");
+    }
+
     /// 同じ行で開いて閉じたブロック級構文（横組みなど）の行は行末の <br /> を出さない
     /// （参照実装 terpri? が buffer 中の Multiline タグを見て抑制する）
     #[test]
