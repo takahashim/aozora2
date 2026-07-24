@@ -712,4 +712,16 @@ mod tests {
         assert!(html.contains("<rb>漢字</rb>"));
         assert!(html.contains("<rt>かんじ</rt>"));
     }
+
+    #[test]
+    fn test_okurigana_strips_parens_including_nested_ruby_rp() {
+        // ［＃（保利《ホリ》）］: 参照実装は送り仮名内の全角括弧を除去するので、
+        // 内側ルビの <rp>（</rp>/<rp>）</rp> の括弧まで消え、空の <rp></rp> になる。
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render_line("保利《ホリ》［＃（保利《ホリ》）］");
+        assert!(
+            html.contains("<sup class=\"okurigana\"><ruby><rb>保利</rb><rp></rp><rt>ホリ</rt><rp></rp></ruby></sup>"),
+            "送り仮名内ルビの rp が空になっていない: {html}"
+        );
+    }
 }

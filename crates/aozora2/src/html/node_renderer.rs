@@ -290,7 +290,14 @@ impl<'a> NodeRenderer<'a> {
                 // 参照実装 Tag::Okurigana は @string（既に描画済みの内側HTML）を
                 // エスケープせずそのまま <sup> で包む。内側は注記と同じ TagParser で
                 // 処理されるので、外字 ※［＃…］ は img に、平仮名/片仮名はそのまま出る。
-                let inner = self.render_note_content(text, block_manager);
+                // さらに参照実装は command.gsub!(PAT_REMOVE_OKURIGANA=[（）], '') で
+                // 全角括弧を除去する。これは送り仮名の外側 （ ） を落とすためだが、
+                // 内側にルビがある（例:［＃（保利《ホリ》）］）と描画済みルビの
+                // <rp>（</rp>/<rp>）</rp> の括弧まで消えて空の <rp></rp> になる。
+                let inner = self
+                    .render_note_content(text, block_manager)
+                    .replace('（', "")
+                    .replace('）', "");
                 format!("<sup class=\"okurigana\">{inner}</sup>")
             }
 
