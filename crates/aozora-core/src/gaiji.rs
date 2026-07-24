@@ -112,6 +112,13 @@ fn extract_unicode(description: &str) -> Option<char> {
 /// 注記のまま出る。従来は `\d+-\d+-\d+` を無条件に拾って `24-1-3` まで画像化
 /// していたためオラクルと乖離していた。
 fn extract_jis_code(description: &str) -> Option<String> {
+    // 参照実装 kuten2png は説明に NON_0213_GAIJI = 「非0213外字」を含む場合、
+    // たとえ [12]-\d{1,2}-\d{1,2} に見える部分（つくりの水準参照など）があっても
+    // 画像化しない（注記のまま出す）。例:
+    // ※［＃非0213外字：「厂＋菫」、ただし「菫」は第3水準1-92-16のつくりの形、…］
+    if description.contains("非0213外字") {
+        return None;
+    }
     let chars: Vec<char> = description.chars().collect();
     let n = chars.len();
     for start in 0..n {
@@ -183,6 +190,16 @@ mod tests {
             Some("2-14-75".to_string())
         );
         assert_eq!(extract_jis_code("テスト"), None);
+    }
+
+    #[test]
+    fn test_extract_jis_code_rejects_non0213() {
+        // 「非0213外字」を含む説明は、水準参照 1-92-16 があっても句点コードにしない
+        // （参照実装 NON_0213_GAIJI ガード）。
+        assert_eq!(
+            extract_jis_code("非0213外字：「厂＋菫」、ただし「菫」は第3水準1-92-16のつくりの形、読みは「わづか」、286-下-24"),
+            None
+        );
     }
 
     #[test]
