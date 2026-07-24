@@ -36,8 +36,6 @@ pub enum Node {
         children: Vec<Node>,
         /// 装飾タイプ
         style_type: StyleType,
-        /// CSSクラス名
-        class_name: String,
     },
 
     /// 見出し
@@ -76,8 +74,8 @@ pub enum Node {
         filename: String,
         /// 代替テキスト
         alt: String,
-        /// CSSクラス
-        css_class: String,
+        /// 写真か（false なら挿絵）。CSSクラスはレンダラが決める。
+        is_photo: bool,
         /// 幅
         width: Option<u32>,
         /// 高さ

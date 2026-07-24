@@ -197,7 +197,6 @@ impl<'a> NodeRenderer<'a> {
             Node::Style {
                 children,
                 style_type,
-                class_name: _,
             } => self.render_style(children, *style_type, block_manager),
 
             Node::Midashi {
@@ -240,10 +239,10 @@ impl<'a> NodeRenderer<'a> {
             Node::Img {
                 filename,
                 alt,
-                css_class,
+                is_photo,
                 width,
                 height,
-            } => self.render_img(filename, alt, css_class, *width, *height),
+            } => self.render_img(filename, alt, *is_photo, *width, *height),
 
             Node::Tcy { children } => {
                 let inner = self.render_nodes(children, block_manager);
@@ -643,15 +642,11 @@ impl<'a> NodeRenderer<'a> {
         &self,
         filename: &str,
         alt: &str,
-        css_class: &str,
+        is_photo: bool,
         width: Option<u32>,
         height: Option<u32>,
     ) -> String {
-        let class = if css_class.is_empty() {
-            "illustration"
-        } else {
-            css_class
-        };
+        let class = if is_photo { "photo" } else { "illustration" };
 
         // 参照実装 Tag::Img は幅・高さが指定されていなくても width="" height="" と
         // 空の属性を出す（Ruby の文字列展開で nil が空文字になる）。

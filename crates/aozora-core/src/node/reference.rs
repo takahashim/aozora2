@@ -59,7 +59,6 @@ impl RefSpec {
             RefSpec::Style(style_type) => Node::Style {
                 children,
                 style_type: *style_type,
-                class_name: String::new(),
             },
             RefSpec::Midashi { level, style } => Node::Midashi {
                 children,
