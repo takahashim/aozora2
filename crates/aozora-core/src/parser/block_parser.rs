@@ -94,21 +94,24 @@ fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<Command
 
 /// ブロック終了を解析
 pub fn parse_block_end(content: &str) -> CommandResult {
+    // content は原文の全体（例: "ここで字下げ終わり" / "ここで字下げおわり"）。
     // 参照実装は「ここで割り注終わり」も扱わないので注記のまま出す
     if content.contains("割り注") {
         return CommandResult::Note(content.to_string());
     }
-    let content = content
+    let inner = content
         .trim_start_matches("ここで")
-        .trim_end_matches("終わり");
+        .trim_end_matches("終わり")
+        .trim_end_matches("おわり");
 
-    if let Some(block_type) = BlockType::from_command(content) {
+    if let Some(block_type) = BlockType::from_command(inner) {
         CommandResult::BlockEnd {
             block_type,
             explicit: true,
         }
     } else {
-        CommandResult::Note(format!("ここで{content}終わり"))
+        // キーワードに合致しなければ原文をそのまま注記化する
+        CommandResult::Note(content.to_string())
     }
 }
 

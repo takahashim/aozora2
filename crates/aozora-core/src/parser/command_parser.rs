@@ -198,8 +198,13 @@ pub fn parse_command(content: &str) -> CommandResult {
         return parse_block_start(content);
     }
 
-    // 4. ブロック終了: ここで...終わり
-    if content.starts_with("ここで") && content.ends_with("終わり") {
+    // 4. ブロック終了: ここで...終わり／…おわり
+    // 参照実装 exec_block_end_command は detect_command_mode でキーワード
+    // （字下げ等）だけを見て閉じるので、終止は「終わり」でも仮名「おわり」でも
+    // よい。ここでは観測された仮名「おわり」も受理する。
+    if content.starts_with("ここで")
+        && (content.ends_with("終わり") || content.ends_with("おわり"))
+    {
         return parse_block_end(content);
     }
 
