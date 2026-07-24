@@ -19,6 +19,61 @@ pub use ruby_parser::extract_ruby_base;
 
 /// トークン列をノード列にパース
 ///
+/// パーサが出力する RawAST。
+///
+/// 青空文庫記法を忠実に写した段階で、前方参照は未解決、ブロックは平坦な
+/// マーカーのまま。[`lower`] で中立AST [`Ast`] に変換する。
+///
+/// （現段階では中身は依然 [`Vec<Node>`] で、raw と ast の違いは root 型のみ。
+///  今後 raw専用ノードと block/line/inline の木へ段階的に分ける。）
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawAst(Vec<Node>);
+
+/// Lowerer が RawAST を変換した、レンダラが消費する中立AST。
+#[derive(Debug, Clone, PartialEq)]
+pub struct Ast(Vec<Node>);
+
+impl RawAst {
+    /// 中身のノード列を借用する
+    pub fn nodes(&self) -> &[Node] {
+        &self.0
+    }
+    /// 中身のノード列を取り出す
+    pub fn into_nodes(self) -> Vec<Node> {
+        self.0
+    }
+}
+
+impl Ast {
+    /// 中身のノード列を借用する
+    pub fn nodes(&self) -> &[Node] {
+        &self.0
+    }
+    /// 中身のノード列を取り出す
+    pub fn into_nodes(self) -> Vec<Node> {
+        self.0
+    }
+}
+
+/// トークン列を RawAST にパースする（構文→木の忠実な変換のみ。前方参照は未解決）。
+pub fn parse_raw(tokens: &[Token]) -> RawAst {
+    let mut nodes = Vec::new();
+    for (i, token) in tokens.iter().enumerate() {
+        let parsed = parse_token_with_context(token, &nodes, tokens, i);
+        nodes.extend(parsed);
+    }
+    RawAst(nodes)
+}
+
+/// RawAST を中立AST に lower する（前方参照の解決など）。
+pub fn lower(raw: RawAst) -> Ast {
+    let mut nodes = raw.into_nodes();
+    resolve_references(&mut nodes);
+    Ast(nodes)
+}
+
+/// トークン列をノード列にパースする（`parse_raw` → `lower` の合成の簡便版）。
+///
 /// # Examples
 ///
 /// ```
@@ -30,17 +85,7 @@ pub use ruby_parser::extract_ruby_base;
 /// let nodes = parse(&tokens);
 /// ```
 pub fn parse(tokens: &[Token]) -> Vec<Node> {
-    let mut nodes = Vec::new();
-
-    for (i, token) in tokens.iter().enumerate() {
-        let parsed = parse_token_with_context(token, &nodes, tokens, i);
-        nodes.extend(parsed);
-    }
-
-    // 前方参照の解決
-    resolve_references(&mut nodes);
-
-    nodes
+    lower(parse_raw(tokens)).into_nodes()
 }
 
 /// 直前のノードがテキストで `（` で終わるかチェック
