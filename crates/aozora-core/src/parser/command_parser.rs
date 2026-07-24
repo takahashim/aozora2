@@ -9,7 +9,7 @@ use super::block_parser::{
     try_parse_font_size_start, try_parse_line_chitsuki, try_parse_line_indent,
     try_parse_midashi_start,
 };
-use super::content_parser::{is_kaeriten, try_parse_image, try_parse_okurigana};
+use super::content_parser::{contains_fig_png, is_kaeriten, try_parse_image, try_parse_okurigana};
 use super::reference_parser::{try_parse_left_ruby, try_parse_reference};
 
 /// コマンド解析結果
@@ -212,7 +212,11 @@ pub fn parse_command(content: &str) -> CommandResult {
 
     // 2. 画像。参照実装の dispatch_aozora_command は fig…png の判定を
     //    前方参照より先に置くので、ここでも先に見る。
-    if content.ends_with("入る") {
+    // 参照の dispatch は `/fig\d+_\d+\.png/` を含む注記を画像ルートへ回し、
+    // PAT_IMAGE（`…）入る`）は末尾アンカー無しなので `入る。` のように後続文字が
+    // あっても画像になる。従来の `ends_with("入る")` はこの後続文字ケースを
+    // 取りこぼしていたため、fig パターンを含む場合も許可する。
+    if content.ends_with("入る") || contains_fig_png(content) {
         if let Some(result) = try_parse_image(content) {
             return result;
         }

@@ -48,6 +48,34 @@ fn is_image_filename(filename: &str) -> bool {
     filename.ends_with(".png") || filename.ends_with(".jpg") || filename.ends_with(".gif")
 }
 
+/// 参照実装 dispatch_aozora_command の `/fig(\d)+_(\d)+\.png/` に相当する。
+/// 注記内に `fig<数字>_<数字>.png` を含むかどうか（画像コマンド判定用）。
+/// 参照はこのパターンで画像ルートへ回すため、`PAT_IMAGE`（`）入る`）が
+/// 末尾アンカー無しで一致すれば、`入る` の後ろに `。` 等が続いても画像化される。
+pub fn contains_fig_png(content: &str) -> bool {
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while let Some(rel) = content[i..].find("fig") {
+        let mut p = i + rel + 3;
+        let d1 = p;
+        while p < bytes.len() && bytes[p].is_ascii_digit() {
+            p += 1;
+        }
+        if p > d1 && p < bytes.len() && bytes[p] == b'_' {
+            p += 1;
+            let d2 = p;
+            while p < bytes.len() && bytes[p].is_ascii_digit() {
+                p += 1;
+            }
+            if p > d2 && content[p..].starts_with(".png") {
+                return true;
+            }
+        }
+        i += rel + 3;
+    }
+    false
+}
+
 /// 画像サイズを解析
 fn parse_image_dimensions(size_part: Option<&str>) -> (Option<u32>, Option<u32>) {
     let Some(size_part) = size_part else {
@@ -197,6 +225,38 @@ mod tests {
             assert_eq!(alt, "挿絵");
             assert_eq!(width, Some(100));
             assert_eq!(height, Some(200));
+        }
+    }
+
+    #[test]
+    fn test_contains_fig_png() {
+        // 参照 /fig\d+_\d+\.png/ 相当。
+        assert!(contains_fig_png("楽譜（fig4206_02.png）入る。"));
+        assert!(contains_fig_png("（fig58704_49.png、横600×縦515）入る"));
+        // 数字_数字 でないものは不一致。
+        assert!(!contains_fig_png("挿絵（fig001.png）入る"));
+        assert!(!contains_fig_png("figure.png"));
+        assert!(!contains_fig_png("本文に画像が入る"));
+    }
+
+    #[test]
+    fn test_try_parse_image_trailing_char() {
+        // PAT_IMAGE は末尾アンカー無し。`入る` の後に `。` が続いても画像化する
+        // （参照実装 4206 のケース）。
+        let result = try_parse_image("四分音符ミファレに「ネーヱ」の歌詞の楽譜（fig4206_02.png）入る。");
+        match result {
+            Some(CommandResult::Image {
+                filename,
+                alt,
+                width,
+                height,
+            }) => {
+                assert_eq!(filename, "fig4206_02.png");
+                assert_eq!(alt, "四分音符ミファレに「ネーヱ」の歌詞の楽譜");
+                assert_eq!(width, None);
+                assert_eq!(height, None);
+            }
+            other => panic!("画像として解析されない: {other:?}"),
         }
     }
 
