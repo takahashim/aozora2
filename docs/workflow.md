@@ -33,6 +33,10 @@ aozora/
    ./target/release/aozora-htmlcheck --oracle-dir oracle \
        --baseline baseline-oracle.jsonl --out results-oracle.jsonl
    ```
+   **重要**: ハーネスは aozora2 を `aozora2::html::convert` としてライブラリ
+   リンクする。aozora2 側だけ `cargo build` してもハーネスのバイナリには
+   反映されない。必ず `aozora-htmlcheck` ディレクトリで `cargo build --release`
+   を実行してから走らせること（さもないと旧コードで比較し、悪化0 が偽になる）。
    改善が出たら baseline を更新し、同じコミットに含める:
    ```
    ./target/release/aozora-htmlcheck --oracle-dir oracle \
@@ -205,17 +209,11 @@ comment→test 名の脆い結合を生むだけで、荷重原則上の利得�
 新規 56 作品を追加。baseline を更新し悪化0 に収束（新規 55 は exact）。
 oracle/PROVENANCE.txt に来歴を記録。
 
-**未対応の既知差（ループD で表面化, 段2c 送り）**: 002406/62767
-（『緑の怪物』）。`［＃ここから…折り返して…字下げ］`（burasage）ブロック内の
-行にインライン中見出し `［＃「…」は中見出し］` があるとき、参照実装は
-その行末に burasage の `</div>` を1つ閉じる（`</h4></div>`）。参照は
-`@indent_stack` に per-line の `<div class="burasage">` を積み、各行頭で開き
-行末で閉じるモデルで、中見出し行では行頭の開きが抑制され行末の閉じだけが
-残る非対称な出力になる。aozora2 は renderer.rs の burasage 特例が
-`LineType::Inline` の行だけを包むため、`<h4>` 行を包まず `</div>` を出さない。
-現行アーキでの点対応は多数の burasage 作品への回帰リスクが高いので、
-BlockManager 除去・per-line 字下げモデル化（段2c）で正す。最小再現:
-`［＃ここから２字下げ、折り返して３字下げ］` / `X［＃「X」は中見出し］` / 本文。
+**既知差 002406/62767『緑の怪物』（2026-07 解消済み, 段2c）**: burasage
+ブロック内の見出し行が行末で `</div>` を閉じる参照の癖。
+`presentation::is_midashi_line` を追加し renderer.rs の burasage 分岐で
+見出し行に `</div>` を付与して解決（byte 一致）。テスト
+`test_midashi_inside_burasage_closes_an_extra_div`。
 
 **記法のデータ駆動化（2026-07 実施済み）**: 参照実装が持つ3つのデータ
 （accent_table.yml・jis2ucs.yml・command_table.yml）を、生成 or 照合で
@@ -228,7 +226,18 @@ BlockManager 除去・per-line 字下げモデル化（段2c）で正す。最�
 ディスパッチ」であり、フラット表化すると順序意味（折り返して＞字下げ 等）や
 レベル抽出を失うため、データ駆動化の対象外として現状の分岐で残す。
 
-次の作業: **型の壁を強める（段2b/2c）**。architecture.md 4 章・6 章。
-主眼は BlockManager 除去・行の字下げを per-line モデルへ・文字列詮索
-（renderer.rs の `line.starts_with("［＃")…contains("地付き")` 等）の排除。
-段2c では上記 burasage 既知差（002406/62767）も同時に正す。
+**型の壁・文字列詮索の排除（2026-07 一部実施, 段2b/2c）**:
+- 段2b: renderer.rs の行単位地付き判定を文字列詮索から AST（先頭ノードが
+  行スコープ Chitsuki か）へ置換。renderer.rs から記法文字列の再詮索が消えた
+  （残る `line` 参照は空行判定と scan_kunoji のみ）。
+- 段2c: 上記 burasage 既知差を解消。
+
+次の作業（段2c の残り、より深い構造変更）: BlockManager 除去と、ブロックを
+AST のサブツリーとして表現する方向。現状はブロックを開閉ノードの平坦列＋
+レンダラ側スタック（BlockManager）で扱うため、閉じ忘れ・収支ズレが
+レンダラのロジックに漏れる。参照実装の per-line indent-stack モデル
+（general_output が行の blank_type と @terprip で div 開閉を決める）に
+構造を寄せると、burasage 特例や `classify_line`/`is_block_only_line` の
+出力HTML詮索（レンダラが自分の出力文字列を見て `<br/>` 要否を判断している）を
+型で置き換えられる。ただし 98%超の byte 一致を崩す危険があるため、
+小さな段に割って各段でオラクル悪化0を守って進める。
