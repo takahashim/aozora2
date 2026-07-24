@@ -368,6 +368,27 @@ mod tests {
     }
 
     #[test]
+    fn test_burasage_wraps_line_with_inline_chitsuki() {
+        // ぶら下げ内で、行の途中に ［＃地付き］ があってもテキスト行として
+        // burasage div に包む（行末が </div> でも取りこぼさない）。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから２字下げ、折り返して３字下げ］\r\n\
+            テキスト［＃地付き］右\r\n\
+            次\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -1em;\">テキスト<div class=\"chitsuki_0\" style=\"text-align:right; margin-right: 0em\">右</div></div>"),
+            "行中地付きの行が burasage で包まれていない: {html}"
+        );
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -1em;\">次</div>"),
+            "後続行の burasage 包みが失われている: {html}"
+        );
+    }
+
+    #[test]
     fn test_render_ruby() {
         let mut renderer = HtmlRenderer::new(RenderOptions::default());
         let html = renderer.render_line("漢字《かんじ》");
