@@ -98,3 +98,28 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
 ## 6. 進捗ログ（追記のみ）
 
 - 2026-07-25 計画策定。Phase A 着手。
+- 2026-07-25 **Phase A 完了**（挙動不変）。architecture.md §4.3 に「互換ストリー
+  ミングモデルは Lowerer が所有」、§5 に決定記録（2026-07-25）、§6 段2b/2c を
+  「着手・実行中」へ更新。本計画ファイル追加。
+- 2026-07-25 **Phase B1 完了**（挙動不変）。`crates/aozora-core/src/ast.rs` に
+  中立AST型（Block/BlockKind/Break/Inline）を新規定義。RawAST の Node と別型
+  （型の壁）。pub 未使用型なのでオラクル不変・全テスト通過。
+- 2026-07-25 **Phase B2 着手時のメモ（次セッションの起点）**: Lowerer の第一歩
+  として `to_inlines`（解決済み Node → Inline）から作る想定だったが、正確な移植に
+  下記の分岐判断が要ると判明。B2 はこれらを1つずつ実測（参照 Ruby 最小入力）で
+  確定しながら進める。急がず、各判断をテストに固定する。
+  - **is_block 分岐**: 罫囲み/横組み/キャプションは `ここから…`（ブロック形＝
+    BlockKind/Nested）と `［＃罫囲み］…終わり`（インライン形＝Inline）がある。
+    現行は `BlockParams.is_block` で区別。中立ASTではインライン形を Inline、
+    ブロック形を Nested に振り分ける。
+  - **割り注（warichu）**: 現行は BlockStart{Warichu}/BlockEnd{Warichu} マーカー
+    だが apply_warichu は状態を持たないインライン出力（開き `（`／閉じ `）`）。
+    中立ASTでは Inline::Warichu{open, suppress_paren} マーカーにする（ast.rs 定義済み）。
+    Node::Warichu{upper,lower}（二部構成）は別物。構築箇所の有無を要確認。
+  - **Midashi/AnnotationEnd**: Node::Midashi（同行/窓見出し＝インライン見出し）と
+    Node::AnnotationEnd（左注記範囲終了）を Inline に写す変種が未定義。B2 で
+    Inline に追加する（B1 の型は暫定・B2 で精緻化する前提）。
+  - **ブロックマーカー**: BlockStart/BlockEnd（is_block=true）・LineJisage・
+    UnresolvedReference は to_inlines には現れない（ブロック畳み込みが消費）。
+  次の一歩: `to_inlines` を上記分岐込みで実装＋テスト（挙動不変・未接続）。その後
+  ブロック畳み込み（indent_stack モデル移植）→ Break 計算 → 新バックエンド。
