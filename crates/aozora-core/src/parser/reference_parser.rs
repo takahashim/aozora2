@@ -115,8 +115,11 @@ pub fn try_parse_reference(content: &str) -> Option<CommandResult> {
 
 /// 注記ルビパターンを解析（「対象」に「注記」の注記）
 fn try_parse_annotation_ruby(target: &str, spec: &str) -> Option<CommandResult> {
-    // パターン: 「注記内容」の注記
-    if !spec.ends_with("の注記") {
+    // 参照実装 PAT_CHUUKI = /「(.+?)」の注記/ は spec 全体に対する**部分一致**で、
+    // 「の注記」の後ろに続きがあってもよい（例:「（ママ）」の注記、正しくは「十三」／
+    // 「（ママ）」の注記がある）。従来は spec.ends_with("の注記") に限っていたため、
+    // 末尾に続きがある注記ルビを取りこぼして注記化していた。
+    if !spec.contains("」の注記") {
         return None;
     }
 
@@ -132,6 +135,14 @@ fn try_parse_annotation_ruby(target: &str, spec: &str) -> Option<CommandResult> 
     }
 
     let annotation = &spec[start..end];
+    // 抽出した注記内容に入れ子コマンド ［＃ が含まれる場合は注記ルビにしない。
+    // 参照実装は入れ子の ［＃…］ を先に解決してから PAT_CHUUKI を当てるので、
+    // 例:「書卓が」は底本では「□□［＃「□□」に「二字欠落」の注記］が」 のような
+    // 入れ子注記を持つ命令は外側の「」の注記」に一致しない（＝外側は注記のまま）。
+    // こちらは平坦な文字列照合なので、注記内容に ［＃ があれば入れ子とみなし除外する。
+    if annotation.contains("［＃") {
+        return None;
+    }
     Some(CommandResult::AnnotationRuby {
         target: target.to_string(),
         annotation: annotation.to_string(),
@@ -218,6 +229,36 @@ pub fn try_parse_left_ruby(content: &str) -> Option<CommandResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 注記ルビ 「対象」に「注記」の注記 は、「の注記」の後ろに続きがあっても
+    /// PAT_CHUUKI（部分一致）で成立する。入れ子の ［＃ を含む注記は除外する。
+    #[test]
+    fn test_annotation_ruby_substring_and_nested_guard() {
+        // 末尾に続きがあっても成立（「（ママ）」の注記、正しくは「十三」）。
+        assert_eq!(
+            try_parse_annotation_ruby("十四", "「（ママ）」の注記、正しくは「十三」"),
+            Some(CommandResult::AnnotationRuby {
+                target: "十四".to_string(),
+                annotation: "（ママ）".to_string(),
+            })
+        );
+        // 「がある」等が続く形も成立。
+        assert_eq!(
+            try_parse_annotation_ruby("衍", "「（ママ）」の注記がある"),
+            Some(CommandResult::AnnotationRuby {
+                target: "衍".to_string(),
+                annotation: "（ママ）".to_string(),
+            })
+        );
+        // 注記内容に入れ子 ［＃ を含む場合（底本では…の入れ子注記）は成立させない。
+        assert_eq!(
+            try_parse_annotation_ruby(
+                "書卓が",
+                "底本では「□□［＃「□□」に「二字欠落」の注記］が」"
+            ),
+            None
+        );
+    }
 
     /// 対象に「」の組を含む前方参照。参照実装の PAT_FRONTREF は
     /// [^「」]*(?:「.+」)*[^「」]* を対象として許す。
