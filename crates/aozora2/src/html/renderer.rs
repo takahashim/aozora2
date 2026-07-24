@@ -40,12 +40,20 @@ fn nodes_have_inline_text(nodes: &[Node]) -> bool {
         // String を残さないので、行全体がルビだけなら blank_type は true になり
         // 包まれない。親文字の外に本文テキストがあればその Text ノードが true を
         // 返すのでその行は包まれる。
+        // 装飾（傍点・傍線・太字・斜体など Node::Style）とインラインの文字サイズ
+        // （Node::FontSize、「N段階大きな文字」等）も、参照実装では対象テキストを
+        // その装飾タグ（<em>/<span>）に取り込んでバッファに String を残さない。
+        // よって行全体がひとつの装飾／文字サイズだけなら blank_type は true で
+        // 包まれず <br /> になる。対象の外に平文があればその Text ノードが true を
+        // 返すのでその行は包まれる（例:「半分［＃「太字」は太字］のこり」）。
         Node::BlockStart { .. }
         | Node::BlockEnd { .. }
         | Node::Midashi { .. }
         | Node::LineJisage { .. }
         | Node::Img { .. }
         | Node::Ruby { .. }
+        | Node::Style { .. }
+        | Node::FontSize { .. }
         | Node::Note(_) => false,
         _ => true,
     })
@@ -575,6 +583,40 @@ mod tests {
         assert!(
             html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">前置き<ruby>"),
             "本文＋ルビの行が包まれていない: {html}"
+        );
+    }
+
+    #[test]
+    fn test_burasage_does_not_wrap_full_line_style_or_font() {
+        // 行全体がひとつの装飾（太字）や文字サイズ（大きな文字）だけの行は、
+        // 参照実装で対象テキストがタグに取り込まれバッファに String を残さない＝
+        // blank_type true なので包まれず <br /> になる。対象の外に平文があれば包む。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから１字下げ、折り返して３字下げ］\r\n\
+            全体大文字［＃「全体大文字」は２段階大きな文字］\r\n\
+            全体太字［＃「全体太字」は太字］\r\n\
+            半分太字［＃「太字」は太字］のこり\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains("<span class=\"dai2\" style=\"font-size: x-large;\">全体大文字</span><br />"),
+            "行全体が大きな文字の行が包まれず <br /> になっていない: {html}"
+        );
+        assert!(
+            html.contains("<span class=\"futoji\">全体太字</span><br />"),
+            "行全体が太字の行が包まれず <br /> になっていない: {html}"
+        );
+        assert!(
+            !html.contains("text-indent: -2em;\"><span class=\"dai2\"")
+                && !html.contains("text-indent: -2em;\"><span class=\"futoji\">全体"),
+            "行全体装飾の行がぶら下げで包まれてしまっている: {html}"
+        );
+        // 対象の外に平文がある行は包まれる。
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">半分<span class=\"futoji\">太字</span>のこり</div>")
+                || html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">半分太字<span class=\"futoji\">太字</span>のこり</div>"),
+            "平文＋装飾の行が包まれていない: {html}"
         );
     }
 
