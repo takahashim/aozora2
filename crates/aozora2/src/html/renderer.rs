@@ -34,10 +34,13 @@ fn nodes_have_inline_text(nodes: &[Node]) -> bool {
         // ブロック制御ノードと注記はテキスト（空でない String）を持たない扱い。
         // 参照実装では ［＃改ページ］等の注記だけの行は blank_type が true になり
         // ぶら下げで包まれず <br /> になる。
+        // 画像（Tag::Img）は String ではなく Tag::Inline なので blank_type は
+        // true のまま＝ぶら下げで包まれず、terpri? が true なので <br /> が付く。
         Node::BlockStart { .. }
         | Node::BlockEnd { .. }
         | Node::Midashi { .. }
         | Node::LineJisage { .. }
+        | Node::Img { .. }
         | Node::Note(_) => false,
         _ => true,
     })
@@ -491,6 +494,33 @@ mod tests {
             html.contains("<div class=\"burasage\" style=\"margin-left: em; text-indent: 0em;\">テキスト</div>"),
             "コンマなしぶら下げの margin-left が空になっていない: {html}"
         );
+    }
+
+    #[test]
+    fn test_burasage_does_not_wrap_image_line() {
+        // 画像だけの行は参照実装で blank_type が true（Tag::Img は String でない）
+        // ＝ぶら下げで包まれず、terpri? が true なので <br /> が付く。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから１字下げ、折り返して３字下げ］\r\n\
+            本文Ａ\r\n\
+            ［＃図（fig01_01.png）入る］\r\n\
+            本文Ｂ\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains(
+                "<img class=\"illustration\" width=\"\" height=\"\" src=\"fig01_01.png\" alt=\"図\" /><br />"
+            ),
+            "画像行がぶら下げで包まれず <br /> 付きになっていない: {html}"
+        );
+        assert!(
+            !html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\"><img"),
+            "画像行がぶら下げで包まれてしまっている: {html}"
+        );
+        // 前後の本文行は従来どおり包まれる。
+        assert!(html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">本文Ａ</div>"));
+        assert!(html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">本文Ｂ</div>"));
     }
 
     #[test]
