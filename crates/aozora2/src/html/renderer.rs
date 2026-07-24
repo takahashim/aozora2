@@ -14,7 +14,7 @@ use super::block_manager::BlockManager;
 use super::document_renderer::DocumentRenderer;
 use super::node_renderer::NodeRenderer;
 use super::options::RenderOptions;
-use super::presentation::{auto_link, classify_line, is_block_only_line, LineType};
+use super::presentation::{auto_link, classify_line, is_block_only_line, is_midashi_line, LineType};
 
 /// HTMLレンダラー
 #[derive(Debug, Clone)]
@@ -72,6 +72,15 @@ impl HtmlRenderer {
                         "<div class=\"burasage\" style=\"margin-left: {wrap_width}em; text-indent: {text_indent}em;\">{line_html}</div>"
                     ));
                     output.push_str("\r\n");
+                    continue;
+                }
+                // ぶら下げ内の見出し行: 参照実装は per-line の burasage div を
+                // 開かないが行末では閉じる（見出しが :midashi を indent_stack に
+                // 積み、ぶら下げ div の収支がずれるため）。見出しタグ＋</div> を
+                // 出し、<br /> は付けない。
+                if is_midashi_line(&line_html) {
+                    output.push_str(&line_html);
+                    output.push_str("</div>\r\n");
                     continue;
                 }
             }
@@ -294,6 +303,31 @@ mod tests {
         let mut renderer = HtmlRenderer::new(RenderOptions::default());
         let html = renderer.render_line("こんにちは");
         assert_eq!(html, "こんにちは");
+    }
+
+    #[test]
+    fn test_midashi_inside_burasage_closes_an_extra_div() {
+        // ぶら下げ（折り返し字下げ）ブロック内の見出し行は、参照実装では
+        // per-line の burasage div を開かないまま行末で </div> を閉じる。
+        // 前後の本文行は通常どおり burasage div で包まれる。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから２字下げ、折り返して３字下げ］\r\n\
+            本文\r\n\
+            【見出】［＃「【見出】」は中見出し］\r\n\
+            次\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains("</a></h4></div>\r\n"),
+            "見出し行が行末で </div> を閉じていない: {html}"
+        );
+        assert!(
+            html.contains(
+                "<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -1em;\">次</div>"
+            ),
+            "見出し行の次の本文が burasage で包まれていない: {html}"
+        );
     }
 
     #[test]

@@ -37,6 +37,12 @@ pub fn classify_line(html: &str) -> LineType {
     LineType::Inline
 }
 
+/// 見出し行（h3/h4/h5 で閉じる行）かどうか。
+/// burasage ブロック内での見出しの特殊な閉じ処理に使う。
+pub fn is_midashi_line(html: &str) -> bool {
+    html.ends_with("</h3>") || html.ends_with("</h4>") || html.ends_with("</h5>")
+}
+
 /// StyleType のCSSクラス名を取得
 pub fn style_css_class(style_type: StyleType) -> &'static str {
     match style_type {
