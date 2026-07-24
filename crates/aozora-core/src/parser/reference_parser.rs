@@ -49,6 +49,13 @@ fn find_target_end(content: &str, start: usize) -> Option<usize> {
 /// ［＃…］ が先に解決されて外側の正規表現からは 「 が見えないため。これを守らないと
 /// ［＃「う［＃「う」に「ママ」の注記］」はママ］ の内側注記を誤って解決してしまう。
 pub fn try_parse_reference(content: &str) -> Option<CommandResult> {
+    // 参照実装の dispatch は前方参照を PAT_REF = /^「.+」/ で判定する。すなわち
+    // コマンドは「で始まらなければ前方参照にならない（注記になる）。前置きのある
+    // 「二つ目、三つ目の「？」は太字」や「２文字目の「i」…」は先頭が「でないので
+    // 前方参照にせず注記化する。
+    if !content.starts_with('「') {
+        return None;
+    }
     let mut pos = 0;
     while pos < content.len() {
         let ch = content[pos..].chars().next().unwrap();
@@ -436,6 +443,16 @@ mod tests {
                 target: "12".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn test_reference_requires_leading_bracket() {
+        // 参照 PAT_REF = /^「/: 先頭が「でなければ前方参照にしない（注記化）。
+        // 先頭が「なら従来どおり解決する。
+        assert!(try_parse_reference("「？」は太字").is_some());
+        // 前置きがあると None（→ 呼び出し側で注記になる）。
+        assert_eq!(try_parse_reference("二つ目、三つ目の「？」は太字"), None);
+        assert_eq!(try_parse_reference("２文字目の「i」は下付き小文字"), None);
     }
 
     #[test]
