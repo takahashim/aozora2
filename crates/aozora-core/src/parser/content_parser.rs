@@ -94,16 +94,16 @@ fn extract_alt_text(desc_part: &str) -> String {
 
 /// 返り点かどうかを判定
 pub fn is_kaeriten(content: &str) -> bool {
+    // 参照実装 PAT_KAERITEN = ^[一二三四五六七八九十レ上中下甲乙丙丁天地人]+$。
+    // 従来は五〜十が欠落し、さらに参照に無い「4文字まで」の長さ制限があったため、
+    // ［＃五］や長い返り点（一レ二 等）を返り点にできず注記化していた。
     const KAERITEN_CHARS: &[char] = &[
-        '一', '二', '三', '四', '上', '中', '下', '天', '地', '人', '甲', '乙', '丙', '丁', 'レ',
+        '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', 'レ', '上', '中', '下', '甲',
+        '乙', '丙', '丁', '天', '地', '人',
     ];
 
-    // 短いコマンドで、すべての文字が返り点文字かどうか
-    if content.is_empty() || content.chars().count() > 4 {
-        return false;
-    }
-
-    content.chars().all(|c| KAERITEN_CHARS.contains(&c))
+    // 1文字以上で、すべての文字が返り点文字（長さ上限なし＝参照の `+`）。
+    !content.is_empty() && content.chars().all(|c| KAERITEN_CHARS.contains(&c))
 }
 
 /// 訓点送り仮名を解析
@@ -132,9 +132,14 @@ mod tests {
         assert!(is_kaeriten("レ"));
         assert!(is_kaeriten("上"));
         assert!(is_kaeriten("一二"));
+        // 参照 PAT_KAERITEN は五〜十も含み、長さ上限もない。
+        assert!(is_kaeriten("五"));
+        assert!(is_kaeriten("十"));
+        assert!(is_kaeriten("一二三四五")); // 長さ制限なし（従来は false だった）
+        assert!(is_kaeriten("一レ"));
         assert!(!is_kaeriten("あ"));
         assert!(!is_kaeriten(""));
-        assert!(!is_kaeriten("一二三四五"));
+        assert!(!is_kaeriten("一あ")); // 返り点以外を含めば false
     }
 
     #[test]
