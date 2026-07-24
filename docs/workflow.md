@@ -520,7 +520,18 @@ spec がスタイル不成立でも注記化して再試行しない、(c) 入�
 オン）へ隔離（ぶら下げのコンマなし margin-left: em も同じ Quirk 配下に統一）。
 オフで妥当な CSS（jisage は class="jisage"、ぶら下げ margin-left: 0em）。
 
-**残差の現状（byte-exact 17361/17509 = 99.16%, error 56, equivalent 1, different 91）**。
+**行地付き字上げの漢数字（2026-07 続き, ループA, +2）**: 参照 chitsuki_length は
+convert_japanese_number 後に PAT_JI_LEN = ([0-9]+)字 で幅を取る。try_parse_line_
+chitsuki が漢数字非対応（extract_number）で `地から一字上げ`／`地から五字上げ` が
+chitsuki_0 になっていたのを、convert_japanese_number＋extract_number_before に。
+
+**残差の現状（byte-exact 17363/17509 = 99.17%, error 56, equivalent 1, different 89）**。
+残りは深いエッジ/参照バグの再現が中心（各1〜3件、要individual調査）:
+- **line chitsuki の trailing `<br />` 位置**（060380/060385: 参照は `<br />` を
+  chitsuki div の内側に置く。こちらは div を閉じてから br）。renderer の br ロジック。
+- **gaiji/accent を含むルビ親文字**（001452/002084/002599 等）: 参照の create_ruby
+  特例（UnEmbedGaiji→※＋末尾注記）やアクセント→gaiji img 化。参照バグ含み、高難度。
+- 傍記・二重対象、図一覧テーブル集約、@terprip=false 伝播、深い入れ子。
 残る different の主な難所（多くは参照実装のバグ/実装都合の再現が必要）:
 - **外字入りルビ親文字＋底本注記**（004995/057416/001452）: `孫子※［＃…］《そんしばく》`
   ＋直後の底本注記で、参照は親文字を失い空 alt の img だけ出す（参照バグ）。再現が高難度。
