@@ -139,18 +139,62 @@ impl Tokenizer {
     }
 
     /// 明示ルビトークンを読む ｜...《...》
+    ///
+    /// 参照実装 RubyBuffer は `｜` のたびに親文字バッファを dump_into して
+    /// protected を立て直す。つまり `《》` の直前の**最後の** `｜` からが親文字で、
+    /// それより前の `｜…` 区間は（`｜` をリテラルとして残したまま）本文へ出る。
+    /// 例: `今日｜民族観念［＃「民族観念」に傍点］と呼ぶ…悲憤｜慷慨《こうがい》`
+    /// → `｜` と `民族観念…悲憤` は本文、親文字は `慷慨` だけ。
+    /// よって最初の `｜` の後にトップレベル（コマンド ［…］ の外）でもう一つ `｜` が
+    /// あれば、最初の `｜` はリテラル扱いにして内容は再トークナイズに任せる。
     fn read_prefixed_ruby(&mut self) -> Token {
         self.skip(1); // ｜
         let base_start = self.pos;
 
+        // base_start から、コマンド ［…］ を飛ばしつつトップレベルの ｜ か 《 を探す。
+        let n = self.chars.len();
+        let mut scan = base_start;
+        while scan < n {
+            let c = self.chars[scan];
+            if c == COMMAND_BEGIN {
+                // ［…］（入れ子可）を丸ごと飛ばす。コマンド内の ｜/《 は区切りでない。
+                let mut depth = 0usize;
+                while scan < n {
+                    match self.chars[scan] {
+                        COMMAND_BEGIN => depth += 1,
+                        COMMAND_END => {
+                            depth -= 1;
+                            if depth == 0 {
+                                scan += 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    scan += 1;
+                }
+                continue;
+            }
+            if c == RUBY_PREFIX {
+                // 次の ｜ が 《 より先に来た: 最初の ｜ はリテラル。pos は base_start の
+                // ままにして、間の内容と次の ｜ は通常のトークナイズに任せる。
+                self.pos = base_start;
+                return Token::Text(RUBY_PREFIX.to_string());
+            }
+            if c == RUBY_BEGIN {
+                break;
+            }
+            scan += 1;
+        }
+
         // 《 が見つからなければ ｜ をテキストとして返す
-        if !self.skip_until(RUBY_BEGIN) {
+        if scan >= n || self.chars[scan] != RUBY_BEGIN {
             self.pos = base_start;
             return Token::Text(RUBY_PREFIX.to_string());
         }
 
-        let base_content = self.slice_from(base_start);
-        self.skip(1); // 《
+        let base_content: String = self.chars[base_start..scan].iter().collect();
+        self.pos = scan + 1; // 《 の次へ
         let ruby_start = self.pos;
 
         self.skip_until(RUBY_END);
@@ -309,6 +353,42 @@ mod tests {
             vec![Token::PrefixedRuby {
                 base_children: vec![Token::Text("東京".to_string())],
                 ruby_children: vec![Token::Text("とうきょう".to_string())]
+            }]
+        );
+    }
+
+    #[test]
+    fn test_prefixed_ruby_multiple_pipes() {
+        // ｜A｜B《r》: 参照実装は 《》 直前の最後の ｜ からを親文字にし、
+        // それより前の ｜A は（｜ をリテラルに残して）本文へ出す。
+        let tokens = tokenize("｜東京｜大阪《おおさか》");
+        assert_eq!(
+            tokens,
+            vec![
+                Token::Text("｜".to_string()),
+                Token::Text("東京".to_string()),
+                Token::PrefixedRuby {
+                    base_children: vec![Token::Text("大阪".to_string())],
+                    ruby_children: vec![Token::Text("おおさか".to_string())],
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_prefixed_ruby_pipe_inside_command_not_delimiter() {
+        // コマンド ［＃…］ の中の ｜ は区切りではない。親文字は 《》 まで伸びる。
+        let tokens = tokenize("｜東京［＃「東」に傍点］《とうきょう》");
+        assert_eq!(
+            tokens,
+            vec![Token::PrefixedRuby {
+                base_children: vec![
+                    Token::Text("東京".to_string()),
+                    Token::Command {
+                        content: "「東」に傍点".to_string()
+                    },
+                ],
+                ruby_children: vec![Token::Text("とうきょう".to_string())],
             }]
         );
     }
