@@ -258,6 +258,11 @@ fn apply_resolution(
             if new_i < nodes.len() {
                 nodes.remove(new_i);
             }
+            // 対象ノード（i より前）が nodes_removed-1 個減ったぶん、現在位置も
+            // 前へずらす。従来は *i を更新せず continue していたため、直後の
+            // 未解決参照（例: 同行中見出しの後ろの縦中横）を読み飛ばして
+            // 解決し損ねていた。
+            *i = new_i;
         }
     }
 }
@@ -432,7 +437,7 @@ fn parse_annotation_text(text: &str) -> Vec<Node> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{RubyDirection, StyleType};
+    use crate::node::{InlineKind, RubyDirection, StyleType};
 
     #[test]
     fn test_resolve_inline_ruby() {
@@ -496,6 +501,38 @@ mod tests {
 
         // 「重要」が装飾ノードになっているはず
         assert!(nodes.iter().any(|n| matches!(n, Node::Style { .. })));
+    }
+
+    #[test]
+    fn test_multinode_resolution_does_not_skip_following_reference() {
+        // 複数ノードにまたがる前方参照（見出し等）の解決で対象ノードが減った
+        // あと、直後の未解決参照（縦中横）を読み飛ばさず解決すること。
+        // 従来は MultiNodeExact 適用時に *i を更新せず、直後の参照を skip して
+        // いた（同行中見出し＋日付の縦中横が注記化するバグ）。
+        let mut nodes = vec![
+            Node::text("前"),
+            Node::text("半"),
+            Node::UnresolvedReference {
+                target: "前半".to_string(),
+                spec: RefSpec::Style(StyleType::Bold),
+                raw: "「前半」は太字".to_string(),
+            },
+            Node::text("４・19"),
+            Node::UnresolvedReference {
+                target: "19".to_string(),
+                spec: RefSpec::Inline(InlineKind::Tcy),
+                raw: "「19」は縦中横".to_string(),
+            },
+        ];
+        resolve_style_references(&mut nodes);
+        assert!(
+            nodes.iter().any(|n| matches!(n, Node::Tcy { .. })),
+            "見出し解決の直後の縦中横参照が解決されていない: {nodes:?}"
+        );
+        assert!(
+            !nodes.iter().any(|n| matches!(n, Node::UnresolvedReference { .. })),
+            "未解決参照が残っている: {nodes:?}"
+        );
     }
 
     #[test]
