@@ -391,6 +391,33 @@ mod tests {
     }
 
     #[test]
+    fn test_burasage_does_not_wrap_inside_nested_block() {
+        // ぶら下げの上に横組み等のブロックが開いている間は、ぶら下げは
+        // 行を包まない（参照実装は @indent_stack.last が String のときだけ包む）。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから２字下げ、折り返して３字下げ］\r\n\
+            前\r\n\
+            ［＃ここから横組み］\r\n\
+            横内\r\n\
+            ［＃ここで横組み終わり］\r\n\
+            後\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        // 横組み内の行は burasage で包まれず、通常の <br /> になる
+        assert!(html.contains("横内<br />"), "横組み内が包まれてしまった: {html}");
+        // 横組みの外の行は包まれる
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -1em;\">前</div>"),
+            "横組み前の行が包まれていない: {html}"
+        );
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -1em;\">後</div>"),
+            "横組み後の行が包まれていない: {html}"
+        );
+    }
+
+    #[test]
     fn test_burasage_nocomma_has_empty_margin() {
         // コンマなし「折り返してN字下げ」は参照実装で margin-left 空・text-indent 0。
         let input = "題\r\n著\r\n\r\n\

@@ -76,13 +76,15 @@ impl BlockManager {
     /// 折り返し幅が None のときは margin-left を空にする（参照実装のコンマなし
     /// `折り返してN字下げ` は margin-left を空・text-indent 0 にする）。
     pub fn find_burasage_context(&self) -> Option<(Option<u32>, i32)> {
-        for ctx in &self.stack {
-            if ctx.block_type == BlockType::Burasage {
-                let wrap_width = ctx.params.wrap_width;
-                let width = ctx.params.width.unwrap_or(0);
-                let text_indent = width as i32 - wrap_width.unwrap_or(0) as i32;
-                return Some((wrap_width, text_indent));
-            }
+        // 参照実装 general_output は @indent_stack.last が String（＝ぶら下げ）の
+        // ときだけ行を包む。ぶら下げの上に別のブロック（横組み等）が開いている間は
+        // 包まないので、最上位ブロックがぶら下げのときだけ文脈を返す。
+        let ctx = self.stack.last()?;
+        if ctx.block_type == BlockType::Burasage {
+            let wrap_width = ctx.params.wrap_width;
+            let width = ctx.params.width.unwrap_or(0);
+            let text_indent = width as i32 - wrap_width.unwrap_or(0) as i32;
+            return Some((wrap_width, text_indent));
         }
         None
     }
