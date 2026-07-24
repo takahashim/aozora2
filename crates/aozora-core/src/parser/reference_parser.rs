@@ -123,8 +123,12 @@ fn try_parse_reference_at(content: &str, start: usize) -> Option<CommandResult> 
         }
     }
 
-    // 見出しかどうか
-    if connector == "は" {
+    // 見出しかどうか。参照実装 exec_frontref_command は接続詞に関係なく
+    // MIDASHI_COMMAND（見出し）に一致すれば前方参照の見出しにするので、
+    // 「小沼農場」に大見出し（接続詞 に）も見出しにする。従来は connector=="は"
+    // に限っていたため に/の の見出しを取りこぼし、後段で空の見出しブロックに
+    // なっていた（対象が本文に残る）。
+    if !is_left {
         if let Some(level) = MidashiLevel::from_command(spec) {
             let style = MidashiStyle::from_command(spec);
             return Some(CommandResult::Midashi {

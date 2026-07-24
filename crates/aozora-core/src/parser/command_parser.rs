@@ -465,6 +465,27 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_midashi_any_connector() {
+        // 参照実装は接続詞に関係なく前方参照の見出しにする。「に」大見出しも見出し。
+        assert_eq!(
+            parse_command("「小沼農場」に大見出し"),
+            CommandResult::Midashi {
+                target: "小沼農場".to_string(),
+                level: MidashiLevel::O,
+                style: MidashiStyle::Normal,
+            }
+        );
+        assert_eq!(
+            parse_command("「章題」の中見出し"),
+            CommandResult::Midashi {
+                target: "章題".to_string(),
+                level: MidashiLevel::Naka,
+                style: MidashiStyle::Normal,
+            }
+        );
+    }
+
+    #[test]
     fn test_parse_midashi_dogyo() {
         let result = parse_command("「一」は同行中見出し");
         assert_eq!(
