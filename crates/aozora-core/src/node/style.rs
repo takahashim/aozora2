@@ -1,7 +1,7 @@
 //! 装飾タイプ定義
 
 /// 装飾タイプ
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StyleType {
     // 傍点系（右・上）
     SesameDot,

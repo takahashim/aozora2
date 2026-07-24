@@ -299,4 +299,73 @@ mod tests {
         assert!(is_block_only_line("<div class=\"test\">"));
         assert!(!is_block_only_line("text"));
     }
+
+    /// style_css_class / style_html_tag が参照実装 aozora2html の
+    /// command_table.yml と一致することを、スナップショット
+    /// data/command_table.tsv に照合して縛る。参照実装が表を更新したら
+    /// スナップショットを取り直し、この照合で drift を検出する（誘因整合）。
+    ///
+    /// 表に載るのは基底の記法語のみ。左/下/上バリアントは参照実装の
+    /// 方向フィルタ（傍点系→末尾 _after、傍線系→under を over に置換）で
+    /// 導出されるので、ここでも同じ規則で期待値を作って照合する。
+    #[test]
+    fn test_style_css_and_tag_match_reference_command_table() {
+        use std::collections::HashSet;
+
+        let tsv = include_str!("../../data/command_table.tsv");
+        let mut reached: HashSet<StyleType> = HashSet::new();
+
+        for line in tsv.lines() {
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+            let mut cols = line.split('\t');
+            let word = cols.next().expect("記法語列");
+            let class = cols.next().expect("CSSクラス列");
+            let tag = cols.next().expect("HTML要素列");
+
+            // 基底: 記法語 → StyleType → css/tag が表と一致
+            let base = StyleType::from_command(word)
+                .unwrap_or_else(|| panic!("記法語 {word:?} が from_command で解決できない"));
+            assert_eq!(
+                style_css_class(base),
+                class,
+                "{word:?} のCSSクラスが参照表とずれている"
+            );
+            assert_eq!(
+                style_html_tag(base),
+                tag,
+                "{word:?} のHTML要素が参照表とずれている"
+            );
+            reached.insert(base);
+
+            // 左/上バリアント: 参照の方向フィルタで期待値を導出して照合
+            let after = base.to_after_variant();
+            if after != base {
+                let expected = if class.starts_with("underline") {
+                    // 傍線系: under → over（sub と同じく先頭1回）
+                    class.replacen("under", "over", 1)
+                } else {
+                    // 傍点系: 末尾に _after
+                    format!("{class}_after")
+                };
+                assert_eq!(
+                    style_css_class(after),
+                    expected,
+                    "{word:?} の左/上バリアントCSSクラスが方向フィルタ規則とずれている"
+                );
+                assert_eq!(style_html_tag(after), "em");
+                reached.insert(after);
+            }
+        }
+
+        // 表＋フィルタで全 StyleType を網羅していること
+        // （新バリアントを追加したら表かフィルタのどちらかに必ず現れる）
+        for st in StyleType::all() {
+            assert!(
+                reached.contains(st),
+                "{st:?} が参照表・方向フィルタのどちらからも導出されていない"
+            );
+        }
+    }
 }
