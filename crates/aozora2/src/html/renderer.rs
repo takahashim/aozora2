@@ -132,9 +132,11 @@ impl HtmlRenderer {
                 // 取りこぼすので、AST 由来の has_inline_text を使う。
                 // ただし行全体が block div で始まる場合（行末の地付き/地からで
                 // 行全体が chitsuki/jisage div になったとき）は、その行自体が
-                // ブロックなので包まない（行頭のテキストがない＝先頭が <div/<h）。
-                let starts_with_block =
-                    line_html.starts_with("<div") || line_html.starts_with("<h");
+                // ブロック（Multiline）なので包まない＝先頭が <div。
+                // 行頭がインラインの同行中見出し（<h4 class="dogyo-naka-midashi">）で
+                // その後に本文テキストが続く行は blank_type が false（String あり）
+                // なので参照実装は burasage で包む。よって <h は除外基準にしない。
+                let starts_with_block = line_html.starts_with("<div");
                 if has_inline_text && !starts_with_block {
                     // 折り返し幅が None のときは margin-left を空にする（参照実装のコンマなし形）
                     let margin = wrap_width.map(|w| w.to_string()).unwrap_or_default();
@@ -521,6 +523,27 @@ mod tests {
         // 前後の本文行は従来どおり包まれる。
         assert!(html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">本文Ａ</div>"));
         assert!(html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">本文Ｂ</div>"));
+    }
+
+    #[test]
+    fn test_burasage_wraps_inline_dogyo_midashi_with_trailing_text() {
+        // 行頭がインラインの同行中見出し（<h4 class="dogyo-naka-midashi">）で
+        // その後に本文テキストが続く行は、参照実装では blank_type が false
+        // （末尾の本文 String がある）なので burasage で包む。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから１字下げ、折り返して３字下げ］\r\n\
+            日付［＃「日付」は同行中見出し］　本文が続く。\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\"><h4 class=\"dogyo-naka-midashi\">"),
+            "同行中見出し＋本文の行が burasage で包まれていない: {html}"
+        );
+        assert!(
+            html.contains("本文が続く。</div>"),
+            "末尾の本文まで含めて burasage で閉じられていない: {html}"
+        );
     }
 
     #[test]
