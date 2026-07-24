@@ -33,7 +33,7 @@ pub fn try_parse_image(content: &str) -> Option<CommandResult> {
 
     // 説明部分を取得
     let desc_part = content[..info_start].trim();
-    let alt = extract_alt_text(desc_part);
+    let alt = strip_accent_from_alt(&extract_alt_text(desc_part));
 
     Some(CommandResult::Image {
         filename,
@@ -77,6 +77,31 @@ fn parse_image_dimensions(size_part: Option<&str>) -> (Option<u32>, Option<u32>)
 }
 
 /// 代替テキストを抽出
+/// 画像 alt からアクセント 〔...〕 の中身を落とす。
+///
+/// 参照実装の画像 alt は TagParser の @raw（read_char で読んだ生文字の蓄積）由来。
+/// アクセント 〔...〕 は専用サブパーサ（AccentParser）が別ストリームで読むため
+/// 中身が @raw に入らず、read_char で読んだ開き 〔 だけが残り、中身と閉じ 〕 は
+/// 落ちる（例: 折〔衷〕派 → 折〔派、〔金銭出納録〕の表 → 〔の表）。対応する 〕 が
+/// 無ければアクセントとして消費されず残る。
+fn strip_accent_from_alt(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        out.push(chars[i]);
+        if chars[i] == '〔' {
+            if let Some(rel) = chars[i + 1..].iter().position(|&c| c == '〕') {
+                // 中身と閉じ 〕 を捨てる
+                i = i + 1 + rel + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
 fn extract_alt_text(desc_part: &str) -> String {
     // キャプション付きの図パターン: 「...」のキャプション付きの図 形式を保持
     if desc_part.ends_with("のキャプション付きの図") {
@@ -172,6 +197,27 @@ mod tests {
             assert_eq!(alt, "挿絵");
             assert_eq!(width, Some(100));
             assert_eq!(height, Some(200));
+        }
+    }
+
+    #[test]
+    fn test_strip_accent_from_alt() {
+        // 開き 〔 は残し、中身と閉じ 〕 を落とす（参照実装 @raw の挙動）。
+        assert_eq!(strip_accent_from_alt("折〔衷〕派"), "折〔派");
+        assert_eq!(strip_accent_from_alt("〔金銭出納録〕の表"), "〔の表");
+        assert_eq!(strip_accent_from_alt("普通の説明"), "普通の説明");
+        // 対応する 〕 が無ければそのまま残す。
+        assert_eq!(strip_accent_from_alt("未閉じ〔あ"), "未閉じ〔あ");
+    }
+
+    #[test]
+    fn test_image_alt_drops_accent_content() {
+        // 画像 alt はアクセント 〔...〕 の中身を落とす。
+        let result = try_parse_image("折〔衷〕派の図（fig001.png、横1×縦1）入る");
+        if let Some(CommandResult::Image { alt, .. }) = result {
+            assert_eq!(alt, "折〔派の図");
+        } else {
+            panic!("画像として解析されなかった");
         }
     }
 
