@@ -130,6 +130,44 @@ mod tests {
         assert!(html.contains("<ruby>"));
     }
 
+    /// 中身が空のルビ 《》 は、ルビ要素にせず 《》 のテキストとして出す
+    #[test]
+    fn test_empty_ruby_is_literal_text() {
+        let html = convert("タイトル\r\n\r\n記号「《》」です", &RenderOptions::default());
+        assert!(html.contains("記号「《》」です"), "実際: {html}");
+        assert!(
+            !html.contains("<ruby><rb></rb>"),
+            "空のルビ要素を作らないこと。実際: {html}"
+        );
+    }
+
+    /// 送り仮名を欠く見出し終了 ［＃中見出終わり］ も見出しを閉じる
+    #[test]
+    fn test_midashi_end_without_okurigana_closes_the_heading() {
+        let html = convert(
+            "タイトル\r\n\r\n［＃中見出し］章題［＃中見出終わり］\r\n本文",
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains("<h4 class=\"naka-midashi\"><a class=\"midashi_anchor\" id=\"midashi10\">章題</a></h4>"),
+            "見出しが正しく閉じること。実際: {html}"
+        );
+    }
+
+    /// 注記ルビの注記部分は入れ子の「」で切れない
+    /// （「(.+?)」の注記 の非貪欲マッチが「」の注記」まで伸びる）
+    #[test]
+    fn test_annotation_ruby_keeps_nested_brackets() {
+        let html = convert(
+            "タイトル\r\n\r\n語［＃「語」に「「意味」の注」の注記］",
+            &RenderOptions::default(),
+        );
+        assert!(
+            html.contains("<rt>「意味」の注</rt>"),
+            "注記が入れ子の「」で切れないこと。実際: {html}"
+        );
+    }
+
     /// くの字点は文字をそのまま出力し、「表記について」に注記を足す
     #[test]
     fn test_kunoji_note() {
