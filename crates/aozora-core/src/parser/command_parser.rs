@@ -172,6 +172,11 @@ pub enum CommandResult {
 
 /// コマンド文字列を解析
 pub fn parse_command(content: &str) -> CommandResult {
+    // 参照実装 apply_rest_notes は命令文字列をそのまま EditorNote にするので、
+    // どのパターンにも当たらず注記化する場合は前後空白（全角空白 U+3000 含む）を
+    // 保つ（例:「降った来た」はママ　 の末尾全角空白）。パターン照合には trim した
+    // ものを使い、最終フォールバックの注記だけ原文を使う。
+    let original = content;
     let content = content.trim();
 
     // 0. ぶら下げ（折り返して）。参照実装 dispatch_aozora_command は
@@ -309,8 +314,8 @@ pub fn parse_command(content: &str) -> CommandResult {
         return result;
     }
 
-    // その他は注記
-    CommandResult::Note(content.to_string())
+    // その他は注記（原文のまま。前後空白を保つ）
+    CommandResult::Note(original.to_string())
 }
 
 /// 注記付き範囲パターンを解析
