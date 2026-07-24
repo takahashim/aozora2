@@ -217,5 +217,18 @@ oracle/PROVENANCE.txt に来歴を記録。
 BlockManager 除去・per-line 字下げモデル化（段2c）で正す。最小再現:
 `［＃ここから２字下げ、折り返して３字下げ］` / `X［＃「X」は中見出し］` / 本文。
 
-次の作業: architecture.md 6 章の順に、続く**記法のデータ駆動化**、
-または型の壁を強める方向（段2b/2c）。段2c では上記 burasage 既知差も同時に正す。
+**記法のデータ駆動化（2026-07 実施済み）**: 参照実装が持つ3つのデータ
+（accent_table.yml・jis2ucs.yml・command_table.yml）を、生成 or 照合で
+参照側に紐付けた。accent と jis2ucs は既に build.rs で JSON から生成済み。
+今回 command_table.yml をスナップショット（data/command_table.tsv）として
+取り込み、presentation.rs の css/tag を照合するテストを追加（左/上バリアントは
+参照の方向フィルタで導出して照合、StyleType::all() 全網羅）。あわせて濁点
+片仮名表の二重定義を Node::dakuten_katakana_char へ集約。
+なお BlockType・FontSizeType・MidashiLevel/Style は「順序依存の contains
+ディスパッチ」であり、フラット表化すると順序意味（折り返して＞字下げ 等）や
+レベル抽出を失うため、データ駆動化の対象外として現状の分岐で残す。
+
+次の作業: **型の壁を強める（段2b/2c）**。architecture.md 4 章・6 章。
+主眼は BlockManager 除去・行の字下げを per-line モデルへ・文字列詮索
+（renderer.rs の `line.starts_with("［＃")…contains("地付き")` 等）の排除。
+段2c では上記 burasage 既知差（002406/62767）も同時に正す。
