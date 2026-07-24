@@ -39,6 +39,31 @@ fn nodes_have_inline_text(nodes: &[Node]) -> bool {
     })
 }
 
+/// その行が「装飾系ブロックの閉じだけ」の行か。
+/// 参照実装は、ぶら下げの中で入れ子に開いた装飾系ブロック（横組み・罫囲み・
+/// キャプション・大小の文字・太字・斜体・字詰め）が閉じる行を、閉じタグを
+/// String 扱いして空の `<div class="burasage"></div>` で包む。一方、字下げ・
+/// 地付き（＝ぶら下げと同じインデント系）の閉じは包まない。ぶら下げを開いた行
+/// （close_related_blocks で兄弟の字下げが閉じて `</div>` が出る場合を含む）は
+/// BlockStart を含むのでここには該当しない。
+fn is_decoration_block_close(nodes: &[Node]) -> bool {
+    matches!(
+        nodes,
+        [Node::BlockEnd { block_type, .. }]
+            if matches!(
+                block_type,
+                BlockType::Yokogumi
+                    | BlockType::Keigakomi
+                    | BlockType::Caption
+                    | BlockType::FontDai
+                    | BlockType::FontSho
+                    | BlockType::Futoji
+                    | BlockType::Shatai
+                    | BlockType::Jizume
+            )
+    )
+}
+
 impl HtmlRenderer {
     /// 新しいレンダラーを作成
     pub fn new(options: RenderOptions) -> Self {
@@ -119,6 +144,18 @@ impl HtmlRenderer {
                 if info.is_midashi {
                     output.push_str(&line_html);
                     output.push_str("</div>\r\n");
+                    continue;
+                }
+                // ぶら下げ内で入れ子に開いた装飾系ブロックが閉じる行。参照実装は
+                // 閉じタグを String 扱いして空の burasage div で包む
+                // （<div class="burasage">{閉じタグ}</div>）。字下げ・地付きの閉じや
+                // ぶら下げ自身の開閉行はここに該当しない。
+                if is_decoration_block_close(&raw_line.nodes) {
+                    let margin = wrap_width.map(|w| w.to_string()).unwrap_or_default();
+                    output.push_str(&format!(
+                        "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">{line_html}</div>"
+                    ));
+                    output.push_str("\r\n");
                     continue;
                 }
             }
@@ -387,6 +424,26 @@ mod tests {
         assert!(
             html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -1em;\">次</div>"),
             "後続行の burasage 包みが失われている: {html}"
+        );
+    }
+
+    #[test]
+    fn test_burasage_wraps_nested_decoration_close() {
+        // ぶら下げ内に入れ子で開いた装飾ブロック（小さな文字）が閉じる行は、
+        // 参照実装では空の burasage div で包まれる（<div class="burasage"></div>）。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから２字下げ、折り返して３字下げ］\r\n\
+            前の行\r\n\
+            ［＃ここから１段階小さな文字］\r\n\
+            小さい本文\r\n\
+            ［＃ここで小さな文字終わり］\r\n\
+            後の行\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains("小さい本文<br />\r\n<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -1em;\"></div></div>"),
+            "入れ子装飾ブロックの閉じ行が空 burasage div で包まれていない: {html}"
         );
     }
 
