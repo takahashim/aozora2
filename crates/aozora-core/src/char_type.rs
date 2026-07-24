@@ -78,10 +78,17 @@ impl CharType {
             return CharType::Hankaku;
         }
 
-        // 漢字: CJK統合漢字 (U+4E00-U+9FFF) + 特殊文字
-        // 々 (U+3005), ※ (U+203B), 〆 (U+3006), 〇 (U+3007), ヶ (U+30F6)
-        // 注: 仝 (U+4EDD) はCJK範囲内なので別途指定不要
-        if matches!(c, '\u{4E00}'..='\u{9FFF}' | '々' | '※' | '〆' | '〇' | 'ヶ') {
+        // 漢字: 参照実装 REGEX_KANJI = [亜-熙々※仝〆〇ヶ]（SJIS）。
+        // 亜(SJIS 0x889F)〜熙(0xEAA4) の SJIS 2バイトコード、および明示された
+        // 々 (U+3005), ※ (U+203B), 仝 (U+4EDD), 〆 (U+3006), 〇 (U+3007), ヶ (U+30F6)。
+        // 仝・々 は SJIS が 0x889F 未満だが明示リストにあるので漢字。
+        if matches!(c, '々' | '※' | '仝' | '〆' | '〇' | 'ヶ') {
+            return CharType::Kanji;
+        }
+        // U+4E00-U+9FFF でも、SJIS が [亜, 熙] の範囲外（NEC/IBM 拡張漢字
+        // 0xED-,0xFA- 等）やエンコード不能なものは、参照では :else になり
+        // ルビ親文字の連なりが切れる（例:厓=SJIS 0xFA8D）。
+        if matches!(c, '\u{4E00}'..='\u{9FFF}') && sjis_in_kanji_range(c) {
             return CharType::Kanji;
         }
 
@@ -100,6 +107,23 @@ impl CharType {
     pub fn can_be_ruby_base(&self) -> bool {
         !matches!(self, CharType::Else)
     }
+}
+
+/// 文字の Shift_JIS 2バイトコードが 亜(0x889F)〜熙(0xEAA4) の範囲にあるか。
+/// 参照実装 REGEX_KANJI = [亜-熙…] の 亜-熙（JIS X 0208 の漢字ブロック）に相当。
+/// NEC/IBM 拡張漢字（SJIS 0xED-,0xFA- 等）やエンコード不能な文字は範囲外＝false。
+fn sjis_in_kanji_range(c: char) -> bool {
+    let mut buf = [0u8; 8];
+    let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
+    if had_err {
+        return false;
+    }
+    let b = encoded.as_ref();
+    if b.len() != 2 {
+        return false;
+    }
+    let code = ((b[0] as u16) << 8) | b[1] as u16;
+    (0x889F..=0xEAA4).contains(&code)
 }
 
 /// 文字種別を取得する拡張トレイト
@@ -173,6 +197,18 @@ mod tests {
         assert_eq!(CharType::classify('〆'), CharType::Kanji);
         assert_eq!(CharType::classify('〇'), CharType::Kanji);
         assert_eq!(CharType::classify('ヶ'), CharType::Kanji);
+    }
+
+    #[test]
+    fn test_kanji_ibm_extension_is_else() {
+        // NEC/IBM 拡張漢字（SJIS が 亜-熙 の範囲外）は参照実装では :else になり、
+        // ルビ親文字の連なりが切れる。厓 = SJIS 0xFA8D（U+5393）。
+        // U+4E00-U+9FFF だが SJIS が 0xEAA4 超（またはエンコード不能）なので
+        // Kanji ではない。
+        assert_eq!(CharType::classify('\u{5393}'), CharType::Else);
+        // JIS X 0208 の第2水準漢字（亜-熙 内）は従来どおり Kanji。
+        assert_eq!(CharType::classify('腕'), CharType::Kanji); // 第1水準末尾付近
+        assert_eq!(CharType::classify('熙'), CharType::Kanji); // 上限そのもの
     }
 
     #[test]
