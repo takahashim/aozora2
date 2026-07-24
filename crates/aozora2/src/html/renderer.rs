@@ -36,11 +36,16 @@ fn nodes_have_inline_text(nodes: &[Node]) -> bool {
         // ぶら下げで包まれず <br /> になる。
         // 画像（Tag::Img）は String ではなく Tag::Inline なので blank_type は
         // true のまま＝ぶら下げで包まれず、terpri? が true なので <br /> が付く。
+        // ルビ（Tag::Ruby）も同様: 親文字は Ruby タグに取り込まれてバッファに
+        // String を残さないので、行全体がルビだけなら blank_type は true になり
+        // 包まれない。親文字の外に本文テキストがあればその Text ノードが true を
+        // 返すのでその行は包まれる。
         Node::BlockStart { .. }
         | Node::BlockEnd { .. }
         | Node::Midashi { .. }
         | Node::LineJisage { .. }
         | Node::Img { .. }
+        | Node::Ruby { .. }
         | Node::Note(_) => false,
         _ => true,
     })
@@ -543,6 +548,33 @@ mod tests {
         assert!(
             html.contains("本文が続く。</div>"),
             "末尾の本文まで含めて burasage で閉じられていない: {html}"
+        );
+    }
+
+    #[test]
+    fn test_burasage_does_not_wrap_pure_ruby_line() {
+        // 行全体がルビだけの行は、参照実装で親文字が Ruby タグに取り込まれ
+        // バッファに String を残さない＝blank_type true なので包まれず <br /> になる。
+        // 親文字の外に本文テキストがある行は従来どおり包まれる。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから１字下げ、折り返して３字下げ］\r\n\
+            夢遊病者《ソムナンビユール》\r\n\
+            前置き夢遊病者《ソムナンビユール》後置き\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains("<ruby><rb>夢遊病者</rb><rp>（</rp><rt>ソムナンビユール</rt><rp>）</rp></ruby><br />"),
+            "ルビだけの行がぶら下げで包まれず <br /> になっていない: {html}"
+        );
+        assert!(
+            !html.contains("text-indent: -2em;\"><ruby>"),
+            "ルビだけの行がぶら下げで包まれてしまっている: {html}"
+        );
+        // 親文字の外に本文がある行は包まれる。
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -2em;\">前置き<ruby>"),
+            "本文＋ルビの行が包まれていない: {html}"
         );
     }
 
