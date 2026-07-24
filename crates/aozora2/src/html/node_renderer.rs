@@ -289,10 +289,15 @@ impl<'a> NodeRenderer<'a> {
             Node::BlockStart { block_type, params } => {
                 let mut output = String::new();
 
-                // 新しいブロック開始時は、開いている関連ブロックを閉じる
-                let closed_blocks = block_manager.close_related_blocks(block_type);
-                for (bt, bp) in closed_blocks {
-                    output.push_str(&block_manager.render_block_end_tag(&bt, &bp));
+                // 新しい「ここから」ブロック（is_block=true）の開始時だけ、開いている
+                // 関連ブロックを閉じる。行中・行単位のインラインブロック
+                // （is_block=false、例: ぶら下げ行の途中の ［＃地付き］）は
+                // 既存のぶら下げ等を閉じてはならない（参照実装は閉じない）。
+                if params.is_block {
+                    let closed_blocks = block_manager.close_related_blocks(block_type);
+                    for (bt, bp) in closed_blocks {
+                        output.push_str(&block_manager.render_block_end_tag(&bt, &bp));
+                    }
                 }
 
                 block_manager.push(*block_type, params.clone());

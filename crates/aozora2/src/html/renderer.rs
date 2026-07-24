@@ -22,6 +22,23 @@ pub struct HtmlRenderer {
     options: RenderOptions,
 }
 
+/// 行の（解決済み）ノード列がインラインの本文テキストを持つか。
+/// 参照実装 TextBuffer#blank_type が false になる条件＝空でない String が
+/// バッファに入っているかに対応する。ブロック制御ノード（ブロックの開閉・
+/// 見出し・行単位字下げ）はテキストを持たず、それ以外のインライン要素
+/// （テキスト・ルビ・外字・傍点・縦中横・注記・行中の地付き周辺のテキスト等）は
+/// 本文テキストを生む。ぶら下げブロック内でこの行を div で包むかの判定に使う。
+fn nodes_have_inline_text(nodes: &[Node]) -> bool {
+    nodes.iter().any(|n| match n {
+        Node::Text(s) => !s.is_empty(),
+        Node::BlockStart { .. }
+        | Node::BlockEnd { .. }
+        | Node::Midashi { .. }
+        | Node::LineJisage { .. } => false,
+        _ => true,
+    })
+}
+
 impl HtmlRenderer {
     /// 新しいレンダラーを作成
     pub fn new(options: RenderOptions) -> Self {
@@ -58,8 +75,16 @@ impl HtmlRenderer {
         let body_raw = parse_document_raw(&body_lines);
         for raw_line in &body_raw.lines {
             let line = raw_line.source.as_str();
-            let (line_html, has_explicit_close) =
+            let (mut line_html, has_explicit_close, has_inline_text) =
                 self.render_raw_line(raw_line, &mut node_renderer, &mut block_manager);
+
+            // インラインブロック（is_block=false、例: 行中の ［＃地付き］）は行末で
+            // 閉じ、line_html に取り込む。ぶら下げ行を div で包むときも閉じタグ込みで
+            // 包めるよう、包む判定より前に閉じておく。
+            let closed_blocks = block_manager.close_inline_blocks();
+            for (block_type, params) in closed_blocks {
+                line_html.push_str(&block_manager.render_block_end_tag(&block_type, &params));
+            }
 
             // レンダリング済み行を一度だけ分類する（型付き信号）
             let info = classify_output_line(&line_html);
@@ -68,8 +93,17 @@ impl HtmlRenderer {
             let burasage_ctx = block_manager.find_burasage_context();
 
             if let Some((wrap_width, text_indent)) = burasage_ctx {
-                // ぶら下げブロック内: インライン行を個別のdivでラップ
-                if info.burasage_wrappable {
+                // ぶら下げブロック内: 本文テキストを持つ行を個別の div で包む。
+                // 参照実装 general_output は blank_type==false（＝空でない String が
+                // ある）の行だけ行頭で burasage div を開く。出力HTMLの末尾で
+                // 判定すると `テキスト［＃地付き］右` のような行中インラインブロックを
+                // 取りこぼすので、AST 由来の has_inline_text を使う。
+                // ただし行全体が block div で始まる場合（行末の地付き/地からで
+                // 行全体が chitsuki/jisage div になったとき）は、その行自体が
+                // ブロックなので包まない（行頭のテキストがない＝先頭が <div/<h）。
+                let starts_with_block =
+                    line_html.starts_with("<div") || line_html.starts_with("<h");
+                if has_inline_text && !starts_with_block {
                     output.push_str(&format!(
                         "<div class=\"burasage\" style=\"margin-left: {wrap_width}em; text-indent: {text_indent}em;\">{line_html}</div>"
                     ));
@@ -93,12 +127,6 @@ impl HtmlRenderer {
             }
 
             output.push_str(&line_html);
-
-            // インラインブロック（is_block = false）は行末で閉じる
-            let closed_blocks = block_manager.close_inline_blocks();
-            for (block_type, params) in closed_blocks {
-                output.push_str(&block_manager.render_block_end_tag(&block_type, &params));
-            }
 
             // ブロック開始/終了だけの行（div終わる）には<br />を追加しない
             let ends_with_div = output.ends_with("</div>");
@@ -184,14 +212,16 @@ impl HtmlRenderer {
     }
 
     /// RawAST の1行をHTMLに変換（コンテキスト付き）。
-    /// 戻り値の bool は、その行が ［＃ここで…終わり］でブロックを閉じたか
+    /// 戻り値の 2 番目 bool は、その行が ［＃ここで…終わり］でブロックを閉じたか
     /// （参照実装の @terprip=false 相当。true なら行末の <br /> を出さない）。
+    /// 3 番目 bool は、その行がインラインの本文テキストを持つか
+    /// （参照実装 TextBuffer#blank_type が false ＝行頭で ぶら下げ div を開く条件）。
     fn render_raw_line(
         &self,
         raw: &RawLine,
         node_renderer: &mut NodeRenderer,
         block_manager: &mut BlockManager,
-    ) -> (String, bool) {
+    ) -> (String, bool, bool) {
         let line = raw.source.as_str();
 
         // くの字点は注記の中に書かれることもあるので生の行から数える
@@ -239,9 +269,12 @@ impl HtmlRenderer {
                 return (
                     format!("<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">"),
                     true,
+                    false,
                 );
             }
-            // テキストがあれば、コマンドを取り除いて行全体を字下げの div で包む
+            // テキストがあれば、コマンドを取り除いて行全体を字下げの div で包む。
+            // 行全体が字下げの block div になるので、ぶら下げ内でも本文テキスト行
+            // としては包まない（参照実装でも jisage 行は burasage で包まれない）。
             nodes.remove(pos);
             let inner = node_renderer.render_nodes(&nodes, block_manager);
             return (
@@ -249,12 +282,14 @@ impl HtmlRenderer {
                     "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">{inner}</div>"
                 ),
                 has_explicit_close,
+                false,
             );
         }
 
         // 行の開始時点でのブロックスタックの長さを記録
         let stack_len_before = block_manager.stack_len();
 
+        let has_inline_text = nodes_have_inline_text(&nodes);
         let mut output = node_renderer.render_nodes(&nodes, block_manager);
 
         // 行単位地付き/地から（LineChitsuki）: 行頭のコマンドでその行だけの
@@ -276,7 +311,7 @@ impl HtmlRenderer {
             }
         }
 
-        (output, has_explicit_close)
+        (output, has_explicit_close, has_inline_text)
     }
 
     /// 1行をHTMLに変換（公開API）
