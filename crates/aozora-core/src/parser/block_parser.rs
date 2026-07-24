@@ -72,18 +72,25 @@ fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<Command
     let first_part = parts[0];
     let second_part = parts[1];
 
-    // 折り返し幅を抽出。参照実装の `折り返して(\d*)字下げ` に合わせ、
-    // 「字下げ」直前の数字だけを取る（`７字下げ、２１字詰め` の 21 を巻き込まない）。
-    if let Some(wrap_width) = extract_number_before(second_part, "字下げ") {
-        params.wrap_width = Some(wrap_width);
-    }
-
-    // 最初の部分から字下げ幅を抽出
+    // 参照実装 apply_burasage の3分岐を再現する。折り返し幅・字下げ幅は
+    // ともに「字下げ」直前の数字（`折り返して(\d*)字下げ` / `(\d*)字下げ`）。
     if first_part.contains("天付き") {
-        // 改行天付き: 最初の行は左端から
+        // 改行天付き、折り返してN字下げ:
+        //   PAT_ORIKAESHI_JISAGE = 折り返して(\d*)字下げ
+        //   margin-left = N, text-indent = -N（width=0）
+        params.wrap_width = extract_number_before(second_part, "字下げ");
         params.width = Some(0);
-    } else if let Some(width) = extract_number_before(first_part, "字下げ") {
-        params.width = Some(width);
+    } else if first_part.contains("字下げ") {
+        // N字下げ、折り返してM字下げ（コンマあり）:
+        //   PAT_ORIKAESHI_JISAGE2 = (\d*)字下げ、折り返して(\d*)字下げ
+        //   margin-left = M, text-indent = N-M
+        params.wrap_width = extract_number_before(second_part, "字下げ");
+        params.width = extract_number_before(first_part, "字下げ");
+    } else {
+        // 折り返してM字下げ（コンマなし・天付きなし）: 参照実装は
+        // PAT_ORIKAESHI_JISAGE2 に一致せず、margin-left が空・text-indent 0 になる。
+        params.wrap_width = None;
+        params.width = None;
     }
 
     Some(CommandResult::BlockStart {

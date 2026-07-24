@@ -104,8 +104,10 @@ impl HtmlRenderer {
                 let starts_with_block =
                     line_html.starts_with("<div") || line_html.starts_with("<h");
                 if has_inline_text && !starts_with_block {
+                    // 折り返し幅が None のときは margin-left を空にする（参照実装のコンマなし形）
+                    let margin = wrap_width.map(|w| w.to_string()).unwrap_or_default();
                     output.push_str(&format!(
-                        "<div class=\"burasage\" style=\"margin-left: {wrap_width}em; text-indent: {text_indent}em;\">{line_html}</div>"
+                        "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">{line_html}</div>"
                     ));
                     output.push_str("\r\n");
                     continue;
@@ -385,6 +387,21 @@ mod tests {
         assert!(
             html.contains("<div class=\"burasage\" style=\"margin-left: 3em; text-indent: -1em;\">次</div>"),
             "後続行の burasage 包みが失われている: {html}"
+        );
+    }
+
+    #[test]
+    fn test_burasage_nocomma_has_empty_margin() {
+        // コンマなし「折り返してN字下げ」は参照実装で margin-left 空・text-indent 0。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから折り返して３字下げ］\r\n\
+            テキスト\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: em; text-indent: 0em;\">テキスト</div>"),
+            "コンマなしぶら下げの margin-left が空になっていない: {html}"
         );
     }
 
