@@ -513,7 +513,14 @@ spec がスタイル不成立でも注記化して再試行しない、(c) 入�
   （Fig.《…》→ 親文字 Fig.）。extract_ruby_base で末尾が hankaku_terminate かつ
   直前が hankaku なら hankaku 連ごと親文字に含める（あ.→. / Fig..→. は最後の1つ）。
 
-**残差の現状（byte-exact 17359/17509 = 99.14%, error 56, equivalent 1, different 93）**。
+**字下げ空幅の Quirk 化（2026-07 続き, ループA/B, +2）**: 参照 `(\d*)字下げ` は
+隣接数字のみ取るので `３　字下げ`（全角空白で分離）やコンマなし折り返しは空幅に
+なり、`class="jisage_"` / `margin-left: em`（無効な CSS）を出す。幅抽出を隣接数字
+のみに直し（正しいパース）、空幅が生む不正 CSS を Quirk `empty_indent_css`（既定
+オン）へ隔離（ぶら下げのコンマなし margin-left: em も同じ Quirk 配下に統一）。
+オフで妥当な CSS（jisage は class="jisage"、ぶら下げ margin-left: 0em）。
+
+**残差の現状（byte-exact 17361/17509 = 99.16%, error 56, equivalent 1, different 91）**。
 残る different の主な難所（多くは参照実装のバグ/実装都合の再現が必要）:
 - **外字入りルビ親文字＋底本注記**（004995/057416/001452）: `孫子※［＃…］《そんしばく》`
   ＋直後の底本注記で、参照は親文字を失い空 alt の img だけ出す（参照バグ）。再現が高難度。
