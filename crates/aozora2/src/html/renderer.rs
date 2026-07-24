@@ -14,7 +14,7 @@ use super::block_manager::BlockManager;
 use super::document_renderer::DocumentRenderer;
 use super::node_renderer::NodeRenderer;
 use super::options::RenderOptions;
-use super::presentation::{auto_link, classify_line, is_block_only_line, is_midashi_line, LineType};
+use super::presentation::{auto_link, classify_output_line};
 
 /// HTMLレンダラー
 #[derive(Debug, Clone)]
@@ -61,13 +61,15 @@ impl HtmlRenderer {
             let (line_html, has_explicit_close) =
                 self.render_raw_line(raw_line, &mut node_renderer, &mut block_manager);
 
+            // レンダリング済み行を一度だけ分類する（型付き信号）
+            let info = classify_output_line(&line_html);
+
             // ぶら下げブロック内かどうかをチェック
             let burasage_ctx = block_manager.find_burasage_context();
-            let line_type = classify_line(&line_html);
 
             if let Some((wrap_width, text_indent)) = burasage_ctx {
                 // ぶら下げブロック内: インライン行を個別のdivでラップ
-                if line_type == LineType::Inline {
+                if info.burasage_wrappable {
                     output.push_str(&format!(
                         "<div class=\"burasage\" style=\"margin-left: {wrap_width}em; text-indent: {text_indent}em;\">{line_html}</div>"
                     ));
@@ -78,7 +80,7 @@ impl HtmlRenderer {
                 // 開かないが行末では閉じる（見出しが :midashi を indent_stack に
                 // 積み、ぶら下げ div の収支がずれるため）。見出しタグ＋</div> を
                 // 出し、<br /> は付けない。
-                if is_midashi_line(&line_html) {
+                if info.is_midashi {
                     output.push_str(&line_html);
                     output.push_str("</div>\r\n");
                     continue;
@@ -111,7 +113,7 @@ impl HtmlRenderer {
                 // 現在の出力がdiv終了タグで終わる場合は<br />不要
                 false
             } else {
-                !is_block_only_line(&line_html)
+                !info.suppresses_br
             };
             if needs_br {
                 output.push_str("<br />");

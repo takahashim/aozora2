@@ -43,6 +43,28 @@ pub fn is_midashi_line(html: &str) -> bool {
     html.ends_with("</h3>") || html.ends_with("</h4>") || html.ends_with("</h5>")
 }
 
+/// レンダリング済み1行の分類。レンダラのループが必要とする3つの信号を
+/// 一箇所にまとめる。中身は当面 line_html の文字列判定だが、
+/// この型を継ぎ目にすれば将来ノード由来の判定へ差し替えやすい。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LineInfo {
+    /// burasage ブロック内で個別 div に包める（インライン行）か
+    pub burasage_wrappable: bool,
+    /// 見出し行（burasage 内で行末 </div> を閉じる対象）か
+    pub is_midashi: bool,
+    /// ブロック要素だけの行で、行末 <br /> を抑制するか
+    pub suppresses_br: bool,
+}
+
+/// レンダリング済み1行を分類する（出力 HTML から判定）。
+pub fn classify_output_line(html: &str) -> LineInfo {
+    LineInfo {
+        burasage_wrappable: classify_line(html) == LineType::Inline,
+        is_midashi: is_midashi_line(html),
+        suppresses_br: is_block_only_line(html),
+    }
+}
+
 /// StyleType のCSSクラス名を取得
 pub fn style_css_class(style_type: StyleType) -> &'static str {
     match style_type {
@@ -284,6 +306,23 @@ mod tests {
             classify_line("<span class=\"test\">text</span>"),
             LineType::Inline
         );
+    }
+
+    #[test]
+    fn test_classify_output_line_composes_signals() {
+        // インライン行: 包める・見出しでない・<br /> 抑制しない
+        let inline = classify_output_line("ふつうの本文");
+        assert_eq!(
+            inline,
+            LineInfo {
+                burasage_wrappable: true,
+                is_midashi: false,
+                suppresses_br: false,
+            }
+        );
+        // 見出し行: 包めない・見出し・<br /> 抑制
+        let midashi = classify_output_line("<h4 class=\"naka-midashi\">章</h4>");
+        assert!(!midashi.burasage_wrappable && midashi.is_midashi && midashi.suppresses_br);
     }
 
     #[test]
