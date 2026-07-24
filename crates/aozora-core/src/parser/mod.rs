@@ -215,32 +215,52 @@ fn parse_token(token: &Token) -> Vec<Node> {
             // 19、37-下-11］e siècle〕）。テキストノードだけにアクセント変換を掛け、
             // 外字などテキスト以外のノードはそのまま残す。アクセント列（e＋アクセント）
             // は同一テキストノード内に収まるので分割して処理しても取りこぼさない。
-            use crate::accent::{parse_accent, AccentPart};
-            let mut result = Vec::new();
-            for node in parse_tokens(children) {
-                match node {
-                    Node::Text(s) => {
-                        for part in parse_accent(&s) {
-                            match part {
-                                AccentPart::Text(t) => result.push(Node::Text(t)),
-                                AccentPart::Accent {
-                                    jis_code,
-                                    name,
-                                    unicode,
-                                } => result.push(Node::Accent {
-                                    code: jis_code,
-                                    name,
-                                    unicode: Some(unicode),
-                                }),
-                            }
-                        }
-                    }
-                    other => result.push(other),
-                }
-            }
-            result
+            apply_accent_to_nodes(parse_tokens(children))
         }
     }
+}
+
+/// アクセントブロック 〔…〕 の中身にアクセント変換を適用する。
+/// テキストは e´ 等をアクセント文字（外字画像）に変換し、外字などはそのまま残す。
+/// 参照実装 AccentParser はブロック内の全文字を処理するので、内側のルビ親文字
+/// （例:〔｜Cafe'《カフエ》〕の Cafe'）にも再帰的に適用する。
+fn apply_accent_to_nodes(nodes: Vec<Node>) -> Vec<Node> {
+    use crate::accent::{parse_accent, AccentPart};
+    let mut result = Vec::new();
+    for node in nodes {
+        match node {
+            Node::Text(s) => {
+                for part in parse_accent(&s) {
+                    match part {
+                        AccentPart::Text(t) => result.push(Node::Text(t)),
+                        AccentPart::Accent {
+                            jis_code,
+                            name,
+                            unicode,
+                        } => result.push(Node::Accent {
+                            code: jis_code,
+                            name,
+                            unicode: Some(unicode),
+                        }),
+                    }
+                }
+            }
+            // ルビの親文字にも再帰的にアクセント変換を適用する。
+            Node::Ruby {
+                children,
+                ruby,
+                direction,
+                keep_gaiji_notes_in_base,
+            } => result.push(Node::Ruby {
+                children: apply_accent_to_nodes(children),
+                ruby,
+                direction,
+                keep_gaiji_notes_in_base,
+            }),
+            other => result.push(other),
+        }
+    }
+    result
 }
 
 /// トークン列をノード列に変換（再帰用、前方参照解決なし）
@@ -566,6 +586,22 @@ mod tests {
             .iter()
             .any(|n| matches!(n, Node::Text(s) if s.contains("37-下-11")));
         assert!(!has_raw_desc, "外字の記述が生テキストになっている: {nodes:?}");
+    }
+
+    #[test]
+    fn test_accent_applies_to_ruby_base() {
+        // アクセントブロック内のプレフィックスルビ親文字（例:〔｜Cafe'《…》〕の
+        // Cafe'）にもアクセント変換を適用し、e´ 等を Node::Accent（外字画像）にする。
+        let tokens = tokenize("〔｜a`b《ルビ》〕");
+        let nodes = parse(&tokens);
+        // ルビの親文字の中にアクセントノードがあること。
+        let base_has_accent = nodes.iter().any(|n| match n {
+            Node::Ruby { children, .. } => {
+                children.iter().any(|c| matches!(c, Node::Accent { .. }))
+            }
+            _ => false,
+        });
+        assert!(base_has_accent, "ルビ親文字にアクセント変換が適用されていない: {nodes:?}");
     }
 
     #[test]
