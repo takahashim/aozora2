@@ -96,6 +96,24 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
         return Some((remaining.to_vec(), base.to_vec()));
     }
 
+    // 参照実装 RubyBuffer#create_ruby は蓄積した ruby_buf 全体を親文字にする。
+    // スタイル span 等のインラインタグ（char_type :else）が直前にあると、その
+    // タグが（前方参照で親文字を取り込んだ状態で）そのまま親文字になる。
+    // 例:「公事根源［＃「公事根源」は斜体］《くじこんげん》」→ 親文字は
+    // <span class="shatai">公事根源</span>。Note と同じくタグ単独を親文字にする。
+    if matches!(
+        last_node,
+        Node::Style { .. }
+            | Node::Tcy { .. }
+            | Node::FontSize { .. }
+            | Node::Keigakomi { .. }
+            | Node::Yokogumi { .. }
+            | Node::Caption { .. }
+    ) {
+        let (remaining, base) = nodes.split_at(nodes.len() - 1);
+        return Some((remaining.to_vec(), base.to_vec()));
+    }
+
     let last_char_type = last_node.last_char_type()?;
 
     let mut base_nodes = Vec::new();
@@ -281,6 +299,24 @@ mod tests {
         assert!(matches!(&remaining[0], Node::Text(s) if s == "私の"));
         assert_eq!(base.len(), 1);
         assert!(matches!(&base[0], Node::Gaiji { .. }));
+    }
+
+    #[test]
+    fn test_extract_ruby_base_from_nodes_with_style() {
+        // 直前がスタイル span（斜体等）なら、そのタグが単独で親文字になる
+        // （例:「…。公事根源［＃「公事根源」は斜体］《くじこんげん》」）。
+        let nodes = vec![
+            Node::text("持っている。"),
+            Node::Style {
+                children: vec![Node::text("公事根源")],
+                style_type: crate::node::StyleType::Shatai,
+            },
+        ];
+        let (remaining, base) = extract_ruby_base_from_nodes(&nodes).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert!(matches!(&remaining[0], Node::Text(s) if s == "持っている。"));
+        assert_eq!(base.len(), 1);
+        assert!(matches!(&base[0], Node::Style { .. }));
     }
 
     #[test]
