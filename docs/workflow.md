@@ -263,8 +263,19 @@ AST サブツリー化・出力HTML詮索の完全なノード化は、着手前
 （structural equivalence）粒度で、byte 非一致でも構造同等なら悪化に数えない。
 **真の互換指標は byte-exact 件数**（results の status=="exact" の数）。
 リファクタの挙動不変確認や改善計測は、改善/悪化カウンタだけでなく
-byte-exact 件数の増減で判断すること。現状: 17194/17509 exact（error 56 は
-CRC 不良 zip 等の処理不能、残差 different 259）。
+byte-exact 件数の増減で判断すること。error（status!=exact/different/equivalent）は
+オラクル gz が無い作品で、byte-exact の実効上限は 17509−error になる。
+
+**error の正体（2026-07 調査で確定。旧記述「CRC 不良 zip」は誤り）**: オラクル
+build（build_oracle.sh）は参照実装 aozora2html が**終了コード0で完走したときだけ**
+gz を作る。error はハーネスが選んだ zip エディションで**参照実装自身が失敗**して
+gz が無い作品。56 件の内訳: 記法エラーで停止 42（うち `字下げを閉じようとしま
+したが字下げ中ではありません` 34、二重ルビ/著者2回/字詰め・字下げ中に本文終了/
+burasage/1バイト記号+後続エラー 8）、**参照実装のクラッシュ（Ruby NoMethodError:
+push_block_tag/style_stack）11**、zip に .txt 無し 1、その他 2。同一 work に別
+エディション zip（例 233_ruby_2990 と 233_txt_2991）があり片方だけ参照が通る例も
+あるが、ハーネスの pair 選択は 1 エディション固定なので基準は変わらない。
+つまり error はコンバータの改善対象外（比較対象が存在しない）。
 
 **残差観測の手順**: `results-oracle.jsonl` は diff テキストを持たないので、
 各 different 作品でオラクル gz と `aozora2 html` 出力を突き合わせ、最初の
@@ -440,7 +451,7 @@ burasage-different は 24 件まで減。残りは個別の別クラスタ:
   冒頭の trim() で落としていたのを、最終フォールバックの注記だけ原文（untrimmed）に。
 
 **残差の現状（byte-exact 17342/17509 = 99.05%, error 56, equivalent 1, different 110）**。
-error 56 は CRC 不良 zip 等の処理不能（ハード下限）。実効上限は約 17453。残りの
+error 56 は参照実装が失敗しオラクルが無い作品（内訳は §指標の注意を参照）。実効上限 約 17453。残りの
 different 110 は個別色の強い長い尾:
 - **二重対象**（`「のれん」と「ねうち」に傍点` → 参照は ねうち のみ）。PAT_FRONTREF の
   入れ子照合の再現が要る。
@@ -466,7 +477,7 @@ different 110 は個別色の強い長い尾:
   コーパスでは実質等価（U+4E00-9FFF は [亜-熙] の上位集合だが非 SJIS 文字は登場しない）。
 
 **残差の現状（byte-exact 17344/17509 = 99.06%, error 56, equivalent 1, different 108）**。
-error 56 は CRC 不良 zip 等（ハード下限）、実効上限 約 17453。残りの individual な尾:
+error 56 は参照実装が失敗しオラクルが無い作品（内訳は §指標の注意を参照）。実効上限 約 17453。残りの individual な尾:
 - **傍記**（`「X」に「×」の注記` の傍記マーカー描画）、二重対象（`「A」と「B」に傍点`）。
 - 対象内に ruby/gaiji を含む複合ルビ・傍記。
 - @terprip=false 伝播（54444）、深い入れ子（jizume/keigakomi 内 burasage）、
