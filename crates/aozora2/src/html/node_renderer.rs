@@ -52,6 +52,8 @@ pub struct NodeRenderer<'a> {
     /// ルビの親文字を組み立て中かどうか。親文字の中では外字記号を
     /// 個別に出さず、親文字側にまとめて置く。
     in_ruby_base: bool,
+    /// alt の入れ子外字展開の深さ（暴走防止）
+    alt_depth: usize,
 }
 
 /// 画像化できない外字を本文中で示す記号
@@ -78,12 +80,51 @@ impl<'a> NodeRenderer<'a> {
             note_depth: 0,
             in_tail: false,
             in_ruby_base: false,
+            alt_depth: 0,
         }
     }
 
     /// 本文を抜けたことを伝える（after_text・底本情報のレンダリング前に呼ぶ）
     pub fn enter_tail(&mut self) {
         self.in_tail = true;
+    }
+
+    /// 外字画像の alt テキストを組み立てる。
+    ///
+    /// 参照実装は description の中に入れ子の外字記法 `※［＃…］` があると、それを
+    /// alt の中で `<img>` タグに展開する（属性値の中にタグが入る不正な HTML）。
+    /// quirk `nested_gaiji_in_alt` がオンのときだけこれを再現し、オフなら
+    /// 入れ子の記法を素のテキストのまま alt に残す。
+    fn gaiji_alt(&mut self, description: &str) -> String {
+        const NEST: &str = "※［＃";
+        if !self.options.quirks.nested_gaiji_in_alt
+            || self.alt_depth >= 4
+            || !description.contains(NEST)
+        {
+            return html_escape(description);
+        }
+        self.alt_depth += 1;
+        let mut out = String::new();
+        let mut rest = description;
+        while let Some(pos) = rest.find(NEST) {
+            out.push_str(&html_escape(&rest[..pos]));
+            let after = &rest[pos + NEST.len()..];
+            match after.find('］') {
+                Some(end) => {
+                    let inner = after[..end].to_string();
+                    out.push_str(&self.render_gaiji(&inner, None, None));
+                    rest = &after[end + '］'.len_utf8()..];
+                }
+                None => {
+                    out.push_str(&html_escape(&rest[pos..]));
+                    self.alt_depth -= 1;
+                    return out;
+                }
+            }
+        }
+        out.push_str(&html_escape(rest));
+        self.alt_depth -= 1;
+        out
     }
 
     /// 画像化できない外字の直前に置く外字記号。
@@ -470,12 +511,10 @@ impl<'a> NodeRenderer<'a> {
                 } else {
                     self.has_gaiji_images = true;
                     let (folder, file) = jis_code_to_path(jis);
+                    let alt = self.gaiji_alt(description);
                     return format!(
                         "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                        self.options.gaiji_dir,
-                        folder,
-                        file,
-                        html_escape(description)
+                        self.options.gaiji_dir, folder, file, alt
                     );
                 }
             }
@@ -501,12 +540,10 @@ impl<'a> NodeRenderer<'a> {
                 self.has_jisx0213 = true;
                 self.has_gaiji_images = true;
                 let (folder, file) = jis_code_to_path(jis);
+                let alt = self.gaiji_alt(description);
                 return format!(
                     "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                    self.options.gaiji_dir,
-                    folder,
-                    file,
-                    html_escape(description)
+                    self.options.gaiji_dir, folder, file, alt
                 );
             }
             // 両方Noneの場合は再度パース
@@ -536,12 +573,10 @@ impl<'a> NodeRenderer<'a> {
                 } else {
                     self.has_gaiji_images = true;
                     let (folder, file) = jis_code_to_path(&jis);
+                    let alt = self.gaiji_alt(description);
                     format!(
                         "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                        self.options.gaiji_dir,
-                        folder,
-                        file,
-                        html_escape(description)
+                        self.options.gaiji_dir, folder, file, alt
                     )
                 }
             }
@@ -549,12 +584,10 @@ impl<'a> NodeRenderer<'a> {
                 self.has_jisx0213 = true;
                 self.has_gaiji_images = true;
                 let (folder, file) = jis_code_to_path(&jis);
+                let alt = self.gaiji_alt(description);
                 format!(
                     "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                    self.options.gaiji_dir,
-                    folder,
-                    file,
-                    html_escape(description)
+                    self.options.gaiji_dir, folder, file, alt
                 )
             }
             GaijiResult::Unconvertible => {

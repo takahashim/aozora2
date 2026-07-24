@@ -10,7 +10,7 @@ mod presentation;
 mod renderer;
 mod tag_generator;
 
-pub use options::RenderOptions;
+pub use options::{Quirks, RenderOptions};
 pub use presentation::html_escape;
 pub use renderer::HtmlRenderer;
 
@@ -49,6 +49,22 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// quirk nested_gaiji_in_alt: 参照実装は alt 内の入れ子外字を img に展開する。
+    /// 既定（オン）では再現し、オフでは素のテキストのまま残す。
+    #[test]
+    fn test_nested_gaiji_in_alt_quirk() {
+        let src = "タイトル\r\n\r\n※［＃「姉」の正字、「※［＃第3水準1-85-57］」の「木」に代えて「女」、374-10］";
+
+        // 既定（quirk オン）: alt の中に入れ子の <img> が展開される
+        let on = convert(src, &RenderOptions::default());
+        assert_eq!(on.matches("<img").count(), 2, "実際: {on}");
+
+        // quirk オフ: 入れ子の記法は素のテキストのまま alt に残る
+        let off = convert(src, &RenderOptions::new().with_quirks(Quirks::none()));
+        assert_eq!(off.matches("<img").count(), 1, "実際: {off}");
+        assert!(off.contains("※［＃第3水準1-85-57］"), "実際: {off}");
+    }
 
     #[test]
     fn test_convert_simple() {
