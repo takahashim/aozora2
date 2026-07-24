@@ -183,8 +183,17 @@ fn parse_token(token: &Token) -> Vec<Node> {
         } => {
             let base_nodes = parse_tokens(base_children);
             let ruby_nodes = parse_tokens(ruby_children);
+            // ｜ で明示された親文字は空でも「確定済み」。resolve_inline_ruby が
+            // children.is_empty() で前方テキストを取り込むので、空の場合は空 Text を
+            // 1つ置いて非空にし、参照実装同様に空親文字のルビ（<rb></rb>）にする
+            // （例:「一番向｜《むか》」→ 一番向 は本文、親文字は空）。
+            let base = if base_nodes.is_empty() {
+                vec![Node::Text(String::new())]
+            } else {
+                base_nodes
+            };
             vec![Node::Ruby {
-                children: base_nodes,
+                children: base,
                 ruby: ruby_nodes,
                 direction: RubyDirection::Right,
             }]
@@ -567,6 +576,25 @@ mod tests {
         } else {
             panic!("Expected Ruby node");
         }
+    }
+
+    #[test]
+    fn test_prefixed_ruby_empty_base_not_filled() {
+        // 一番向｜《むか》: ｜ で明示された空親文字。前方の「一番向」を取り込まず、
+        // 親文字は空のまま（参照実装は <rb></rb> の空親文字ルビを作る）。
+        let mut nodes = parse(&tokenize("一番向｜《むか》うにある"));
+        resolve_references(&mut nodes);
+        // 「一番向」は本文テキストとして残る（ルビ親文字に取り込まれない）。
+        let has_text = nodes
+            .iter()
+            .any(|n| matches!(n, Node::Text(s) if s.starts_with("一番向")));
+        assert!(has_text, "一番向 が本文に残っていない: {nodes:?}");
+        // 空親文字のルビがある。
+        let empty_base_ruby = nodes.iter().any(|n| matches!(n,
+            Node::Ruby { children, ruby, .. }
+                if ruby.iter().any(|r| matches!(r, Node::Text(s) if s == "むか"))
+                    && children.iter().all(|c| matches!(c, Node::Text(s) if s.is_empty()))));
+        assert!(empty_base_ruby, "空親文字ルビになっていない: {nodes:?}");
     }
 
     #[test]
