@@ -20,6 +20,32 @@ pub fn extract_number(s: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
+/// キーワードの直前に連続する数字（全角・半角）を取り出す。
+///
+/// 参照実装の `(\d*)字下げ` のように、数字をキーワードに固定して読む。
+/// `extract_number` が文字列中のあらゆる数字を拾って連結してしまうのに対し、
+/// こちらはキーワード直前だけを見るので、`７字下げ、２１字詰め` から
+/// `字下げ` の幅として 7 を取り出せる（21 を巻き込まない）。
+pub fn extract_number_before(s: &str, keyword: &str) -> Option<u32> {
+    let idx = s.find(keyword)?;
+    let digits: String = s[..idx]
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit() || ('０'..='９').contains(c))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|c| {
+            if c.is_ascii_digit() {
+                c
+            } else {
+                ((c as u32 - '０' as u32 + '0' as u32) as u8) as char
+            }
+        })
+        .collect();
+    digits.parse().ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -29,6 +55,15 @@ mod tests {
         assert_eq!(extract_number("2字下げ"), Some(2));
         assert_eq!(extract_number("10字詰め"), Some(10));
         assert_eq!(extract_number("字下げ"), None);
+    }
+
+    #[test]
+    fn test_extract_number_before_anchors_to_keyword() {
+        // 直前の数字だけを取り、後続の別の数字を巻き込まない
+        assert_eq!(extract_number_before("７字下げ、２１字詰め", "字下げ"), Some(7));
+        assert_eq!(extract_number_before("２字下げ、", "字下げ"), Some(2));
+        assert_eq!(extract_number_before("字下げ", "字下げ"), None);
+        assert_eq!(extract_number_before("改行天付き", "字下げ"), None);
     }
 
     #[test]

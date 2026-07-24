@@ -5,7 +5,7 @@
 use crate::node::{BlockParams, BlockType, FontSizeType, MidashiLevel, MidashiStyle, StyleType};
 
 use super::command_parser::CommandResult;
-use super::utils::extract_number;
+use super::utils::{extract_number, extract_number_before};
 
 /// ブロック開始を解析
 pub fn parse_block_start(content: &str) -> CommandResult {
@@ -60,8 +60,9 @@ fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<Command
     let first_part = parts[0];
     let second_part = parts[1];
 
-    // 折り返し幅を抽出
-    if let Some(wrap_width) = extract_number(second_part) {
+    // 折り返し幅を抽出。参照実装の `折り返して(\d*)字下げ` に合わせ、
+    // 「字下げ」直前の数字だけを取る（`７字下げ、２１字詰め` の 21 を巻き込まない）。
+    if let Some(wrap_width) = extract_number_before(second_part, "字下げ") {
         params.wrap_width = Some(wrap_width);
     }
 
@@ -69,7 +70,7 @@ fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<Command
     if first_part.contains("天付き") {
         // 改行天付き: 最初の行は左端から
         params.width = Some(0);
-    } else if let Some(width) = extract_number(first_part) {
+    } else if let Some(width) = extract_number_before(first_part, "字下げ") {
         params.width = Some(width);
     }
 
