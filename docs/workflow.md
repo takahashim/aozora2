@@ -541,9 +541,82 @@ chitsuki_0 になっていたのを、convert_japanese_number＋extract_number_b
   入れ子ブロック閉じ行の空 burasage div（確定した限界）、gaiji 一覧テーブル。
 error 56 は参照実装が失敗しオラクルが無い作品（内訳は §指標の注意を参照）。実効上限 約 17453。
 
+**共通根本原因クラスタ・外字/ルビ/コマンド網羅の解消（2026-07 続き, ループA/B,
+byte-exact 17374→17406, 99.41%, +32, 悪化0）**: 真の初回相違を gz と出力の直接
+行 diff で取り、共通根本原因を突く方針で進めた。効果の大きかった順:
+- **画像注記 alt 内の外字を外字一覧に登録**（+7: 46820/50354/50355/54957/58400/58401/58704）:
+  参照は画像注記を read_to_nest で読む際、@images を共有する TagParser が alt 内の
+  外字 ※［＃…］ を処理する副作用で外字一覧・:newjis に登録する（alt は生文字列で
+  出るが一覧にも載る）。render_img の前に alt をトークナイズして内側外字を登録
+  （register_alt_gaiji）。テーブル差・外字判定差まで一挙に解消。
+- **＃無し外字 ※［...］**（+8: 1755/46158/53679/54899/4644/4868/1704/43571）: 参照
+  dispatch_gaiji は「※」の次が「［」なら ＃ 不問で外字扱い。Token/Node に
+  had_igeta を追加し、＃無しは EmbedGaiji alt を空（gsub! nil）、UnEmbedGaiji 注記も
+  ＃無し、外字一覧の名前/行も空（PAT_GAIJI の ＃ 必須で match 失敗）にする。
+- **アクセントブロック内ルビ親文字の合成文字**（+3: 2599/5077/42157）: 参照
+  AccentParser は 〔…〕 内全文字を処理するので、内側プレフィックスルビの親文字
+  （〔｜Cafe'《…》〕の Cafe'）の e´/a` も外字画像化。apply_accent_to_nodes を Ruby
+  親文字へ再帰。
+- **入れ子字下げ（同種のみ1つ閉じ）**（+3: 1872/55819/58129）: 参照
+  implicit_close(:jisage) は indent_stack 最上位が jisage/burasage のときだけ1つ閉じ、
+  別種（フォント等）が最上位ならネスト。close_related_blocks の while ループ（深い
+  jisage まで全閉じ）を最上位1つ判定に。**注意: burasage/chitsuki の close は
+  load-bearing で、同様に触ると大規模悪化する（burasage close を空にして 228 件悪化）。**
+- **割り注終わり stateless 化**（+2: 2227/4729）: 参照 apply_warichu END は状態を
+  持たず開いていなくても `）</span>` を出す（`ここから割り注`注記化＋`割り注終わり`）。
+  BlockEnd{Warichu} が未マッチでも close タグを出す。
+- **注記付き範囲ルビの外字を rb 内に**（+2: 49258/49810）: `［＃注記付き］…終わり` の
+  範囲ルビは親文字を通常描画（※<span notes>…</span>）してから rb に包むので注記が
+  rb 内。《》ルビ（create_ruby）は UnEmbedGaiji を escape して注記をルビ後ろに出す。
+  Node::Ruby に keep_gaiji_notes_in_base を追加して分岐。
+- **未閉じ 〔 を行末までアクセント化**（+1: 4363）: 参照は 〔 に対応する 〕 が同一行に
+  無くてもアクセント記号を含めば行末までをアクセントに（複数行 〔…改行…〕 の最初の
+  行）。ただしトップレベルの行のみで、入れ子（アクセント内容・ルビ）では未閉じ 〔 は
+  リテラル（54931 の内側 〔Beethoven）。Tokenizer に allow_unclosed_accent を追加。
+- **ルビ親の漢字判定を SJIS [亜-熙] に**（+1: 3798）: 参照 REGEX_KANJI=[亜-熙々※仝〆〇ヶ]
+  （SJIS）は JIS X 0208 漢字ブロック（亜=0x889F〜熙=0xEAA4）＋明示文字。NEC/IBM 拡張
+  漢字（SJIS 0xED-,0xFA-、例:厓=0xFA8D）は :else でルビ親が切れる。CharType::classify で
+  SJIS エンコードして 2バイトコードが範囲内のものだけ Kanji（仝・々 は明示）。
+- **割書コマンド**（+1: 519）: 参照 WARIGAKI_COMMAND='割書' は横組み等と同列の
+  インラインスタイル（<span class="warigaki">）。従来 Rust の Warigaki は実は割り注
+  （warichu）の誤称だったので Warichu へリネームし、本物の割書を BlockType::Warigaki で
+  追加。**コマンド網羅検証ツール `tools/verify_commands.py`**（参照 *_COMMAND・
+  INDENT_TYPE・command_table.yml の全コマンドを両実装の最小フィクスチャで差分）を
+  追加し、全48コマンドの参照一致（差分0）を確認。この過程で割書の誤称を発見した。
+- **前方参照は先頭「必須**（+1: 2245）: 参照 dispatch は PAT_REF=/^「.+」/ で判定。
+  前置きのある `二つ目、三つ目の「？」は太字` は先頭が「でないため注記化。
+  try_parse_reference に先頭「ゲートを追加。
+- **画像 alt 無エスケープ**（+1 quirk: 51195）: architecture.md §5 決定記録参照。
+- **句点/fig 判定の regex 化・fig画像の入る後続文字許容**（4206 ほか, 忠実化）:
+  参照は regex ベース。手書き走査は greedy/anchor がズレやすいので regex クレートで
+  参照と同一パターンに置換。fig 画像は `/fig\d+_\d+\.png/` ルーティング＋PAT_IMAGE の
+  末尾非アンカーで `…）入る。` のように後続文字があっても画像化。
+
+**残差の現状（byte-exact 17406/17509 = 99.41%, error 56, equivalent 1, different 46）**。
+error 56 は参照実装が失敗しオラクルが無い作品（内訳は §指標の注意を参照）。実効上限 約 17453。
+残りの different 46 は高リスク領域または per-case な参照バグに集約（詳細はメモ
+`~/.claude/.../memory/` に記録）:
+- **div/br タグ均衡差（Quirk 前提, block-manager 高リスク）**: 2025/42415/5068 は
+  末尾で余分な `</div>`（2025 は `「…」全体、N字下げ` の範囲字下げを複数行ブロックに
+  している）。54444 は逆に `<br />` と `</div>`。architecture.md §5 の方針どおり深追い
+  しない（触ると大規模回帰）。
+- **burasage 入れ子/開始行マージ**: 43672/43785/57368/60192/43670（jisage/jizume/
+  keigakomi 内の burasage 閉じ）。58012 は burasage 開始行の同行本文を参照が次行と
+  マージする（@noprint）。いずれも burasage 高リスクのため保留。
+- **bare「字下げ終わり」の行末 br**（4850/43866）: 参照が `</div><br />`。文字列
+  ヒューリスティックは 176 件悪化。explicit_close=false かつ複数行ブロック閉じの単独
+  BlockEnd 行をノードレベルで判定する必要あり。保留。
+- **per-case な参照バグ**: 1892（nested `［...］` で notes span 早期クローズ）、54333
+  （対象に `［］`）、46471（対象に `｜`）、52468（対象が変換済み Tcy を含む）は参照の
+  search_front_reference が失敗し注記化（不正 HTML 含む）。1件ずつ Quirk 化が必要で
+  効果小。
+- 4995/57416/1452（外字入りルビ親文字＋底本注記、参照バグ）、18371/47055、gaiji 一覧
+  など散在。
+
 次の作業の選択肢（どれもオラクル byte-exact で各段検証。真の初回相違は gz と
 出力の直接行 diff で取ること。修正時は関連仕様も確認する）:
-1. 傍記マーカー・校訂注記の出力形。
-2. 二重対象の前方参照（`「A」と「B」に傍点`）。
-3. @terprip=false 伝播（54444 系）。理解済みだが per-line 状態伝播が要りリスク中。
-4. ループD 定常運用（コーパス/注記一覧更新・未対応記法の集計）に戻る。
+1. **renderer の行制御の作り直し**（大きいが根本的）: 参照の @indent_stack/
+   general_output（@noprint・@terprip・tail・String/Tag 型）モデルへ寄せる。div均衡・
+   burasage・bare終了br・58012 のマージがまとめて射程に入る。着手前に設計検討。
+2. per-case な参照バグを1件ずつ Quirk 化（効果小・低リスク）。
+3. ループD 定常運用（コーパス/注記一覧更新・未対応記法の集計）に戻る。
