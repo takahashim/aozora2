@@ -55,6 +55,7 @@ impl RefSpec {
                 description: String::new(),
                 unicode: None,
                 jis_code: Some(jis_code.clone()),
+                had_igeta: false,
             },
             RefSpec::Style(style_type) => Node::Style {
                 children,

@@ -273,6 +273,7 @@ mod tests {
                 description: "外字".to_string(),
                 unicode: Some("字".to_string()),
                 jis_code: None,
+                had_igeta: true,
             },
         ];
         let (remaining, base) = extract_ruby_base_from_nodes(&nodes).unwrap();
@@ -290,6 +291,7 @@ mod tests {
                 description: "京".to_string(),
                 unicode: Some("京".to_string()),
                 jis_code: None,
+                had_igeta: true,
             },
         ];
         let (remaining, base) = extract_ruby_base_from_nodes(&nodes).unwrap();

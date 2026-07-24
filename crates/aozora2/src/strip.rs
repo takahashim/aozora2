@@ -81,7 +81,7 @@ fn extract_token(token: &Token) -> String {
         Token::Command { .. } => String::new(),
 
         // 外字: Unicode文字列に変換
-        Token::Gaiji { description } => convert_gaiji(description),
+        Token::Gaiji { description, .. } => convert_gaiji(description),
 
         // アクセント: 内容を抽出してアクセント変換
         Token::Accent { children } => convert_accent(&extract(children)),

@@ -201,7 +201,10 @@ fn parse_token(token: &Token) -> Vec<Node> {
 
         Token::Command { content } => vec![parse_command_to_node(content)],
 
-        Token::Gaiji { description } => vec![parse_gaiji_to_node(description)],
+        Token::Gaiji {
+            description,
+            had_igeta,
+        } => vec![parse_gaiji_to_node(description, *had_igeta)],
 
         Token::Accent { children } => {
             // アクセント内の子ノードを描画する。従来は全子ノードを to_text() で
@@ -503,7 +506,7 @@ fn parse_command_to_node_with_context(
 }
 
 /// 外字をノードに変換
-fn parse_gaiji_to_node(description: &str) -> Node {
+fn parse_gaiji_to_node(description: &str, had_igeta: bool) -> Node {
     use crate::gaiji::{parse_gaiji, GaijiResult};
 
     match parse_gaiji(description) {
@@ -511,21 +514,25 @@ fn parse_gaiji_to_node(description: &str) -> Node {
             description: description.to_string(),
             unicode: Some(s),
             jis_code: None,
+            had_igeta,
         },
         GaijiResult::JisConverted { jis_code, unicode } => Node::Gaiji {
             description: description.to_string(),
             unicode: Some(unicode),
             jis_code: Some(jis_code),
+            had_igeta,
         },
         GaijiResult::JisImage { jis_code } => Node::Gaiji {
             description: description.to_string(),
             unicode: None,
             jis_code: Some(jis_code),
+            had_igeta,
         },
         GaijiResult::Unconvertible => Node::Gaiji {
             description: description.to_string(),
             unicode: None,
             jis_code: None,
+            had_igeta,
         },
     }
 }

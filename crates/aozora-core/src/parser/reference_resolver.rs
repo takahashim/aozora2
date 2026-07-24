@@ -393,27 +393,34 @@ fn parse_annotation_text(text: &str) -> Vec<Node> {
     for token in tokens {
         match token {
             Token::Text(s) => nodes.push(Node::text(&s)),
-            Token::Gaiji { description } => {
+            Token::Gaiji {
+                description,
+                had_igeta,
+            } => {
                 let node = match parse_gaiji(&description) {
                     GaijiResult::Unicode(s) => Node::Gaiji {
                         description: description.clone(),
                         unicode: Some(s),
                         jis_code: None,
+                        had_igeta,
                     },
                     GaijiResult::JisConverted { jis_code, unicode } => Node::Gaiji {
                         description: description.clone(),
                         unicode: Some(unicode),
                         jis_code: Some(jis_code),
+                        had_igeta,
                     },
                     GaijiResult::JisImage { jis_code } => Node::Gaiji {
                         description: description.clone(),
                         unicode: None,
                         jis_code: Some(jis_code),
+                        had_igeta,
                     },
                     GaijiResult::Unconvertible => Node::Gaiji {
                         description: description.clone(),
                         unicode: None,
                         jis_code: None,
+                        had_igeta,
                     },
                 };
                 nodes.push(node);

@@ -116,7 +116,8 @@ impl<'a> NodeRenderer<'a> {
             match after.find('］') {
                 Some(end) => {
                     let inner = after[..end].to_string();
-                    out.push_str(&self.render_gaiji(&inner, None, None));
+                    // NEST = "※［＃" なので必ず ＃ 付き。
+                    out.push_str(&self.render_gaiji(&inner, None, None, true));
                     rest = &after[end + '］'.len_utf8()..];
                 }
                 None => {
@@ -213,7 +214,8 @@ impl<'a> NodeRenderer<'a> {
                 description,
                 unicode,
                 jis_code,
-            } => self.render_gaiji(description, unicode.as_deref(), jis_code.as_deref()),
+                had_igeta,
+            } => self.render_gaiji(description, unicode.as_deref(), jis_code.as_deref(), *had_igeta),
 
             Node::Accent {
                 code,
@@ -524,12 +526,27 @@ impl<'a> NodeRenderer<'a> {
     }
 
     /// 外字をHTMLに変換
+    ///
+    /// `had_igeta` は元記法に ＃ があったか。参照実装は `※［...］`（＃無し）を
+    /// 認めるが、その場合 EmbedGaiji の alt 名は空（`desc.gsub!(＃,'')` が nil を
+    /// 返すため）、UnEmbedGaiji の注記も `［...］`（＃無し）で出す。
     fn render_gaiji(
         &mut self,
         description: &str,
         unicode: Option<&str>,
         jis_code: Option<&str>,
+        had_igeta: bool,
     ) -> String {
+        // 画像 alt 名: ＃があれば説明、無ければ空（参照 gsub! nil 挙動）。
+        let alt_name = |renderer: &mut Self| {
+            if had_igeta {
+                renderer.gaiji_alt(description)
+            } else {
+                String::new()
+            }
+        };
+        // 注記の角括弧内: ＃があれば ＃付き、無ければ ＃無し。
+        let notes_mark = if had_igeta { "＃" } else { "" };
         match (unicode, jis_code) {
             // JisConverted: unicodeとjis_code両方がある場合
             (Some(u), Some(jis)) => {
@@ -539,7 +556,7 @@ impl<'a> NodeRenderer<'a> {
                 } else {
                     self.has_gaiji_images = true;
                     let (folder, file) = jis_code_to_path(jis);
-                    let alt = self.gaiji_alt(description);
+                    let alt = alt_name(self);
                     return format!(
                         "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
                         self.options.gaiji_dir, folder, file, alt
@@ -556,8 +573,9 @@ impl<'a> NodeRenderer<'a> {
                 // ここでも has_notes は立てない。
                 self.add_unconverted_gaiji(description);
                 return format!(
-                    "{}<span class=\"notes\">［＃{}］</span>",
+                    "{}<span class=\"notes\">［{}{}］</span>",
                     self.gaiji_mark_prefix(),
+                    notes_mark,
                     html_escape(description)
                 );
             }
@@ -568,7 +586,7 @@ impl<'a> NodeRenderer<'a> {
                 self.has_jisx0213 = true;
                 self.has_gaiji_images = true;
                 let (folder, file) = jis_code_to_path(jis);
-                let alt = self.gaiji_alt(description);
+                let alt = alt_name(self);
                 return format!(
                     "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
                     self.options.gaiji_dir, folder, file, alt
@@ -585,8 +603,9 @@ impl<'a> NodeRenderer<'a> {
                 } else {
                     self.add_unconverted_gaiji(description);
                     format!(
-                        "{}<span class=\"notes\">［＃{}］</span>",
+                        "{}<span class=\"notes\">［{}{}］</span>",
                         self.gaiji_mark_prefix(),
+                        notes_mark,
                         html_escape(description)
                     )
                 }
@@ -601,7 +620,7 @@ impl<'a> NodeRenderer<'a> {
                 } else {
                     self.has_gaiji_images = true;
                     let (folder, file) = jis_code_to_path(&jis);
-                    let alt = self.gaiji_alt(description);
+                    let alt = alt_name(self);
                     format!(
                         "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
                         self.options.gaiji_dir, folder, file, alt
@@ -612,7 +631,7 @@ impl<'a> NodeRenderer<'a> {
                 self.has_jisx0213 = true;
                 self.has_gaiji_images = true;
                 let (folder, file) = jis_code_to_path(&jis);
-                let alt = self.gaiji_alt(description);
+                let alt = alt_name(self);
                 format!(
                     "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
                     self.options.gaiji_dir, folder, file, alt
@@ -621,8 +640,9 @@ impl<'a> NodeRenderer<'a> {
             GaijiResult::Unconvertible => {
                 self.add_unconverted_gaiji(description);
                 format!(
-                    "{}<span class=\"notes\">［＃{}］</span>",
+                    "{}<span class=\"notes\">［{}{}］</span>",
                     self.gaiji_mark_prefix(),
+                    notes_mark,
                     html_escape(description)
                 )
             }

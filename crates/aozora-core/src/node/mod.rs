@@ -50,12 +50,15 @@ pub enum Node {
 
     /// 外字
     Gaiji {
-        /// 外字説明
+        /// 外字説明（先頭＃を除く）
         description: String,
         /// Unicode文字（変換済みの場合）
         unicode: Option<String>,
         /// JISコード
         jis_code: Option<String>,
+        /// 元の記法に ＃（IGETA）があったか。無い場合、参照実装は EmbedGaiji の
+        /// alt 名を空にし、UnEmbedGaiji の注記も `［...］`（＃無し）で出す。
+        had_igeta: bool,
     },
 
     /// アクセント文字
@@ -381,6 +384,7 @@ mod tests {
             description: "丸印".to_string(),
             unicode: Some("○".to_string()),
             jis_code: None,
+            had_igeta: true,
         };
         assert_eq!(node.to_text(), "○");
 
@@ -388,6 +392,7 @@ mod tests {
             description: "不明な文字".to_string(),
             unicode: None,
             jis_code: None,
+            had_igeta: true,
         };
         assert_eq!(node.to_text(), "不明な文字");
     }
@@ -401,6 +406,7 @@ mod tests {
             description: "外字".to_string(),
             unicode: None,
             jis_code: None,
+            had_igeta: true,
         };
         assert_eq!(node.last_char_type(), Some(CharType::Kanji));
     }

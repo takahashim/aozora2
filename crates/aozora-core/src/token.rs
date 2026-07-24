@@ -27,11 +27,16 @@ pub enum Token {
         content: String,
     },
 
-    /// 外字 ※［＃...］
+    /// 外字 ※［＃...］（＃は任意。参照 dispatch_gaiji は ※［ だけで外字扱い）
     Gaiji {
-        /// 外字説明（デリミタ除く）
+        /// 外字説明（デリミタ・先頭＃を除く）
         /// 例: "「二の字点」、1-2-22" や "「丸印」、U+25CB"
         description: String,
+        /// 元の記法に ＃（IGETA）があったか。
+        /// 参照実装は `※［...］`（＃無し）を認めるが、その場合 EmbedGaiji の
+        /// alt 名は空（gsub! が nil を返す挙動）、UnEmbedGaiji の注記も ＃無しの
+        /// `［...］` で出る。この差を描画時に再現するためのフラグ。
+        had_igeta: bool,
     },
 
     /// アクセント分解 〔...〕
@@ -87,6 +92,7 @@ mod tests {
     fn test_token_gaiji() {
         let token = Token::Gaiji {
             description: "「丸印」、U+25CB".to_string(),
+            had_igeta: true,
         };
         assert!(matches!(token, Token::Gaiji { .. }));
     }

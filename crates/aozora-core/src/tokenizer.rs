@@ -49,9 +49,10 @@ impl Tokenizer {
                     tokens.push(self.read_prefixed_ruby());
                 }
 
-                // 外字 ※［＃...］
+                // 外字 ※［...］（＃は任意）。
+                // 参照 dispatch_gaiji は「※」の次が「［」なら外字扱いする（＃不問）。
                 GAIJI_MARK => {
-                    if self.peek_nth(1) == Some(COMMAND_BEGIN) && self.peek_nth(2) == Some(IGETA) {
+                    if self.peek_nth(1) == Some(COMMAND_BEGIN) {
                         tokens.push(self.read_gaiji());
                     } else {
                         // ※ だけならテキスト
@@ -211,16 +212,24 @@ impl Tokenizer {
         }
     }
 
-    /// 外字トークンを読む ※［＃...］
+    /// 外字トークンを読む ※［...］（＃は任意）
     fn read_gaiji(&mut self) -> Token {
-        self.skip(3); // ※［＃
+        self.skip(2); // ※［
+        // ＃（IGETA）があれば読み捨てて had_igeta を立てる。
+        let had_igeta = self.peek_nth(0) == Some(IGETA);
+        if had_igeta {
+            self.skip(1);
+        }
         let start = self.pos;
 
         self.skip_until_balanced(COMMAND_BEGIN, COMMAND_END);
         let description = self.slice_from(start);
         self.skip_if(COMMAND_END);
 
-        Token::Gaiji { description }
+        Token::Gaiji {
+            description,
+            had_igeta,
+        }
     }
 
     /// アクセントトークンを試行的に読む 〔...〕
@@ -413,7 +422,31 @@ mod tests {
         assert_eq!(
             tokens,
             vec![Token::Gaiji {
-                description: "「丸印」、U+25CB".to_string()
+                description: "「丸印」、U+25CB".to_string(),
+                had_igeta: true
+            }]
+        );
+    }
+
+    #[test]
+    fn test_gaiji_without_igeta() {
+        // 参照 dispatch_gaiji は「※」の次が「［」なら ＃ 不問で外字扱いする。
+        // ＃無しは had_igeta=false（描画時に注記の＃無し・alt名空を再現する）。
+        let tokens = tokenize("※［感嘆符二つ、1-8-75］");
+        assert_eq!(
+            tokens,
+            vec![Token::Gaiji {
+                description: "感嘆符二つ、1-8-75".to_string(),
+                had_igeta: false
+            }]
+        );
+        // 空角括弧 ※［］ も外字（UnEmbedGaiji → ［］ の注記になる）。
+        let tokens = tokenize("※［］");
+        assert_eq!(
+            tokens,
+            vec![Token::Gaiji {
+                description: String::new(),
+                had_igeta: false
             }]
         );
     }
@@ -507,7 +540,8 @@ mod tests {
                 },
                 Token::Text("は".to_string()),
                 Token::Gaiji {
-                    description: "「米印」、U+203B".to_string()
+                    description: "「米印」、U+203B".to_string(),
+                    had_igeta: true
                 },
                 Token::Text("猫である".to_string()),
                 Token::Command {
