@@ -50,6 +50,26 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
 mod tests {
     use super::*;
 
+    /// quirk empty_image_dimensions: 幅・高さのない画像で参照実装は
+    /// width="" height="" と空の属性を出す。既定（オン）では再現し、
+    /// オフでは幅・高さの属性を出さない。
+    #[test]
+    fn test_empty_image_dimensions_quirk() {
+        let src = "タイトル\r\n\r\n［＃太陽マジックのうたの楽譜（fig45472_01.png）入る］";
+
+        // 既定（quirk オン）: 空の width="" height="" を出す
+        let on = convert(src, &RenderOptions::default());
+        assert!(on.contains("width=\"\" height=\"\""), "実際: {on}");
+
+        // quirk オフ: 幅・高さの属性を出さない
+        let off = convert(src, &RenderOptions::new().with_quirks(Quirks::none()));
+        assert!(!off.contains("width="), "実際: {off}");
+        assert!(
+            off.contains("<img class=\"illustration\" src="),
+            "実際: {off}"
+        );
+    }
+
     /// quirk nested_gaiji_in_alt: 参照実装は alt 内の入れ子外字を img に展開する。
     /// 既定（オン）では再現し、オフでは素のテキストのまま残す。
     #[test]

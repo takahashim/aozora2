@@ -15,6 +15,10 @@ pub struct Quirks {
     /// それを alt の中で `<img>` タグに展開する（属性値の中にタグが入る不正な HTML）。
     /// オフにすると入れ子の記法を素のテキストのまま alt に残す。
     pub nested_gaiji_in_alt: bool,
+    /// 図中の画像に幅・高さの指定がないとき、参照実装は `width="" height=""` と
+    /// 空の属性を出す（Ruby の nil 展開の副産物で、意味のない属性）。
+    /// オフにすると幅・高さが指定されたときだけ属性を出す。
+    pub empty_image_dimensions: bool,
 }
 
 impl Default for Quirks {
@@ -22,6 +26,7 @@ impl Default for Quirks {
         // 既定は参照実装に一致させる（＝すべて再現する）
         Self {
             nested_gaiji_in_alt: true,
+            empty_image_dimensions: true,
         }
     }
 }
@@ -31,6 +36,7 @@ impl Quirks {
     pub fn none() -> Self {
         Self {
             nested_gaiji_in_alt: false,
+            empty_image_dimensions: false,
         }
     }
 }

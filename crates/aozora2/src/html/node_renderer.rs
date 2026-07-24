@@ -642,13 +642,26 @@ impl<'a> NodeRenderer<'a> {
             css_class
         };
 
-        // 参照実装 Tag::Img は幅・高さが指定されていなくても属性を出す
-        // （Ruby の文字列展開で nil が空文字になるため）
-        let w = width.map(|v| v.to_string()).unwrap_or_default();
-        let h = height.map(|v| v.to_string()).unwrap_or_default();
+        // 参照実装 Tag::Img は幅・高さが指定されていなくても width="" height="" と
+        // 空の属性を出す（Ruby の文字列展開で nil が空文字になる）。
+        // quirk empty_image_dimensions がオンのときだけこれを再現する。
+        let dimensions = if self.options.quirks.empty_image_dimensions {
+            let w = width.map(|v| v.to_string()).unwrap_or_default();
+            let h = height.map(|v| v.to_string()).unwrap_or_default();
+            format!(" width=\"{w}\" height=\"{h}\"")
+        } else {
+            let mut d = String::new();
+            if let Some(w) = width {
+                d.push_str(&format!(" width=\"{w}\""));
+            }
+            if let Some(h) = height {
+                d.push_str(&format!(" height=\"{h}\""));
+            }
+            d
+        };
 
         format!(
-            "<img class=\"{class}\" width=\"{w}\" height=\"{h}\" src=\"{}\" alt=\"{}\" />",
+            "<img class=\"{class}\"{dimensions} src=\"{}\" alt=\"{}\" />",
             filename,
             html_escape(alt)
         )
