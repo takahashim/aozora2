@@ -64,6 +64,27 @@ fn nodes_have_inline_text(nodes: &[Node]) -> bool {
     })
 }
 
+/// tail セクション（after_text / bibliographical）の行末に、本文と同じ
+/// ブロック考慮の改行を付ける。参照実装は tail でも general_output を使うので、
+/// ブロック開始/終了だけの行（jisage の div 開始など）には `<br />` を付けない。
+/// 従来 tail は無条件に `<br />` を付けていたため、脚注中の
+/// `［＃ここから字下げ］` が `<div class="jisage_1">…<br />` になっていた。
+fn append_tail_break(output: &mut String, line_html: &str, has_explicit_close: bool) {
+    let needs_br = if line_html.is_empty() {
+        true
+    } else if has_explicit_close {
+        false
+    } else if output.ends_with("</div>") {
+        false
+    } else {
+        !classify_output_line(line_html).suppresses_br
+    };
+    if needs_br {
+        output.push_str("<br />");
+    }
+    output.push_str("\r\n");
+}
+
 /// その行が「装飾系ブロックの閉じだけ」の行か。
 /// 参照実装は、ぶら下げの中で入れ子に開いた装飾系ブロック（横組み・罫囲み・
 /// キャプション・大小の文字・太字・斜体・字詰め）が閉じる行を、閉じタグを
@@ -247,13 +268,12 @@ impl HtmlRenderer {
         if !after_text_lines.is_empty() {
             doc_renderer.render_after_text_header(&mut output);
             for raw_line in &parse_document_raw(&after_text_lines).lines {
-                let line_html = self
-                    .render_raw_line(raw_line, &mut node_renderer, &mut block_manager)
-                    .0;
+                let (line_html, has_explicit_close, _) =
+                    self.render_raw_line(raw_line, &mut node_renderer, &mut block_manager);
                 // 自動リンク化を適用
                 let line_html = auto_link(&line_html);
                 output.push_str(&line_html);
-                output.push_str("<br />\r\n");
+                append_tail_break(&mut output, &line_html, has_explicit_close);
             }
             doc_renderer.render_after_text_footer(&mut output);
         }
@@ -263,13 +283,12 @@ impl HtmlRenderer {
         if !biblio_lines.is_empty() {
             doc_renderer.render_bibliographical_header(&mut output);
             for raw_line in &parse_document_raw(&biblio_lines).lines {
-                let line_html = self
-                    .render_raw_line(raw_line, &mut node_renderer, &mut block_manager)
-                    .0;
+                let (line_html, has_explicit_close, _) =
+                    self.render_raw_line(raw_line, &mut node_renderer, &mut block_manager);
                 // 自動リンク化を適用
                 let line_html = auto_link(&line_html);
                 output.push_str(&line_html);
-                output.push_str("<br />\r\n");
+                append_tail_break(&mut output, &line_html, has_explicit_close);
             }
             doc_renderer.render_bibliographical_footer(&mut output, input.ends_with('\n'));
         }
