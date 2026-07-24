@@ -80,15 +80,19 @@ fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<Command
         //   margin-left = N, text-indent = -N（width=0）
         params.wrap_width = extract_number_before(second_part, "字下げ");
         params.width = Some(0);
-    } else if first_part.contains("字下げ") {
+    } else if first_part.ends_with("字下げ、") && second_part.contains("字下げ") {
         // N字下げ、折り返してM字下げ（コンマあり）:
         //   PAT_ORIKAESHI_JISAGE2 = (\d*)字下げ、折り返して(\d*)字下げ
         //   margin-left = M, text-indent = N-M
+        // 参照実装の正規表現は「字下げ、折り返して…字下げ」と読点（、）を
+        // 必須にするので、first_part が「字下げ、」で終わり second_part に
+        // 「字下げ」があるときだけこの分岐にする。
         params.wrap_width = extract_number_before(second_part, "字下げ");
         params.width = extract_number_before(first_part, "字下げ");
     } else {
-        // 折り返してM字下げ（コンマなし・天付きなし）: 参照実装は
-        // PAT_ORIKAESHI_JISAGE2 に一致せず、margin-left が空・text-indent 0 になる。
+        // 折り返してM字下げ（コンマなし・天付きなし。例:「１０字下げ折り返して
+        // １７字下げ」）: 参照実装は PAT_ORIKAESHI_JISAGE2 に一致せず、
+        // margin-left が空・text-indent 0 になる。
         params.wrap_width = None;
         params.width = None;
     }
@@ -246,6 +250,40 @@ mod tests {
             Some(CommandResult::LineChitsuki { width: 0 })
         );
         assert_eq!(try_parse_line_chitsuki("ここから２字下げ"), None);
+    }
+
+    #[test]
+    fn test_burasage_requires_comma_for_jisage2() {
+        // コンマあり「N字下げ、折り返してM字下げ」: margin=M, text-indent=N-M。
+        let result = parse_block_start("ここから１０字下げ、折り返して１７字下げ");
+        assert_eq!(
+            result,
+            CommandResult::BlockStart {
+                block_type: BlockType::Burasage,
+                params: BlockParams {
+                    width: Some(10),
+                    wrap_width: Some(17),
+                    is_block: true,
+                    ..Default::default()
+                },
+            }
+        );
+        // コンマなし「N字下げ折り返してM字下げ」: 参照実装の PAT_ORIKAESHI_JISAGE2
+        // は読点を必須にするため一致せず、margin-left 空・text-indent 0（width も
+        // wrap_width も None）になる。
+        let result = parse_block_start("ここから１０字下げ折り返して１７字下げ");
+        assert_eq!(
+            result,
+            CommandResult::BlockStart {
+                block_type: BlockType::Burasage,
+                params: BlockParams {
+                    width: None,
+                    wrap_width: None,
+                    is_block: true,
+                    ..Default::default()
+                },
+            }
+        );
     }
 
     #[test]
