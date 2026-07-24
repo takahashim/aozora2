@@ -39,9 +39,64 @@ fn find_target_end(content: &str, start: usize) -> Option<usize> {
 }
 
 /// 後方参照パターンを解析
+///
+/// 参照実装 PAT_FRONTREF は文字列全体への正規表現照合で、最初の 「 から全体が
+/// 一致しなければ次の 「 から再試行する（Ruby 正規表現のバックトラック）。
+/// 例:「「古典的」は太字 は最初の 「 だと対象「「古典的が不均衡で一致しないので、
+/// 2番目の 「 から対象「古典的」で一致する（先頭の 「 は本文に残る）。
+///
+/// ただし入れ子コマンド ［…］ の中の 「 は対象候補にしない。参照実装では入れ子の
+/// ［＃…］ が先に解決されて外側の正規表現からは 「 が見えないため。これを守らないと
+/// ［＃「う［＃「う」に「ママ」の注記］」はママ］ の内側注記を誤って解決してしまう。
 pub fn try_parse_reference(content: &str) -> Option<CommandResult> {
-    // パターン: 「対象」に/は/の 装飾
-    let start = content.find('「')? + '「'.len_utf8();
+    let mut pos = 0;
+    while pos < content.len() {
+        let ch = content[pos..].chars().next().unwrap();
+        if ch == '［' {
+            // 入れ子コマンド ［…］（入れ子可）を飛ばす。
+            pos = skip_bracketed(content, pos);
+            continue;
+        }
+        if ch == '「' {
+            let start = pos + '「'.len_utf8();
+            // find_target_end が成立する位置＝参照実装の正規表現が「対象」「[にはの]」
+            // まで一致する位置。ここで確定する（＝正規表現がマッチした位置なので
+            // 再試行はしない）。スタイルが無ければ None を返し注記になる。対象が
+            // 不均衡で find_target_end が None のときだけ次の 「 へ再試行する。
+            // 例:「「古典的」は太字 は最初の 「 で不成立→次の 「 で成立。
+            //   ２文字目の「i」は下付き小文字、… は最初の 「 で成立するが下付き…、
+            //   の spec がスタイル不成立なので注記（次の 「 へは行かない）。
+            if find_target_end(content, start).is_some() {
+                return try_parse_reference_at(content, start);
+            }
+        }
+        pos += ch.len_utf8();
+    }
+    None
+}
+
+/// `［` から対応する `］` の直後までのバイト位置を返す（入れ子対応）。
+/// 対応する `］` が無ければ末尾を返す。
+fn skip_bracketed(content: &str, open_pos: usize) -> usize {
+    let mut depth = 0usize;
+    let mut pos = open_pos;
+    for ch in content[open_pos..].chars() {
+        match ch {
+            '［' => depth += 1,
+            '］' => {
+                depth -= 1;
+                if depth == 0 {
+                    return pos + ch.len_utf8();
+                }
+            }
+            _ => {}
+        }
+        pos += ch.len_utf8();
+    }
+    content.len()
+}
+
+fn try_parse_reference_at(content: &str, start: usize) -> Option<CommandResult> {
     let end = find_target_end(content, start)?;
 
     let target = &content[start..end];
@@ -241,6 +296,41 @@ pub fn try_parse_left_ruby(content: &str) -> Option<CommandResult> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node::StyleType;
+
+    /// 前方参照のバックトラック（参照実装 PAT_FRONTREF 相当）。
+    #[test]
+    fn test_reference_backtracks_on_unbalanced_target() {
+        // 最初の 「 だと対象が不均衡（「「古典的）で不成立→次の 「 で 古典的 に成立。
+        assert_eq!(
+            try_parse_reference("「「古典的」は太字"),
+            Some(CommandResult::Style {
+                target: "古典的".to_string(),
+                connector: "は".to_string(),
+                style_type: StyleType::Bold,
+            })
+        );
+    }
+
+    #[test]
+    fn test_reference_commits_to_first_valid_bracket() {
+        // 最初の 「i」 で対象・接続詞は成立するので確定。spec「下付き小文字、４文字目
+        // の「i」は上付き小文字」はスタイル不成立なので注記（次の 「 へ再試行しない）。
+        assert_eq!(
+            try_parse_reference("２文字目の「i」は下付き小文字、４文字目の「i」は上付き小文字"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_reference_skips_bracket_nested_command() {
+        // 入れ子コマンド ［＃…］ の中の 「 は対象候補にしない。外側「う［＃…］」はママ
+        // は spec ママ がスタイル不成立→注記（内側の注記ルビを誤解決しない）。
+        assert_eq!(
+            try_parse_reference("「う［＃「う」に「ママ」の注記］」はママ"),
+            None
+        );
+    }
 
     /// 注記ルビ 「対象」に「注記」の注記 は、「の注記」の後ろに続きがあっても
     /// PAT_CHUUKI（部分一致）で成立する。入れ子の ［＃ を含む注記は除外する。
