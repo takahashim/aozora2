@@ -283,7 +283,11 @@ impl<'a> NodeRenderer<'a> {
             }
 
             Node::Okurigana(text) => {
-                format!("<sup class=\"okurigana\">{}</sup>", html_escape(text))
+                // 参照実装 Tag::Okurigana は @string（既に描画済みの内側HTML）を
+                // エスケープせずそのまま <sup> で包む。内側は注記と同じ TagParser で
+                // 処理されるので、外字 ※［＃…］ は img に、平仮名/片仮名はそのまま出る。
+                let inner = self.render_note_content(text, block_manager);
+                format!("<sup class=\"okurigana\">{inner}</sup>")
             }
 
             Node::BlockStart { block_type, params } => {

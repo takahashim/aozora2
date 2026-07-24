@@ -108,11 +108,14 @@ pub fn is_kaeriten(content: &str) -> bool {
 
 /// 訓点送り仮名を解析
 pub fn try_parse_okurigana(content: &str) -> Option<String> {
-    // （...）形式をチェック
+    // 参照実装 PAT_OKURIGANA = ^（(.+)）$ は括弧内が1文字以上なら長さ無制限で
+    // 送り仮名にする（内側に外字 ※［＃…］ 等を含んでもよい。内側は注記と同じ
+    // TagParser で描画される）。従来は 10 文字までに絞っていたため、
+    // ［＃（※［＃「低のつくり」、第3水準1-86-47］）］ のような外字入り送り仮名を
+    // 取りこぼして注記化していた。
     if content.starts_with('（') && content.ends_with('）') {
         let inner = &content['（'.len_utf8()..content.len() - '）'.len_utf8()];
-        let char_count = inner.chars().count();
-        if char_count >= 1 && char_count <= 10 && !inner.is_empty() {
+        if !inner.is_empty() {
             return Some(inner.to_string());
         }
     }
@@ -139,6 +142,14 @@ mod tests {
         assert_eq!(try_parse_okurigana("（ノ）"), Some("ノ".to_string()));
         assert_eq!(try_parse_okurigana("（テ）"), Some("テ".to_string()));
         assert_eq!(try_parse_okurigana("テスト"), None);
+        // 参照実装 PAT_OKURIGANA = ^（(.+)）$ は長さ無制限。外字入りも送り仮名に
+        // する（内側は描画時に注記と同じ TagParser で img 化される）。
+        assert_eq!(
+            try_parse_okurigana("（※［＃「低のつくり」、第3水準1-86-47］）"),
+            Some("※［＃「低のつくり」、第3水準1-86-47］".to_string())
+        );
+        // 空括弧は送り仮名にしない。
+        assert_eq!(try_parse_okurigana("（）"), None);
     }
 
     #[test]
