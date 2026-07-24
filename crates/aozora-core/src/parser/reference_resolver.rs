@@ -132,6 +132,7 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
                     if let Node::BlockEnd {
                         block_type: bt,
                         params,
+                        ..
                     } = &nodes[j]
                     {
                         if (*bt == BlockType::AnnotationRange && !is_left)

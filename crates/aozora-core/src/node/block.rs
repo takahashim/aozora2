@@ -107,10 +107,6 @@ pub struct BlockParams {
     pub has_close_paren: bool,
     /// 注記付き範囲の注記テキスト
     pub annotation: Option<String>,
-    /// ［＃ここで…終わり］形式（CLOSE_MARK）で閉じたか。
-    /// この形式は参照実装 exec_block_end_command で @terprip=false を立て、
-    /// その行の行末 <br /> を抑制する。
-    pub explicit_close: bool,
 }
 
 #[cfg(test)]

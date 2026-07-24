@@ -144,9 +144,12 @@ pub enum Node {
     BlockEnd {
         /// ブロックタイプ
         block_type: BlockType,
-        /// パラメータ（割り注用）
-        #[allow(dead_code)]
+        /// 割り注・装飾など、終了タグ生成に必要なパラメータ
         params: BlockParams,
+        /// ［＃ここで…終わり］形式（CLOSE_MARK）で閉じたか。
+        /// この形式は参照実装 exec_block_end_command で @terprip=false を立て、
+        /// その行の行末 <br /> を抑制する。bare ［＃…終わり］は false。
+        explicit_close: bool,
     },
 
     /// 注記（編集者注）

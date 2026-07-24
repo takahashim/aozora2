@@ -304,7 +304,9 @@ impl<'a> NodeRenderer<'a> {
                 output
             }
 
-            Node::BlockEnd { block_type, params } => {
+            Node::BlockEnd {
+                block_type, params, ..
+            } => {
                 if let Some(ctx) = block_manager.find_and_close(block_type) {
                     // Burasageは各行で個別にラップするため、終了タグを出力しない
                     if ctx.block_type == BlockType::Burasage {

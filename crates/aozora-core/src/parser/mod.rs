@@ -203,10 +203,8 @@ fn parse_command_to_node(content: &str) -> Node {
             explicit,
         } => Node::BlockEnd {
             block_type,
-            params: BlockParams {
-                explicit_close: explicit,
-                ..Default::default()
-            },
+            params: BlockParams::default(),
+            explicit_close: explicit,
         },
 
         CommandResult::LineIndent { width } => Node::LineJisage { width },
@@ -252,6 +250,7 @@ fn parse_command_to_node(content: &str) -> Node {
         CommandResult::TcyEnd => Node::BlockEnd {
             block_type: BlockType::Tcy,
             params: BlockParams::default(),
+            explicit_close: false,
         },
 
         CommandResult::WarigakiStart => Node::BlockStart {
@@ -262,6 +261,7 @@ fn parse_command_to_node(content: &str) -> Node {
         CommandResult::WarigakiEnd => Node::BlockEnd {
             block_type: BlockType::Warigaki,
             params: BlockParams::default(),
+            explicit_close: false,
         },
 
         CommandResult::LeftRuby { target, ruby } => {
@@ -307,6 +307,7 @@ fn parse_command_to_node(content: &str) -> Node {
         CommandResult::CaptionEnd => Node::BlockEnd {
             block_type: BlockType::Caption,
             params: BlockParams::default(),
+            explicit_close: false,
         },
 
         CommandResult::StyleStart { style_type } => Node::BlockStart {
@@ -323,6 +324,7 @@ fn parse_command_to_node(content: &str) -> Node {
                 style_type: Some(style_type),
                 ..Default::default()
             },
+            explicit_close: false,
         },
 
         CommandResult::AnnotationRangeStart => Node::BlockStart {
@@ -341,6 +343,7 @@ fn parse_command_to_node(content: &str) -> Node {
                 annotation: Some(annotation),
                 ..Default::default()
             },
+            explicit_close: false,
         },
 
         CommandResult::LeftAnnotationRangeEnd { annotation } => Node::BlockEnd {
@@ -349,6 +352,7 @@ fn parse_command_to_node(content: &str) -> Node {
                 annotation: Some(annotation),
                 ..Default::default()
             },
+            explicit_close: false,
         },
 
         CommandResult::SideNote { target, annotation } => Node::UnresolvedReference {
@@ -386,6 +390,7 @@ fn parse_command_to_node_with_context(
             Node::BlockEnd {
                 block_type: BlockType::Warigaki,
                 params,
+                explicit_close: false,
             }
         }
 

@@ -193,9 +193,15 @@ impl HtmlRenderer {
         // 参照実装 exec_block_end_command はこの形式で @terprip=false を立て、
         // その行の行末 <br /> を抑制する（同一行で開閉した横組みや、複数行
         // ブロックの閉じ行が該当する）。bare ［＃…終わり］は抑制しない。
-        let has_explicit_close = nodes
-            .iter()
-            .any(|n| matches!(n, Node::BlockEnd { params, .. } if params.explicit_close));
+        let has_explicit_close = nodes.iter().any(|n| {
+            matches!(
+                n,
+                Node::BlockEnd {
+                    explicit_close: true,
+                    ..
+                }
+            )
+        });
 
         // 行単位字下げ ［＃N字下げ］の扱い（参照実装 apply_jisage 相当）
         if let Some(pos) = nodes
