@@ -164,4 +164,57 @@ mod tests {
         assert_eq!(StyleType::from_command("太字"), Some(StyleType::Bold));
         assert_eq!(StyleType::from_command("未知"), None);
     }
+
+    /// from_command と command_name は同じ「記法語→バリアント」対応を
+    /// 二重に書いている。片方だけ直すとずれるので、全バリアントで
+    /// command_name → from_command の往復が恒等になることを縛る。
+    /// （後日データ駆動化するまでの二重記述ドリフト検出）
+    #[test]
+    fn test_command_name_round_trips_through_from_command() {
+        // 全バリアントを列挙する。新バリアントを追加したらここにも足すこと
+        // （足し忘れても、from_command 側の記法語をここに書かねばならないので
+        //   結局この配列が全記法語の単一台帳になる）。
+        let all = [
+            StyleType::SesameDot,
+            StyleType::WhiteSesameDot,
+            StyleType::BlackCircle,
+            StyleType::WhiteCircle,
+            StyleType::BlackTriangle,
+            StyleType::WhiteTriangle,
+            StyleType::Bullseye,
+            StyleType::Fisheye,
+            StyleType::Saltire,
+            StyleType::SesameDotAfter,
+            StyleType::WhiteSesameDotAfter,
+            StyleType::BlackCircleAfter,
+            StyleType::WhiteCircleAfter,
+            StyleType::BlackTriangleAfter,
+            StyleType::WhiteTriangleAfter,
+            StyleType::BullseyeAfter,
+            StyleType::FisheyeAfter,
+            StyleType::SaltireAfter,
+            StyleType::UnderlineSolid,
+            StyleType::UnderlineDouble,
+            StyleType::UnderlineDotted,
+            StyleType::UnderlineDashed,
+            StyleType::UnderlineWave,
+            StyleType::OverlineSolid,
+            StyleType::OverlineDouble,
+            StyleType::OverlineDotted,
+            StyleType::OverlineDashed,
+            StyleType::OverlineWave,
+            StyleType::Bold,
+            StyleType::Italic,
+            StyleType::Subscript,
+            StyleType::Superscript,
+        ];
+        for st in all {
+            let name = st.command_name();
+            assert_eq!(
+                StyleType::from_command(name),
+                Some(st),
+                "command_name()={name:?} が from_command で {st:?} に戻らない（二重表がずれている）"
+            );
+        }
+    }
 }
