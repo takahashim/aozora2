@@ -9,14 +9,29 @@ pub struct Tokenizer {
     chars: Vec<char>,
     /// 現在のchar位置
     pos: usize,
+    /// 対応する 〕 の無い 〔 を行末までのアクセントブロックとして扱うか。
+    /// 参照実装はトップレベル（行）でのみこれを許し、アクセント内容やルビ等の
+    /// 入れ子トークナイズでは未閉じ 〔 をリテラルにする（例:54931 の
+    /// 〔訳者注…〔Beethoven…〕 の内側 〔Beethoven）。
+    allow_unclosed_accent: bool,
 }
 
 impl Tokenizer {
-    /// 新しいトークナイザを作成
+    /// 新しいトークナイザを作成（入れ子用。未閉じ 〔 はリテラル）
     pub fn new(input: &str) -> Self {
         Self {
             chars: input.chars().collect(),
             pos: 0,
+            allow_unclosed_accent: false,
+        }
+    }
+
+    /// トップレベル（行）用トークナイザ。未閉じ 〔 を行末までのアクセントに。
+    pub fn new_top_level(input: &str) -> Self {
+        Self {
+            chars: input.chars().collect(),
+            pos: 0,
+            allow_unclosed_accent: true,
         }
     }
 
@@ -239,20 +254,30 @@ impl Tokenizer {
         self.skip(1); // 〔
         let content_start = self.pos;
 
-        // 〕 が見つからない、またはアクセント記号がなければ巻き戻し
-        if !self.skip_until(ACCENT_END) {
+        // 〕 を探す。参照実装は行内に対応する 〕 が無くても、アクセント記号を
+        // 含んでいれば 〔 から行末までをアクセントブロックとして処理する（複数行に
+        // またがる 〔…改行…〕 では最初の行だけがアクセント化され、次行の 〕 は
+        // リテラルになる。例:4363）。見つかった場合のみ 〕 を読み捨てる。
+        let found_close = self.skip_until(ACCENT_END);
+
+        // 対応する 〕 が無い場合、トップレベルの行でだけ行末までをアクセントに
+        // する。入れ子（アクセント内容・ルビ等）では未閉じ 〔 はリテラルにする。
+        if !found_close && !self.allow_unclosed_accent {
             self.pos = start;
             return None;
         }
 
         let content = self.slice_from(content_start);
 
+        // アクセント記号が無ければアクセントブロックにしない（巻き戻して 〔 は本文）。
         if !Self::contains_accent_marks(&content) {
             self.pos = start;
             return None;
         }
 
-        self.skip(1); // 〕
+        if found_close {
+            self.skip(1); // 〕
+        }
 
         let children = Tokenizer::new(&content).tokenize();
         Some(Token::Accent { children })
@@ -327,7 +352,7 @@ impl Tokenizer {
 
 /// 文字列をトークン列に変換するユーティリティ関数
 pub fn tokenize(input: &str) -> Vec<Token> {
-    Tokenizer::new(input).tokenize()
+    Tokenizer::new_top_level(input).tokenize()
 }
 
 #[cfg(test)]
@@ -426,6 +451,32 @@ mod tests {
                 had_igeta: true
             }]
         );
+    }
+
+    #[test]
+    fn test_unclosed_accent_top_level() {
+        // トップレベルの行で 〔 に対応する 〕 が無くアクセント記号を含むなら、
+        // 行末までをアクセントブロックにする（参照実装の複数行 〔…改行…〕 の
+        // 最初の行の挙動。例:4363「〔Pardonnez a`...」）。
+        let tokens = tokenize("〔Pardonnez a` mon");
+        assert!(
+            matches!(tokens.as_slice(), [Token::Accent { .. }]),
+            "未閉じ 〔 がトップレベルでアクセントブロックになっていない: {tokens:?}"
+        );
+        // 入れ子（アクセント内容の再トークナイズ）では未閉じ 〔 はリテラル。
+        // 〔訳者注…〔Beethoven e`…〕 の内側 〔Beethoven は 〔 が本文に残る（54931）。
+        let tokens = tokenize("〔訳者注 〔Beethoven e`〕");
+        // 外側だけが Accent になり、その中に 〔 テキストが残る。
+        assert!(
+            matches!(tokens.as_slice(), [Token::Accent { .. }]),
+            "外側アクセントブロックが1つにならない: {tokens:?}"
+        );
+        if let [Token::Accent { children }] = tokens.as_slice() {
+            let has_literal_bracket = children
+                .iter()
+                .any(|t| matches!(t, Token::Text(s) if s.contains('〔')));
+            assert!(has_literal_bracket, "内側の未閉じ 〔 がリテラルになっていない: {children:?}");
+        }
     }
 
     #[test]
