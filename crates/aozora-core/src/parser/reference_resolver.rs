@@ -208,6 +208,38 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
         }
         i += 1;
     }
+
+    // 子ノードの中の前方参照も解決する。参照実装は ｜瀕［＃「瀕」は太字］《ひん》
+    // のようにルビ親文字の内側で前方参照を解決してから（@ruby_buf を対象に）
+    // ルビを閉じる。こちらはルビ親文字解決後、親文字ノード列の中に前方参照が
+    // 残るので、各コンテナの子へ再帰して同じスコープ内で解決する。
+    for node in nodes.iter_mut() {
+        resolve_style_references_in_children(node);
+    }
+}
+
+/// コンテナノードの子ノード列に対して前方参照解決を再帰的に適用する。
+fn resolve_style_references_in_children(node: &mut Node) {
+    match node {
+        Node::Ruby { children, ruby, .. } => {
+            resolve_style_references(children);
+            resolve_style_references(ruby);
+        }
+        Node::Style { children, .. }
+        | Node::FontSize { children, .. }
+        | Node::Tcy { children }
+        | Node::Keigakomi { children }
+        | Node::Yokogumi { children }
+        | Node::Caption { children }
+        | Node::Midashi { children, .. } => {
+            resolve_style_references(children);
+        }
+        Node::Warigaki { upper, lower } => {
+            resolve_style_references(upper);
+            resolve_style_references(lower);
+        }
+        _ => {}
+    }
 }
 
 /// 前方参照の照合結果。start_idx..=（注記の直前）を子ノードに置き換える。
@@ -493,6 +525,34 @@ mod tests {
             !nodes.iter().any(|n| matches!(n, Node::UnresolvedReference { .. })),
             "未解決参照が残っている: {nodes:?}"
         );
+    }
+
+    #[test]
+    fn test_resolve_frontref_inside_ruby_base() {
+        // ｜瀕［＃「瀕」は太字］《ひん》: ルビ親文字の内側に前方参照がある場合、
+        // 親文字ノード列の中で解決してから <rb> に入れる（子への再帰）。
+        let mut nodes = vec![Node::Ruby {
+            children: vec![
+                Node::text("瀕"),
+                Node::UnresolvedReference {
+                    target: "瀕".to_string(),
+                    spec: RefSpec::Style(StyleType::Bold),
+                    raw: "「瀕」は太字".to_string(),
+                },
+            ],
+            ruby: vec![Node::text("ひん")],
+            direction: RubyDirection::Right,
+        }];
+        resolve_style_references(&mut nodes);
+        if let Node::Ruby { children, .. } = &nodes[0] {
+            assert_eq!(children.len(), 1, "親文字が装飾1ノードに畳まれていない: {children:?}");
+            assert!(
+                matches!(&children[0], Node::Style { style_type: StyleType::Bold, .. }),
+                "親文字内の前方参照が太字に解決されていない: {children:?}"
+            );
+        } else {
+            panic!("Ruby node が壊れた");
+        }
     }
 
     #[test]
