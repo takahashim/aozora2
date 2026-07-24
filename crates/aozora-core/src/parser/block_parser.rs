@@ -5,7 +5,7 @@
 use crate::node::{BlockParams, BlockType, FontSizeType, MidashiLevel, MidashiStyle, StyleType};
 
 use super::command_parser::CommandResult;
-use super::utils::{extract_number, extract_number_before};
+use super::utils::{convert_japanese_number, extract_number, extract_number_before};
 
 /// ブロック開始を解析
 pub fn parse_block_start(content: &str) -> CommandResult {
@@ -31,10 +31,12 @@ pub fn parse_block_start(content: &str) -> CommandResult {
     // 数字を取る。これで `３字下げ、地より１字上げ`（→3。31 にしない）や
     // `２字下げ、地から３字下げ`（→2。23 にしない）を正しく解析する。
     // どの単位も無い場合（段階指定など）は従来どおり全体から数字を拾う。
-    let width = extract_number_before(content, "字下げ")
-        .or_else(|| extract_number_before(content, "字詰め"))
-        .or_else(|| extract_number_before(content, "字上げ"))
-        .or_else(|| extract_number(content));
+    // 漢数字（一字下げ 等）も参照実装同様に数字化してから読む。
+    let normalized = convert_japanese_number(content);
+    let width = extract_number_before(&normalized, "字下げ")
+        .or_else(|| extract_number_before(&normalized, "字詰め"))
+        .or_else(|| extract_number_before(&normalized, "字上げ"))
+        .or_else(|| extract_number(&normalized));
     if let Some(width) = width {
         params.width = Some(width);
     }
@@ -60,6 +62,8 @@ pub fn parse_block_start(content: &str) -> CommandResult {
 
 /// ぶら下げパターンを解析
 fn try_parse_burasage(content: &str, params: &mut BlockParams) -> Option<CommandResult> {
+    // 参照実装 apply_burasage は先に漢数字を数字化してからパターン照合する。
+    let content = convert_japanese_number(content);
     let parts: Vec<&str> = content.split("折り返して").collect();
     if parts.len() != 2 {
         return None;
@@ -142,7 +146,12 @@ pub fn try_parse_line_indent(content: &str) -> Option<CommandResult> {
         return None;
     }
 
-    let width = extract_number(content)?;
+    // 参照実装 apply_jisage は convert_japanese_number 後に `(\d*)字下げ` を取る。
+    // 漢数字「一字下げ」も 1 として読み、`一字下げ忘れか？200-14` のような
+    // 校正注記も参照実装同様 jisage_1 になる（後続の 200-14 は巻き込まない）。
+    let normalized = convert_japanese_number(content);
+    let width = extract_number_before(&normalized, "字下げ")
+        .or_else(|| extract_number(&normalized))?;
     Some(CommandResult::LineIndent { width })
 }
 

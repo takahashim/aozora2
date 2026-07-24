@@ -20,6 +20,91 @@ pub fn extract_number(s: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
+/// 漢数字・全角数字を含む文字列を算用数字（ASCII）へ正規化する。
+///
+/// 参照実装 aozora2html の `Utils.convert_japanese_number` と同じ。
+/// `一字下げ`→`1字下げ`、`二十三`→`23`、`十`→`10` のように、字下げ幅などの
+/// 数値指定に使われる漢数字を数字へ直す。全角数字も ASCII にする。
+pub fn convert_japanese_number(s: &str) -> String {
+    // 全角数字・漢数字（〇一…九）を1文字ずつ算用数字へ
+    let mut t: String = s
+        .chars()
+        .map(|c| match c {
+            '０'..='９' => ((c as u32 - '０' as u32) as u8 + b'0') as char,
+            '〇' => '0',
+            '一' => '1',
+            '二' => '2',
+            '三' => '3',
+            '四' => '4',
+            '五' => '5',
+            '六' => '6',
+            '七' => '7',
+            '八' => '8',
+            '九' => '9',
+            other => other,
+        })
+        .collect();
+
+    // 十（KANJI_TEN）の合成: (d)十(d)→dd, (d)十→d0, 十(d)→1d, 十→10
+    // 参照実装の gsub 順序に合わせて置換する。
+    t = replace_ten_between_digits(&t);
+    t = replace_digit_ten(&t);
+    t = replace_ten_digit(&t);
+    t.replace('十', "10")
+}
+
+fn replace_ten_between_digits(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '十'
+            && i > 0
+            && chars[i - 1].is_ascii_digit()
+            && chars.get(i + 1).is_some_and(|c| c.is_ascii_digit())
+        {
+            // 直前の桁は既に out にある。十 を飛ばして次の桁を続ける（d十d→dd）
+            i += 1;
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn replace_digit_ten(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '十' && i > 0 && chars[i - 1].is_ascii_digit() {
+            out.push('0'); // d十 → d0
+            i += 1;
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn replace_ten_digit(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '十' && chars.get(i + 1).is_some_and(|c| c.is_ascii_digit()) {
+            out.push('1'); // 十d → 1d
+            i += 1;
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
 /// キーワードの直前に連続する数字（全角・半角）を取り出す。
 ///
 /// 参照実装の `(\d*)字下げ` のように、数字をキーワードに固定して読む。
@@ -55,6 +140,22 @@ mod tests {
         assert_eq!(extract_number("2字下げ"), Some(2));
         assert_eq!(extract_number("10字詰め"), Some(10));
         assert_eq!(extract_number("字下げ"), None);
+    }
+
+    #[test]
+    fn test_convert_japanese_number() {
+        assert_eq!(convert_japanese_number("一字下げ"), "1字下げ");
+        assert_eq!(convert_japanese_number("三字下げ"), "3字下げ");
+        assert_eq!(convert_japanese_number("十字下げ"), "10字下げ");
+        assert_eq!(convert_japanese_number("二十三"), "23");
+        assert_eq!(convert_japanese_number("二十"), "20");
+        assert_eq!(convert_japanese_number("十五"), "15");
+        assert_eq!(convert_japanese_number("１０字下げ"), "10字下げ");
+        // 校正注記の誤コマンド: 「一字下げ」を拾い、後続の 200-14 は無視される
+        assert_eq!(
+            extract_number_before(&convert_japanese_number("一字下げ忘れか？200-14"), "字下げ"),
+            Some(1)
+        );
     }
 
     #[test]
