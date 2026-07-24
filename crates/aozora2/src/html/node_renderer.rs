@@ -97,6 +97,10 @@ impl<'a> NodeRenderer<'a> {
     /// 入れ子の記法を素のテキストのまま alt に残す。
     fn gaiji_alt(&mut self, description: &str) -> String {
         const NEST: &str = "※［＃";
+        // 参照実装 kuten2png は alt 生成前に PAT_KUTEN = /「※」[は|の]/ を除去する
+        // （例:「※」は「竹かんむり＋弄」… → 「竹かんむり＋弄」…）。ここでも除去する。
+        let stripped = strip_kuten_prefix(description);
+        let description = stripped.as_str();
         if !self.options.quirks.nested_gaiji_in_alt
             || self.alt_depth >= 4
             || !description.contains(NEST)
@@ -674,5 +678,28 @@ impl<'a> NodeRenderer<'a> {
             filename,
             html_escape(alt)
         )
+    }
+}
+
+/// 外字説明から `「※」は` / `「※」の` を除去する（参照実装 PAT_KUTEN = /「※」[は|の]/）。
+/// 例:「※」は「竹かんむり＋弄」… → 「竹かんむり＋弄」…
+fn strip_kuten_prefix(description: &str) -> String {
+    description
+        .replace("「※」は", "")
+        .replace("「※」の", "")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_kuten_prefix;
+
+    #[test]
+    fn test_strip_kuten_prefix() {
+        assert_eq!(
+            strip_kuten_prefix("「※」は「竹かんむり＋弄」、読みは「さん」、第3水準1-89-64、148-9"),
+            "「竹かんむり＋弄」、読みは「さん」、第3水準1-89-64、148-9"
+        );
+        assert_eq!(strip_kuten_prefix("「※」の左に「a」"), "左に「a」");
+        assert_eq!(strip_kuten_prefix("「竹かんむり＋弄」"), "「竹かんむり＋弄」");
     }
 }

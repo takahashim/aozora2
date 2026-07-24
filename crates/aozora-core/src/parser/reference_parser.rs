@@ -193,6 +193,18 @@ fn try_parse_inline_element(target: &str, spec: &str) -> Option<CommandResult> {
             target: target.to_string(),
         });
     }
+    // 参照実装 exec_frontref_command はキャプションの後に 返り点・訓点送り仮名 を
+    // 前方参照として処理する（「レ」は返り点 → <sub class="kaeriten">レ</sub>）。
+    if spec.contains("返り点") {
+        return Some(CommandResult::InlineKaeriten {
+            target: target.to_string(),
+        });
+    }
+    if spec.contains("訓点送り仮名") {
+        return Some(CommandResult::InlineOkurigana {
+            target: target.to_string(),
+        });
+    }
     None
 }
 

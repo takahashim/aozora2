@@ -130,6 +130,16 @@ pub enum CommandResult {
         target: String,
     },
 
+    /// 返り点（後方参照「対象」は返り点）
+    InlineKaeriten {
+        target: String,
+    },
+
+    /// 訓点送り仮名（後方参照「対象」は訓点送り仮名）
+    InlineOkurigana {
+        target: String,
+    },
+
     /// キャプション開始
     CaptionStart,
 
@@ -397,6 +407,23 @@ fn extract_bracket_content(s: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_frontref_kaeriten_and_okurigana() {
+        // 「対象」は返り点 / 訓点送り仮名 は前方参照として解決する。
+        assert_eq!(
+            parse_command("「レ」は返り点"),
+            CommandResult::InlineKaeriten {
+                target: "レ".to_string()
+            }
+        );
+        assert_eq!(
+            parse_command("「爾」は訓点送り仮名"),
+            CommandResult::InlineOkurigana {
+                target: "爾".to_string()
+            }
+        );
+    }
 
     #[test]
     fn test_parse_style_bouten() {

@@ -381,6 +381,18 @@ fn parse_command_to_node(content: &str) -> Node {
             raw: content.to_string(),
         },
 
+        CommandResult::InlineKaeriten { target } => Node::UnresolvedReference {
+            target,
+            spec: RefSpec::Inline(InlineKind::Kaeriten),
+            raw: content.to_string(),
+        },
+
+        CommandResult::InlineOkurigana { target } => Node::UnresolvedReference {
+            target,
+            spec: RefSpec::Inline(InlineKind::Okurigana),
+            raw: content.to_string(),
+        },
+
         CommandResult::CaptionStart => Node::BlockStart {
             block_type: BlockType::Caption,
             params: BlockParams::default(),

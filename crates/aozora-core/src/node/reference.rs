@@ -104,6 +104,10 @@ pub enum InlineKind {
     Yokogumi,
     /// キャプション
     Caption,
+    /// 返り点（前方参照「対象」は返り点）
+    Kaeriten,
+    /// 訓点送り仮名（前方参照「対象」は訓点送り仮名）
+    Okurigana,
 }
 
 impl InlineKind {
@@ -113,6 +117,13 @@ impl InlineKind {
             InlineKind::Keigakomi => Node::Keigakomi { children },
             InlineKind::Yokogumi => Node::Yokogumi { children },
             InlineKind::Caption => Node::Caption { children },
+            // 返り点・送り仮名は対象テキストを平文にして sub/sup で包む。
+            InlineKind::Kaeriten => {
+                Node::Kaeriten(children.iter().map(|n| n.to_text()).collect())
+            }
+            InlineKind::Okurigana => {
+                Node::Okurigana(children.iter().map(|n| n.to_text()).collect())
+            }
         }
     }
 }
