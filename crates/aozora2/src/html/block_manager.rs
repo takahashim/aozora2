@@ -106,14 +106,28 @@ impl BlockManager {
     ) -> Vec<(BlockType, BlockParams)> {
         let mut result = Vec::new();
 
-        if *new_block_type == BlockType::Jisage
-            || *new_block_type == BlockType::Chitsuki
+        if *new_block_type == BlockType::Jisage {
+            // 参照実装 apply_jisage → implicit_close(:jisage) は、indent_stack の
+            // 「最上位」が jisage（または String＝ぶら下げ）のときだけ 1 つ閉じ、
+            // それ以外の種別（フォント等）が最上位なら閉じずにネストする。
+            // 従来は while ループで深い位置の jisage まで全て閉じており、
+            // 「jisage の中でフォントを開き、その中で jisage」（例:58129）の入れ子で
+            // 外側 jisage を誤って閉じていた。最上位が jisage/burasage のときだけ
+            // 1 つ閉じる。
+            if let Some(top) = self.stack.last() {
+                if matches!(top.block_type, BlockType::Jisage | BlockType::Burasage) {
+                    let ctx = self.stack.pop().expect("top exists");
+                    if ctx.block_type != BlockType::Burasage {
+                        result.push((ctx.block_type, ctx.params));
+                    }
+                }
+            }
+        } else if *new_block_type == BlockType::Chitsuki
             || *new_block_type == BlockType::Burasage
         {
             while let Some(pos) = self.stack.iter().rposition(|c| {
                 c.block_type == *new_block_type
                     || c.block_type == BlockType::Burasage
-                    || (*new_block_type == BlockType::Jisage && c.block_type == BlockType::Jisage)
                     || (*new_block_type == BlockType::Burasage && c.block_type == BlockType::Jisage)
             }) {
                 let ctx = self.stack.remove(pos);
