@@ -56,12 +56,11 @@ pub enum GaijiResult {
 
 /// 外字説明を解析して結果を返す（HTML変換用）
 pub fn parse_gaiji(description: &str) -> GaijiResult {
-    // 1. Unicode直接指定を探す
-    if let Some(unicode_char) = extract_unicode(description) {
-        return GaijiResult::Unicode(unicode_char.to_string());
-    }
-
-    // 2. JISコードを探す
+    // 参照実装 dispatch_gaiji は kuten2png（句点コード→画像）を先に試し、句点
+    // コードが取れたときはそれを使う。U+ 指定は句点コードが取れなかったときの
+    // フォールバック。よって U+ と句点コードの両方がある説明
+    // （例:「りっしんべん＋粟」、U+619F、2-12-34）は句点コード側（画像）になる。
+    // 1. JISコード（句点コード）を先に探す
     if let Some(jis_code) = extract_jis_code(description) {
         let normalized = normalize_jis_code(&jis_code);
         if let Some(unicode) = jis_to_unicode(&normalized) {
@@ -73,6 +72,11 @@ pub fn parse_gaiji(description: &str) -> GaijiResult {
         return GaijiResult::JisImage {
             jis_code: normalized,
         };
+    }
+
+    // 2. Unicode直接指定
+    if let Some(unicode_char) = extract_unicode(description) {
+        return GaijiResult::Unicode(unicode_char.to_string());
     }
 
     // 3. 変換不能
@@ -190,6 +194,23 @@ mod tests {
             Some("2-14-75".to_string())
         );
         assert_eq!(extract_jis_code("テスト"), None);
+    }
+
+    #[test]
+    fn test_parse_gaiji_prefers_kuten_over_unicode() {
+        // U+ と句点コードの両方がある説明は、参照実装 dispatch_gaiji 同様に
+        // 句点コード（画像/変換）を優先する（U+ は句点コードが無いときのフォールバック）。
+        match parse_gaiji("りっしんべん＋粟、U+619F、2-12-34") {
+            GaijiResult::JisConverted { jis_code, .. } | GaijiResult::JisImage { jis_code } => {
+                assert_eq!(jis_code, "2-12-34");
+            }
+            other => panic!("句点コード優先になっていない: {other:?}"),
+        }
+        // 句点コードが無ければ U+ を使う。
+        assert!(matches!(
+            parse_gaiji("なにか、U+619F"),
+            GaijiResult::Unicode(_)
+        ));
     }
 
     #[test]
