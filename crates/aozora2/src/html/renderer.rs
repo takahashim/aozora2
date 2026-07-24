@@ -7,9 +7,8 @@ use aozora_core::document::{
     extract_header_info,
 };
 use aozora_core::node::{BlockParams, BlockType, Node};
-use aozora_core::parser::parse;
-use aozora_core::parser::reference_resolver::resolve_inline_ruby;
-use aozora_core::tokenizer::tokenize;
+use aozora_core::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
+use aozora_core::parser::{parse_document_raw, RawLine};
 
 use super::block_manager::BlockManager;
 use super::document_renderer::DocumentRenderer;
@@ -54,11 +53,13 @@ impl HtmlRenderer {
         // main_text開始
         doc_renderer.render_main_text_start(&mut output);
 
-        // 本文のみ抽出してレンダリング
+        // 本文を抽出し、文書単位で RawAST に実体化してからレンダリング
         let body_lines = extract_body_lines(&lines);
-        for line in &body_lines {
+        let body_raw = parse_document_raw(&body_lines);
+        for raw_line in &body_raw.lines {
+            let line = raw_line.source.as_str();
             let (line_html, has_explicit_close) =
-                self.render_line_with_context(line, &mut node_renderer, &mut block_manager);
+                self.render_raw_line(raw_line, &mut node_renderer, &mut block_manager);
 
             // ぶら下げブロック内かどうかをチェック
             let burasage_ctx = block_manager.find_burasage_context();
@@ -124,9 +125,9 @@ impl HtmlRenderer {
         let after_text_lines = extract_after_text_lines(&lines);
         if !after_text_lines.is_empty() {
             doc_renderer.render_after_text_header(&mut output);
-            for line in &after_text_lines {
+            for raw_line in &parse_document_raw(&after_text_lines).lines {
                 let line_html = self
-                    .render_line_with_context(line, &mut node_renderer, &mut block_manager)
+                    .render_raw_line(raw_line, &mut node_renderer, &mut block_manager)
                     .0;
                 // 自動リンク化を適用
                 let line_html = auto_link(&line_html);
@@ -140,9 +141,9 @@ impl HtmlRenderer {
         let biblio_lines = extract_bibliographical_lines(&lines);
         if !biblio_lines.is_empty() {
             doc_renderer.render_bibliographical_header(&mut output);
-            for line in &biblio_lines {
+            for raw_line in &parse_document_raw(&biblio_lines).lines {
                 let line_html = self
-                    .render_line_with_context(line, &mut node_renderer, &mut block_manager)
+                    .render_raw_line(raw_line, &mut node_renderer, &mut block_manager)
                     .0;
                 // 自動リンク化を適用
                 let line_html = auto_link(&line_html);
@@ -171,20 +172,23 @@ impl HtmlRenderer {
         output
     }
 
-    /// 1行をHTMLに変換（コンテキスト付き）。
+    /// RawAST の1行をHTMLに変換（コンテキスト付き）。
     /// 戻り値の bool は、その行が ［＃ここで…終わり］でブロックを閉じたか
     /// （参照実装の @terprip=false 相当。true なら行末の <br /> を出さない）。
-    fn render_line_with_context(
+    fn render_raw_line(
         &self,
-        line: &str,
+        raw: &RawLine,
         node_renderer: &mut NodeRenderer,
         block_manager: &mut BlockManager,
     ) -> (String, bool) {
+        let line = raw.source.as_str();
+
         // くの字点は注記の中に書かれることもあるので生の行から数える
         node_renderer.scan_kunoji(line);
 
-        let tokens = tokenize(line);
-        let mut nodes = parse(&tokens);
+        // RawAST の生ノードを lower（前方参照を解決）してから描画する
+        let mut nodes = raw.nodes.clone();
+        resolve_references(&mut nodes);
 
         // 行内ルビを解決
         resolve_inline_ruby(&mut nodes);
@@ -261,7 +265,8 @@ impl HtmlRenderer {
     pub fn render_line(&mut self, line: &str) -> String {
         let mut node_renderer = NodeRenderer::new(&self.options);
         let mut block_manager = BlockManager::new();
-        self.render_line_with_context(line, &mut node_renderer, &mut block_manager)
+        let raw = parse_document_raw(&[line]);
+        self.render_raw_line(&raw.lines[0], &mut node_renderer, &mut block_manager)
             .0
     }
 

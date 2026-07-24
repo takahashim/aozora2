@@ -12,13 +12,44 @@ mod utils;
 
 use crate::node::{BlockParams, BlockType, InlineKind, Node, RefSpec, RubyDirection};
 use crate::token::Token;
+use crate::tokenizer::tokenize;
 
 pub use command_parser::{parse_command, CommandResult};
 pub use reference_resolver::{resolve_inline_ruby, resolve_references};
 pub use ruby_parser::extract_ruby_base;
 
-/// トークン列をノード列にパース
+/// RawAST の1行分。ソース行と、その行を忠実にパースした生ノード列を持つ。
 ///
+/// ブロックの開始/終了は、この段階では各行の中の平坦なマーカーノード
+/// （`BlockStart`/`BlockEnd`/`LineJisage`）として存在する。行をまたぐ対応付けは
+/// 後段（Lowerer）が行う。
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawLine {
+    /// もとのソース行（くの字点走査などで参照する）
+    pub source: String,
+    /// この行を忠実にパースした生ノード列（前方参照は未解決）
+    pub nodes: Vec<Node>,
+}
+
+/// 文書全体の RawAST（RawLine の列）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawDoc {
+    /// 行の列
+    pub lines: Vec<RawLine>,
+}
+
+/// 行の列を文書単位の RawAST にパースする（各行を tokenize + parse_raw）。
+pub fn parse_document_raw(lines: &[&str]) -> RawDoc {
+    let raw_lines = lines
+        .iter()
+        .map(|line| RawLine {
+            source: (*line).to_string(),
+            nodes: parse_raw(&tokenize(line)).into_nodes(),
+        })
+        .collect();
+    RawDoc { lines: raw_lines }
+}
+
 /// パーサが出力する RawAST。
 ///
 /// 青空文庫記法を忠実に写した段階で、前方参照は未解決、ブロックは平坦な
