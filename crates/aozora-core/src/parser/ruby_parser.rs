@@ -46,7 +46,17 @@ pub fn extract_ruby_base(text: &str) -> Option<RubyBaseResult> {
     // 参照実装 RubyBuffer#push_char は文字種 :else の文字を毎回フラッシュして
     // 1 文字ずつ独立させるので、:else のときは直前の 1 文字だけを親文字にする。
     let mut base_start = chars.len() - 1;
-    if last_char_type != CharType::Else {
+    if last_char_type == CharType::HankakuTerminate {
+        // 参照 push_char の特例: hankaku_terminate（. ; " ? ! )）は直前が hankaku
+        // なら同じグループに入る（Fig. → Fig. が親文字）。直前の hankaku 連を含める。
+        if base_start > 0 && chars[base_start - 1].char_type() == CharType::Hankaku {
+            let mut i = base_start - 1;
+            while i > 0 && chars[i - 1].char_type() == CharType::Hankaku {
+                i -= 1;
+            }
+            base_start = i;
+        }
+    } else if last_char_type != CharType::Else {
         for i in (0..chars.len()).rev() {
             if chars[i].char_type() == last_char_type {
                 base_start = i;
@@ -184,6 +194,22 @@ mod tests {
         assert_eq!(result.base, "東京");
         assert_eq!(result.remaining, "私の");
         assert_eq!(result.char_type, CharType::Kanji);
+    }
+
+    #[test]
+    fn test_extract_ruby_base_hankaku_terminate_joins_hankaku() {
+        // hankaku_terminate（.）は直前の hankaku 連と同じグループ（Fig. → Fig.）。
+        let result = extract_ruby_base("本文Fig.").unwrap();
+        assert_eq!(result.base, "Fig.");
+        assert_eq!(result.remaining, "本文");
+        // 直前が hankaku でなければ終端記号だけが親文字（あ. → .）。
+        let result = extract_ruby_base("あ.").unwrap();
+        assert_eq!(result.base, ".");
+        assert_eq!(result.remaining, "あ");
+        // 終端記号が2つなら最後の1つだけ（Fig.. → .）。
+        let result = extract_ruby_base("Fig..").unwrap();
+        assert_eq!(result.base, ".");
+        assert_eq!(result.remaining, "Fig.");
     }
 
     #[test]
