@@ -47,6 +47,7 @@
 //! - `zip` - ZIPファイル処理
 
 pub mod accent;
+pub mod ast;
 pub mod char_type;
 pub mod delimiters;
 pub mod document;
