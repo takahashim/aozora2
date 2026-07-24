@@ -271,11 +271,22 @@ fn find_target_in_preceding(nodes: &[Node], target: &str) -> Option<(usize, usiz
                 if text == target {
                     return Some((i, i, SplitInfo::ExactMatch));
                 }
-                // 末尾から検索（同じ文字が連続する場合、後のものを優先）
-                if let Some(pos) = text.rfind(target) {
-                    let before = text[..pos].to_string();
-                    let after = text[pos + target.len()..].to_string();
-                    return Some((i, i, SplitInfo::Split { before, after }));
+                // 参照実装 search_front_reference は対象をバッファ末尾の**接尾辞**
+                // としてしか照合しない（last_string.match?(/target$/)）。文字列の
+                // 途中一致は取らない。よって ends_with（接尾辞一致）だけを見る。
+                // 従来の rfind は `をツさん［＃「をツ」に傍点］` のように対象が
+                // 直前の接尾辞でない場合まで解決してしまい（参照実装は注記のまま）、
+                // 過剰解決になっていた。
+                if text.ends_with(target) {
+                    let before = text[..text.len() - target.len()].to_string();
+                    return Some((
+                        i,
+                        i,
+                        SplitInfo::Split {
+                            before,
+                            after: String::new(),
+                        },
+                    ));
                 }
             }
             // 子を持つノードの場合、内容テキストが完全一致するかチェック
@@ -470,8 +481,10 @@ mod tests {
 
     #[test]
     fn test_resolve_style_reference() {
+        // 参照実装は対象を直前バッファの接尾辞としてしか照合しないので、
+        // 対象「重要」はテキストの末尾になければならない。
         let mut nodes = vec![
-            Node::text("重要なこと"),
+            Node::text("とても重要"),
             Node::UnresolvedReference {
                 target: "重要".to_string(),
                 spec: RefSpec::Style(StyleType::SesameDot),
@@ -501,16 +514,20 @@ mod tests {
     }
 
     #[test]
-    fn test_find_target_split() {
-        let nodes = vec![Node::text("これは重要なことだ")];
+    fn test_find_target_suffix_only() {
+        // 参照実装 search_front_reference は対象を末尾（接尾辞）としてのみ照合する。
+        // 途中一致（これは[重要]なことだ）は解決しない＝注記のまま。
+        assert!(find_target_in_preceding(&[Node::text("これは重要なことだ")], "重要").is_none());
 
+        // 末尾一致は分割して解決する（after は空）。
+        let nodes = vec![Node::text("これは重要")];
         let result = find_target_in_preceding(&nodes, "重要");
         assert!(result.is_some());
         let (_, idx, split) = result.unwrap();
         assert_eq!(idx, 0);
         if let SplitInfo::Split { before, after } = split {
             assert_eq!(before, "これは");
-            assert_eq!(after, "なことだ");
+            assert_eq!(after, "");
         } else {
             panic!("Expected Split");
         }
