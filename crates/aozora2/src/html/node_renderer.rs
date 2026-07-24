@@ -356,13 +356,7 @@ impl<'a> NodeRenderer<'a> {
                 format!("<span class=\"notes\">［＃{}］</span>", html_escape(raw))
             }
 
-            Node::DakutenKatakana { num } => match num.as_str() {
-                "2" => "ワ゛".to_string(),
-                "3" => "ヰ゛".to_string(),
-                "4" => "ヱ゛".to_string(),
-                "5" => "ヲ゛".to_string(),
-                _ => String::new(),
-            },
+            Node::DakutenKatakana { num } => Node::dakuten_katakana_char(num).to_string(),
         }
     }
 

@@ -259,6 +259,18 @@ impl Node {
         Node::Text(s.into())
     }
 
+    /// 濁点付き片仮名（面区点 1-7-82〜85）の表示文字。
+    /// 参照実装 aozora2html の DAKUTEN_KATAKANA_TABLE 相当（唯一の定義）。
+    pub fn dakuten_katakana_char(num: &str) -> &'static str {
+        match num {
+            "2" => "ワ゛",
+            "3" => "ヰ゛",
+            "4" => "ヱ゛",
+            "5" => "ヲ゛",
+            _ => "",
+        }
+    }
+
     /// ノードからプレーンテキストを抽出
     pub fn to_text(&self) -> String {
         match self {
@@ -293,13 +305,7 @@ impl Node {
             // 未解決参照は解決器で必ず解決 or Note 化されるので通常ここには残らない。
             // 残った場合はもとの文字列で表す。
             Node::UnresolvedReference { raw, .. } => format!("［＃{raw}］"),
-            Node::DakutenKatakana { num } => match num.as_str() {
-                "2" => "ワ゛".to_string(),
-                "3" => "ヰ゛".to_string(),
-                "4" => "ヱ゛".to_string(),
-                "5" => "ヲ゛".to_string(),
-                _ => String::new(),
-            },
+            Node::DakutenKatakana { num } => Node::dakuten_katakana_char(num).to_string(),
         }
     }
 
