@@ -192,7 +192,11 @@ pub fn try_parse_line_chitsuki(content: &str) -> Option<CommandResult> {
     }
 
     if body.ends_with("字上げ") {
-        let width = extract_number(body).unwrap_or(0);
+        // 参照実装 chitsuki_length は convert_japanese_number 後に PAT_JI_LEN
+        // = ([0-9]+)字 で「字上げ」直前の数字を取る（無ければ 0）。漢数字
+        // 「地から一字上げ」も 1、「地から五字上げ」も 5 になる。
+        let normalized = convert_japanese_number(body);
+        let width = extract_number_before(&normalized, "字上げ").unwrap_or(0);
         return Some(CommandResult::LineChitsuki { width });
     }
 
@@ -339,6 +343,12 @@ mod tests {
 
         let result = try_parse_line_chitsuki("地から3字上げ");
         assert_eq!(result, Some(CommandResult::LineChitsuki { width: 3 }));
+
+        // 漢数字も convert_japanese_number で数字化して幅を取る。
+        let result = try_parse_line_chitsuki("地から一字上げ");
+        assert_eq!(result, Some(CommandResult::LineChitsuki { width: 1 }));
+        let result = try_parse_line_chitsuki("地から五字上げ");
+        assert_eq!(result, Some(CommandResult::LineChitsuki { width: 5 }));
     }
 
     #[test]
