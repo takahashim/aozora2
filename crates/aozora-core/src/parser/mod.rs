@@ -10,9 +10,7 @@ pub mod reference_resolver;
 pub mod ruby_parser;
 mod utils;
 
-use crate::node::{
-    BlockParams, BlockType, FontSizeType, MidashiLevel, MidashiStyle, Node, RubyDirection,
-};
+use crate::node::{BlockParams, BlockType, InlineKind, Node, RefSpec, RubyDirection};
 use crate::token::Token;
 
 pub use command_parser::{parse_command, CommandResult};
@@ -157,26 +155,24 @@ fn parse_command_to_node(content: &str) -> Node {
     match parse_command(content) {
         CommandResult::Style {
             target,
-            connector,
+            connector: _,
             style_type,
-        } => {
-            // 後方参照スタイル: 「対象」に装飾
-            Node::UnresolvedReference {
-                target,
-                spec: style_type.command_name().to_string(),
-                connector,
-                raw: content.to_string(),
-            }
-        }
+        } => Node::UnresolvedReference {
+            target,
+            spec: RefSpec::Style(style_type),
+            raw: content.to_string(),
+        },
 
         CommandResult::KutenGaiji {
             target,
-            connector,
+            connector: _,
             spec,
         } => Node::UnresolvedReference {
             target,
-            spec,
-            connector,
+            // KutenGaiji は句点コードが取れたときだけ作られるので必ず Some
+            spec: RefSpec::EmbeddedGaiji {
+                jis_code: utils::parse_kuten_gaiji(&spec).unwrap_or_default(),
+            },
             raw: content.to_string(),
         },
 
@@ -184,46 +180,21 @@ fn parse_command_to_node(content: &str) -> Node {
             target,
             level,
             style,
-        } => {
-            // 後方参照見出し: 「対象」は見出し
-            // specにはスタイル情報も含める
-            let spec = match (level, style) {
-                (MidashiLevel::O, MidashiStyle::Dogyo) => "同行大見出し",
-                (MidashiLevel::O, MidashiStyle::Mado) => "窓大見出し",
-                (MidashiLevel::O, MidashiStyle::Normal) => "大見出し",
-                (MidashiLevel::Naka, MidashiStyle::Dogyo) => "同行中見出し",
-                (MidashiLevel::Naka, MidashiStyle::Mado) => "窓中見出し",
-                (MidashiLevel::Naka, MidashiStyle::Normal) => "中見出し",
-                (MidashiLevel::Ko, MidashiStyle::Dogyo) => "同行小見出し",
-                (MidashiLevel::Ko, MidashiStyle::Mado) => "窓小見出し",
-                (MidashiLevel::Ko, MidashiStyle::Normal) => "小見出し",
-            };
-            Node::UnresolvedReference {
-                target,
-                spec: spec.to_string(),
-                connector: "は".to_string(),
-                raw: content.to_string(),
-            }
-        }
+        } => Node::UnresolvedReference {
+            target,
+            spec: RefSpec::Midashi { level, style },
+            raw: content.to_string(),
+        },
 
         CommandResult::FontSize {
             target,
             size_type,
             level,
-        } => {
-            // 後方参照フォントサイズ: 「対象」はN段階大きな/小さな文字
-            // specにはサイズ情報を含める
-            let spec = match size_type {
-                FontSizeType::Dai => format!("{level}段階大きな文字"),
-                FontSizeType::Sho => format!("{level}段階小さな文字"),
-            };
-            Node::UnresolvedReference {
-                target,
-                spec,
-                connector: "は".to_string(),
-                raw: content.to_string(),
-            }
-        }
+        } => Node::UnresolvedReference {
+            target,
+            spec: RefSpec::FontSize { size_type, level },
+            raw: content.to_string(),
+        },
 
         CommandResult::BlockStart { block_type, params } => Node::BlockStart { block_type, params },
 
@@ -298,41 +269,33 @@ fn parse_command_to_node(content: &str) -> Node {
             Node::Note(format!("「{target}」の左に「{ruby}」のルビ"))
         }
 
-        CommandResult::AnnotationRuby { target, annotation } => {
-            // 注記ルビ: 「対象」に「注記」の注記 → 後方参照として解決
-            Node::UnresolvedReference {
-                target,
-                spec: format!("annotation_ruby:{}", annotation),
-                connector: "に".to_string(),
-                raw: content.to_string(),
-            }
-        }
+        CommandResult::AnnotationRuby { target, annotation } => Node::UnresolvedReference {
+            target,
+            spec: RefSpec::AnnotationRuby { annotation },
+            raw: content.to_string(),
+        },
 
         CommandResult::InlineTcy { target } => Node::UnresolvedReference {
             target,
-            spec: "縦中横".to_string(),
-            connector: "は".to_string(),
+            spec: RefSpec::Inline(InlineKind::Tcy),
             raw: content.to_string(),
         },
 
         CommandResult::InlineKeigakomi { target } => Node::UnresolvedReference {
             target,
-            spec: "罫囲み".to_string(),
-            connector: "は".to_string(),
+            spec: RefSpec::Inline(InlineKind::Keigakomi),
             raw: content.to_string(),
         },
 
         CommandResult::InlineYokogumi { target } => Node::UnresolvedReference {
             target,
-            spec: "横組み".to_string(),
-            connector: "は".to_string(),
+            spec: RefSpec::Inline(InlineKind::Yokogumi),
             raw: content.to_string(),
         },
 
         CommandResult::InlineCaption { target } => Node::UnresolvedReference {
             target,
-            spec: "キャプション".to_string(),
-            connector: "は".to_string(),
+            spec: RefSpec::Inline(InlineKind::Caption),
             raw: content.to_string(),
         },
 
@@ -388,15 +351,11 @@ fn parse_command_to_node(content: &str) -> Node {
             },
         },
 
-        CommandResult::SideNote { target, annotation } => {
-            // 傍記: 「対象」に「注記」の傍記 → 後方参照として解決（ルビに変換）
-            Node::UnresolvedReference {
-                target,
-                spec: format!("side_note:{}", annotation),
-                connector: "に".to_string(),
-                raw: content.to_string(),
-            }
-        }
+        CommandResult::SideNote { target, annotation } => Node::UnresolvedReference {
+            target,
+            spec: RefSpec::SideNote { annotation },
+            raw: content.to_string(),
+        },
 
         CommandResult::Unknown(text) => Node::Note(text),
     }

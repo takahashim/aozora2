@@ -3,9 +3,7 @@
 //! 青空文庫形式の「〇〇」に傍点 のようなパターンを解決します。
 //! これらのコマンドは前方のテキストを参照し、装飾を適用します。
 
-use crate::node::{
-    BlockType, FontSizeType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
-};
+use crate::node::{BlockType, Node, RefSpec, RubyDirection};
 use crate::parser::ruby_parser::extract_ruby_base_from_nodes;
 use crate::tokenizer::tokenize;
 
@@ -190,13 +188,7 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
 fn resolve_style_references(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
-        if let Node::UnresolvedReference {
-            target,
-            spec,
-            connector: _,
-            raw,
-        } = &nodes[i]
-        {
+        if let Node::UnresolvedReference { target, spec, raw } = &nodes[i] {
             let target_clone = target.clone();
             let spec_clone = spec.clone();
             let raw_clone = raw.clone();
@@ -205,18 +197,15 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
             if let Some((_, found_node_idx, split_info)) =
                 find_target_in_preceding(&nodes[..i], &target_clone)
             {
-                // 解決種類を決定
-                if let Some(kind) = ResolvedKind::from_spec(&spec_clone) {
-                    apply_resolution(
-                        nodes,
-                        &mut i,
-                        found_node_idx,
-                        split_info,
-                        &target_clone,
-                        &kind,
-                    );
-                    continue;
-                }
+                apply_resolution(
+                    nodes,
+                    &mut i,
+                    found_node_idx,
+                    split_info,
+                    &target_clone,
+                    &spec_clone,
+                );
+                continue;
             }
 
             // 解決できなかった場合は、もとの文字列のまま注記にする
@@ -233,16 +222,16 @@ fn apply_resolution(
     found_node_idx: usize,
     split_info: SplitInfo,
     target: &str,
-    kind: &ResolvedKind,
+    spec: &RefSpec,
 ) {
     match split_info {
         SplitInfo::ExactMatch => {
-            let new_node = kind.create_node(target);
+            let new_node = spec.resolve(vec![Node::text(target)]);
             nodes[found_node_idx] = new_node;
             nodes.remove(*i);
         }
         SplitInfo::Split { before, after } => {
-            let new_node = kind.create_node(target);
+            let new_node = spec.resolve(vec![Node::text(target)]);
             let mut new_nodes = Vec::new();
             if !before.is_empty() {
                 new_nodes.push(Node::text(&before));
@@ -261,7 +250,7 @@ fn apply_resolution(
         }
         SplitInfo::MultiNodeExact { start_idx, end_idx } => {
             let children: Vec<Node> = nodes[start_idx..=end_idx].to_vec();
-            let new_node = kind.create_node_with_children(children);
+            let new_node = spec.resolve(children);
             let nodes_removed = end_idx - start_idx + 1;
             nodes.splice(start_idx..=end_idx, std::iter::once(new_node));
             let new_i = *i - (nodes_removed - 1);
@@ -371,161 +360,6 @@ fn extract_plain_text(node: &Node) -> String {
     }
 }
 
-/// 解決された参照の種類
-#[derive(Debug, Clone)]
-enum ResolvedKind {
-    /// スタイル（傍点、傍線など）
-    Style(StyleType),
-    /// 見出し
-    Midashi {
-        level: MidashiLevel,
-        style: MidashiStyle,
-    },
-    /// フォントサイズ
-    FontSize { size_type: FontSizeType, level: u32 },
-    /// インライン要素（縦中横、罫囲み、横組み、キャプション）
-    Inline(InlineKind),
-    /// 注記ルビ
-    AnnotationRuby { annotation: String },
-    /// 傍記（ルビとして表示）
-    SideNote { annotation: String },
-    /// 句点コード指定による外字画像。対象の文字は画像に置き換わる。
-    EmbeddedGaiji { jis_code: String },
-}
-
-impl ResolvedKind {
-    /// 参照スペックを解析して解決された種類を返す
-    fn from_spec(spec: &str) -> Option<Self> {
-        // 句点コード指定による外字画像。参照実装 exec_style は他の記法より先に
-        // kuten2png を試すので、ここでも最初に見る。
-        if let Some(jis_code) = super::utils::parse_kuten_gaiji(spec) {
-            return Some(ResolvedKind::EmbeddedGaiji { jis_code });
-        }
-
-        // 注記ルビ（annotation_ruby:注記内容）
-        if let Some(annotation) = spec.strip_prefix("annotation_ruby:") {
-            return Some(ResolvedKind::AnnotationRuby {
-                annotation: annotation.to_string(),
-            });
-        }
-
-        // 傍記（side_note:注記内容）
-        if let Some(annotation) = spec.strip_prefix("side_note:") {
-            return Some(ResolvedKind::SideNote {
-                annotation: annotation.to_string(),
-            });
-        }
-
-        // スタイル
-        if let Some(style_type) = StyleType::from_command(spec) {
-            return Some(ResolvedKind::Style(style_type));
-        }
-
-        // 見出し
-        if let Some(level) = MidashiLevel::from_command(spec) {
-            let style = MidashiStyle::from_command(spec);
-            return Some(ResolvedKind::Midashi { level, style });
-        }
-
-        // フォントサイズ
-        if let Some((size_type, level)) = FontSizeType::from_command(spec) {
-            return Some(ResolvedKind::FontSize { size_type, level });
-        }
-
-        // インライン要素
-        if let Some(inline_kind) = InlineKind::from_spec(spec) {
-            return Some(ResolvedKind::Inline(inline_kind));
-        }
-
-        None
-    }
-
-    /// 対象テキストからノードを作成
-    fn create_node(&self, target: &str) -> Node {
-        self.create_node_with_children(vec![Node::text(target)])
-    }
-
-    /// 子ノード列からノードを作成
-    fn create_node_with_children(&self, children: Vec<Node>) -> Node {
-        match self {
-            // 対象の文字は画像に置き換わるので children は使わない。
-            // 参照実装は説明文を取り出す gsub! が nil を返すため alt が空になる。
-            ResolvedKind::EmbeddedGaiji { jis_code } => Node::Gaiji {
-                description: String::new(),
-                unicode: None,
-                jis_code: Some(jis_code.clone()),
-            },
-            ResolvedKind::Style(style_type) => Node::Style {
-                children,
-                style_type: *style_type,
-                class_name: String::new(),
-            },
-            ResolvedKind::Midashi { level, style } => Node::Midashi {
-                children,
-                level: *level,
-                style: *style,
-            },
-            ResolvedKind::FontSize { size_type, level } => Node::FontSize {
-                children,
-                size_type: *size_type,
-                level: *level,
-            },
-            ResolvedKind::Inline(inline_kind) => inline_kind.create_node(children),
-            ResolvedKind::AnnotationRuby { annotation } => Node::Ruby {
-                children,
-                ruby: vec![Node::text(annotation)],
-                direction: RubyDirection::Right,
-            },
-            ResolvedKind::SideNote { annotation } => {
-                // 親文字の文字数を数える
-                let char_count: usize = children.iter().map(|n| n.to_text().chars().count()).sum();
-                // 注記を文字数分繰り返し、&nbsp;で区切る
-                let repeated: String = std::iter::repeat(annotation.as_str())
-                    .take(char_count.max(1))
-                    .collect::<Vec<_>>()
-                    .join("\u{00a0}"); // non-breaking space
-                Node::Ruby {
-                    children,
-                    ruby: vec![Node::text(&repeated)],
-                    direction: RubyDirection::Right,
-                }
-            }
-        }
-    }
-}
-
-/// インライン要素の種類
-#[derive(Debug, Clone, Copy)]
-enum InlineKind {
-    Tcy,
-    Keigakomi,
-    Yokogumi,
-    Caption,
-}
-
-impl InlineKind {
-    /// スペック文字列からインライン種類を取得
-    fn from_spec(spec: &str) -> Option<Self> {
-        match spec {
-            "縦中横" => Some(InlineKind::Tcy),
-            "罫囲み" => Some(InlineKind::Keigakomi),
-            "横組み" => Some(InlineKind::Yokogumi),
-            "キャプション" => Some(InlineKind::Caption),
-            _ => None,
-        }
-    }
-
-    /// 子ノード列からノードを作成
-    fn create_node(self, children: Vec<Node>) -> Node {
-        match self {
-            InlineKind::Tcy => Node::Tcy { children },
-            InlineKind::Keigakomi => Node::Keigakomi { children },
-            InlineKind::Yokogumi => Node::Yokogumi { children },
-            InlineKind::Caption => Node::Caption { children },
-        }
-    }
-}
-
 /// 分割情報
 enum SplitInfo {
     /// 完全一致
@@ -586,7 +420,7 @@ fn parse_annotation_text(text: &str) -> Vec<Node> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::RubyDirection;
+    use crate::node::{RubyDirection, StyleType};
 
     #[test]
     fn test_resolve_inline_ruby() {
@@ -639,16 +473,15 @@ mod tests {
             Node::text("重要なこと"),
             Node::UnresolvedReference {
                 target: "重要".to_string(),
-                spec: "sesame_dot".to_string(),
-                connector: "に".to_string(),
-                raw: "「重要」にsesame_dot".to_string(),
+                spec: RefSpec::Style(StyleType::SesameDot),
+                raw: "「重要」に傍点".to_string(),
             },
         ];
 
         resolve_style_references(&mut nodes);
 
         // 「重要」が装飾ノードになっているはず
-        assert!(!nodes.is_empty());
+        assert!(nodes.iter().any(|n| matches!(n, Node::Style { .. })));
     }
 
     #[test]

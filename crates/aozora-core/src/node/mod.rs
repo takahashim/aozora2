@@ -4,10 +4,12 @@
 
 mod block;
 mod midashi;
+mod reference;
 mod style;
 
 pub use block::{BlockParams, BlockType};
 pub use midashi::{MidashiLevel, MidashiStyle};
+pub use reference::{InlineKind, RefSpec};
 pub use style::StyleType;
 
 use crate::char_type::CharType;
@@ -168,14 +170,14 @@ pub enum Node {
         suffix: String,
     },
 
-    /// 未解決の前方参照
+    /// 未解決の前方参照（パース〜解決の間だけ存在する中間ノード）。
+    /// 解決器が対象を前方に見つけて [`RefSpec::resolve`] で最終ノードにするか、
+    /// 見つからなければ `raw` をそのまま注記にする。
     UnresolvedReference {
         /// 対象テキスト
         target: String,
-        /// 装飾指定
-        spec: String,
-        /// 接続詞（に、は、の）
-        connector: String,
+        /// 対象に適用する指定
+        spec: RefSpec,
         /// 注記のもとの文字列。対象が前方に見つからなかったときは
         /// これをそのまま注記として出す（組み立て直すと元と変わることがある）。
         raw: String,
@@ -287,14 +289,9 @@ impl Node {
             | Node::Note(_)
             | Node::LineJisage { .. }
             | Node::AnnotationEnd { .. } => String::new(),
-            Node::UnresolvedReference {
-                target,
-                spec,
-                connector,
-                raw: _,
-            } => {
-                format!("［＃「{target}」{connector}{spec}］")
-            }
+            // 未解決参照は解決器で必ず解決 or Note 化されるので通常ここには残らない。
+            // 残った場合はもとの文字列で表す。
+            Node::UnresolvedReference { raw, .. } => format!("［＃{raw}］"),
             Node::DakutenKatakana { num } => match num.as_str() {
                 "2" => "ワ゛".to_string(),
                 "3" => "ヰ゛".to_string(),

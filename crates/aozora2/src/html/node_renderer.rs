@@ -349,13 +349,9 @@ impl<'a> NodeRenderer<'a> {
                 )
             }
 
-            Node::UnresolvedReference {
-                target: _,
-                spec: _,
-                connector: _,
-                raw,
-            } => {
-                // 解決されずに残った参照は、もとの文字列のまま注記にする
+            // 解決器で必ず解決 or Note 化されるので通常ここには来ない。
+            // 残った場合はもとの文字列のまま注記にする。
+            Node::UnresolvedReference { raw, .. } => {
                 format!("<span class=\"notes\">［＃{}］</span>", html_escape(raw))
             }
 
