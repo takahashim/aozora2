@@ -86,15 +86,17 @@ impl HeaderInfo {
 /// - 2行目以降: 著者、副題、原題など（行数によって解釈が変わる）
 pub fn extract_header_info(lines: &[&str]) -> HeaderInfo {
     let mut info = HeaderInfo::default();
-    let mut header_lines = Vec::new();
 
-    // 最初の空行までをヘッダーとして収集
+    // 最初の空行までをヘッダーとして収集し、参照実装 parse_header と同様に
+    // ｜（ルビ親文字区切り）とルビ 《...》 を除去してから各項目に割り当てる。
+    let mut stripped: Vec<String> = Vec::new();
     for line in lines {
         if line.is_empty() {
             break;
         }
-        header_lines.push(*line);
+        stripped.push(strip_header_ruby(line));
     }
+    let header_lines: Vec<&str> = stripped.iter().map(|s| s.as_str()).collect();
 
     match header_lines.len() {
         0 => {}
@@ -159,6 +161,38 @@ pub fn extract_header_info(lines: &[&str]) -> HeaderInfo {
     }
 
     info
+}
+
+/// ヘッダ行から ｜（ルビ親文字区切り）とルビ 《...》 を除去する。
+///
+/// 参照実装 parse_header の `string.gsub!(RUBY_PREFIX, ''); string.gsub!(PAT_RUBY, '')`
+/// に対応。PAT_RUBY = /《.*?》/（非貪欲）なので、対応する 》 が無い 《 は残す。
+fn strip_header_ruby(line: &str) -> String {
+    let mut out = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '｜' => {} // ｜ は全て除去
+            '《' => {
+                // 次の 》 までをルビとして捨てる。見つからなければ 《 以降を残す。
+                let mut buf = String::new();
+                let mut closed = false;
+                for nc in chars.by_ref() {
+                    if nc == '》' {
+                        closed = true;
+                        break;
+                    }
+                    buf.push(nc);
+                }
+                if !closed {
+                    out.push('《');
+                    out.push_str(&buf);
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// 人物名を処理してHeaderInfoに設定、種別を返す
@@ -480,6 +514,25 @@ mod tests {
         let lines = vec!["タイトル", "著者名", ""];
         let info = extract_header_info(&lines);
         assert_eq!(info.title, Some("タイトル".to_string()));
+        assert_eq!(info.author, Some("著者名".to_string()));
+    }
+
+    #[test]
+    fn test_strip_header_ruby() {
+        // ｜ と 《...》 を除去。対応する 》 が無い 《 は残す。
+        assert_eq!(strip_header_ruby("田舎｜教師《きょうし》"), "田舎教師");
+        assert_eq!(strip_header_ruby("漢字《かんじ》の本《ほん》"), "漢字の本");
+        assert_eq!(strip_header_ruby("｜｜あ"), "あ");
+        assert_eq!(strip_header_ruby("《未閉じ"), "《未閉じ");
+        assert_eq!(strip_header_ruby("普通のタイトル"), "普通のタイトル");
+    }
+
+    #[test]
+    fn test_extract_header_strips_ruby() {
+        // ヘッダのタイトル・著者からルビと ｜ を除去する（参照実装 parse_header）。
+        let lines = vec!["田舎｜教師《きょうし》", "著者｜名《めい》", ""];
+        let info = extract_header_info(&lines);
+        assert_eq!(info.title, Some("田舎教師".to_string()));
         assert_eq!(info.author, Some("著者名".to_string()));
     }
 
