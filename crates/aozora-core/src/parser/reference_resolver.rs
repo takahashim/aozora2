@@ -32,6 +32,7 @@ pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
             children,
             ruby,
             direction,
+            ..
         } = &nodes[i]
         {
             if children.is_empty() && !ruby.is_empty() && i > 0 {
@@ -64,6 +65,7 @@ pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
                             children: base,
                             ruby: ruby_clone,
                             direction: direction_clone,
+                            keep_gaiji_notes_in_base: false,
                         };
                     }
                     continue; // iを増やさない（ノードを操作したので）
@@ -83,6 +85,7 @@ fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
             children,
             ruby,
             direction: _,
+            ..
         } = &nodes[i]
         {
             if children.is_empty() && !ruby.is_empty() {
@@ -172,6 +175,7 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
                             children,
                             ruby: annotation_nodes,
                             direction: RubyDirection::Right,
+                            keep_gaiji_notes_in_base: true,
                         };
                         // 範囲を新しいノードで置き換え
                         nodes.splice(i..=end_idx, std::iter::once(new_node));
@@ -446,6 +450,7 @@ mod tests {
                 children: vec![],
                 ruby: vec![Node::text("とうきょう")],
                 direction: RubyDirection::Right,
+                keep_gaiji_notes_in_base: false,
             },
         ];
 
@@ -469,6 +474,7 @@ mod tests {
                 children: vec![],
                 ruby: vec![Node::text("とうきょう")],
                 direction: RubyDirection::Right,
+                keep_gaiji_notes_in_base: false,
             },
         ];
 
@@ -539,6 +545,7 @@ mod tests {
         // ｜瀕［＃「瀕」は太字］《ひん》: ルビ親文字の内側に前方参照がある場合、
         // 親文字ノード列の中で解決してから <rb> に入れる（子への再帰）。
         let mut nodes = vec![Node::Ruby {
+            keep_gaiji_notes_in_base: false,
             children: vec![
                 Node::text("瀕"),
                 Node::UnresolvedReference {

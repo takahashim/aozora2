@@ -174,6 +174,7 @@ fn parse_token(token: &Token) -> Vec<Node> {
                 children: vec![],
                 ruby: ruby_nodes,
                 direction: RubyDirection::Right,
+                keep_gaiji_notes_in_base: false,
             }]
         }
 
@@ -196,6 +197,7 @@ fn parse_token(token: &Token) -> Vec<Node> {
                 children: base,
                 ruby: ruby_nodes,
                 direction: RubyDirection::Right,
+                keep_gaiji_notes_in_base: false,
             }]
         }
 
@@ -575,6 +577,7 @@ mod tests {
             children,
             ruby,
             direction,
+            ..
         } = &nodes[0]
         {
             assert!(matches!(&children[0], Node::Text(s) if s == "東京"));

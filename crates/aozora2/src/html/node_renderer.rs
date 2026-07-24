@@ -198,7 +198,14 @@ impl<'a> NodeRenderer<'a> {
                 children,
                 ruby,
                 direction,
-            } => self.render_ruby(children, ruby, *direction, block_manager),
+                keep_gaiji_notes_in_base,
+            } => self.render_ruby(
+                children,
+                ruby,
+                *direction,
+                *keep_gaiji_notes_in_base,
+                block_manager,
+            ),
 
             Node::Style {
                 children,
@@ -404,9 +411,16 @@ impl<'a> NodeRenderer<'a> {
         children: &[Node],
         ruby: &[Node],
         direction: RubyDirection,
+        keep_gaiji_notes_in_base: bool,
         block_manager: &mut BlockManager,
     ) -> String {
-        let (base_html, trailing_notes) = self.render_ruby_base(children, block_manager);
+        let (base_html, trailing_notes) = if keep_gaiji_notes_in_base {
+            // ［＃注記付き］範囲ルビ等は親文字を通常描画（※<span class="notes">…</span>）
+            // してから rb に包むので、外字注記を rb の外に出さない。
+            (self.render_nodes(children, block_manager), String::new())
+        } else {
+            self.render_ruby_base(children, block_manager)
+        };
         let ruby_html = self.render_nodes(ruby, block_manager);
         // Unicode nbsp (\u{00a0}) を HTML entity &nbsp; に変換
         let ruby_html = ruby_html.replace('\u{00a0}', "&nbsp;");

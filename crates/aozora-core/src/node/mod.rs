@@ -28,6 +28,12 @@ pub enum Node {
         ruby: Vec<Node>,
         /// ルビの方向
         direction: RubyDirection,
+        /// 親文字内の外字注記を rb の外（ルビ後）に出さず rb 内に残すか。
+        /// `［＃注記付き］…終わり` の範囲ルビは、参照実装では親文字を通常描画
+        /// （`※<span class="notes">…</span>`）してから rb に包むので notes が
+        /// rb 内に入る。`《》` ルビ（create_ruby）は UnEmbedGaiji を escape して
+        /// notes をルビの後ろに出すので false。
+        keep_gaiji_notes_in_base: bool,
     },
 
     /// 装飾（傍点、傍線、太字など）
@@ -374,6 +380,7 @@ mod tests {
             children: vec![Node::text("漢字")],
             ruby: vec![Node::text("かんじ")],
             direction: RubyDirection::Right,
+            keep_gaiji_notes_in_base: false,
         };
         assert_eq!(node.to_text(), "漢字");
     }

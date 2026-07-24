@@ -76,6 +76,7 @@ impl RefSpec {
                 children,
                 ruby: vec![Node::text(annotation)],
                 direction: RubyDirection::Right,
+                keep_gaiji_notes_in_base: true,
             },
             RefSpec::SideNote { annotation } => {
                 // 親文字の文字数だけ注記を繰り返し、&nbsp; で区切る
@@ -88,6 +89,7 @@ impl RefSpec {
                     children,
                     ruby: vec![Node::text(&repeated)],
                     direction: RubyDirection::Right,
+                    keep_gaiji_notes_in_base: true,
                 }
             }
         }

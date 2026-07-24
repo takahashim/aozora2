@@ -183,6 +183,20 @@ mod tests {
         assert!(html.contains("<ruby>"));
     }
 
+    /// ［＃注記付き］範囲ルビの親文字に変換不能外字があると、その外字注記は
+    /// rb の外ではなく rb 内に残る（参照実装は親文字を通常描画してから rb に包む）。
+    #[test]
+    fn test_annotation_ruby_keeps_gaiji_notes_in_base() {
+        let src = "タイトル\r\n\r\n生物の［＃注記付き］※［＃「てへん＋執」、U+22D07、254-8］［＃「マヽ」の注記付き終わり］";
+        let html = convert(src, &RenderOptions::default());
+        assert!(
+            html.contains(
+                "<ruby><rb>※<span class=\"notes\">［＃「てへん＋執」、U+22D07、254-8］</span></rb><rp>（</rp><rt>マヽ</rt><rp>）</rp></ruby>"
+            ),
+            "実際: {html}"
+        );
+    }
+
     /// 割り注はペア（同一行）で `<span class="warichu">（…）</span>` になる。
     #[test]
     fn test_warichu_pair() {
