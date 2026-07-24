@@ -195,26 +195,36 @@ fn parse_token(token: &Token) -> Vec<Node> {
         Token::Gaiji { description } => vec![parse_gaiji_to_node(description)],
 
         Token::Accent { children } => {
-            let inner_nodes = parse_tokens(children);
-            let text: String = inner_nodes.iter().map(|n| n.to_text()).collect();
-
-            // parse_accent を使ってJISコード情報を保持したノードを作成
+            // アクセント内の子ノードを描画する。従来は全子ノードを to_text() で
+            // 平坦化してから parse_accent していたため、内側の外字（※［＃…］）が
+            // 記述文字列に潰れて生テキストとして出ていた（例:〔…au ※［＃ローマ数字
+            // 19、37-下-11］e siècle〕）。テキストノードだけにアクセント変換を掛け、
+            // 外字などテキスト以外のノードはそのまま残す。アクセント列（e＋アクセント）
+            // は同一テキストノード内に収まるので分割して処理しても取りこぼさない。
             use crate::accent::{parse_accent, AccentPart};
-            parse_accent(&text)
-                .into_iter()
-                .map(|part| match part {
-                    AccentPart::Text(s) => Node::Text(s),
-                    AccentPart::Accent {
-                        jis_code,
-                        name,
-                        unicode,
-                    } => Node::Accent {
-                        code: jis_code,
-                        name,
-                        unicode: Some(unicode),
-                    },
-                })
-                .collect()
+            let mut result = Vec::new();
+            for node in parse_tokens(children) {
+                match node {
+                    Node::Text(s) => {
+                        for part in parse_accent(&s) {
+                            match part {
+                                AccentPart::Text(t) => result.push(Node::Text(t)),
+                                AccentPart::Accent {
+                                    jis_code,
+                                    name,
+                                    unicode,
+                                } => result.push(Node::Accent {
+                                    code: jis_code,
+                                    name,
+                                    unicode: Some(unicode),
+                                }),
+                            }
+                        }
+                    }
+                    other => result.push(other),
+                }
+            }
+            result
         }
     }
 }
@@ -510,6 +520,22 @@ mod tests {
         let nodes = parse(&tokens);
         assert_eq!(nodes.len(), 1);
         assert!(matches!(&nodes[0], Node::Text(s) if s == "こんにちは"));
+    }
+
+    #[test]
+    fn test_accent_preserves_inner_gaiji() {
+        // アクセント〔…〕の中の外字 ※［＃…］ は Node::Gaiji として保持され、
+        // 記述文字列の生テキストに潰れない。従来は to_text() 平坦化で潰れていた。
+        let tokens = tokenize("〔a※［＃ローマ数字19、37-下-11］e´〕");
+        let nodes = parse(&tokens);
+        // どこかに Gaiji ノードが1つ残っていること。
+        let has_gaiji = nodes.iter().any(|n| matches!(n, Node::Gaiji { .. }));
+        assert!(has_gaiji, "アクセント内の外字が Gaiji ノードとして残っていない: {nodes:?}");
+        // 記述文字列が生テキストとして紛れ込んでいないこと。
+        let has_raw_desc = nodes
+            .iter()
+            .any(|n| matches!(n, Node::Text(s) if s.contains("37-下-11")));
+        assert!(!has_raw_desc, "外字の記述が生テキストになっている: {nodes:?}");
     }
 
     #[test]
