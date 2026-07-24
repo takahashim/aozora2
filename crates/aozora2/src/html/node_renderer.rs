@@ -8,6 +8,7 @@ use aozora_core::node::{
 };
 use aozora_core::parser::parse;
 use aozora_core::parser::reference_resolver::resolve_inline_ruby;
+use aozora_core::token::Token;
 use aozora_core::tokenizer::tokenize;
 
 use super::block_manager::BlockManager;
@@ -248,7 +249,13 @@ impl<'a> NodeRenderer<'a> {
                 is_photo,
                 width,
                 height,
-            } => self.render_img(filename, alt, *is_photo, *width, *height),
+            } => {
+                // 参照実装は画像注記を read_to_nest で読む際、@images を共有する
+                // TagParser が alt 内の外字 ※［＃…］ を処理する副作用で外字一覧に
+                // 登録する（alt 自体は生文字列で出るが、一覧にも載る）。これを再現。
+                self.register_alt_gaiji(alt);
+                self.render_img(filename, alt, *is_photo, *width, *height)
+            }
 
             Node::Tcy { children } => {
                 let inner = self.render_nodes(children, block_manager);
@@ -685,6 +692,37 @@ impl<'a> NodeRenderer<'a> {
             gaiji_name,
             page_lines: vec![page_line],
         });
+    }
+
+    /// 画像注記の alt 内の外字 ※［＃…］ を、参照実装の read_to_nest の副作用に
+    /// あわせて外字一覧・表記フラグに登録する（出力には影響しない）。
+    fn register_alt_gaiji(&mut self, alt: &str) {
+        for token in tokenize(alt) {
+            let Token::Gaiji {
+                description,
+                had_igeta,
+            } = token
+            else {
+                continue;
+            };
+            match parse_gaiji(&description) {
+                // 画像化・Unicode変換できる外字は :newjis 相当のフラグだけ立てる
+                // （@images 一覧には載らない）。
+                GaijiResult::JisImage { .. } | GaijiResult::JisConverted { .. } => {
+                    self.has_jisx0213 = true;
+                    self.has_gaiji_images = true;
+                }
+                // 変換不能／Unicode指定だが use_unicode でないものは外字一覧に載る。
+                GaijiResult::Unconvertible => {
+                    self.add_unconverted_gaiji(&description, had_igeta);
+                }
+                GaijiResult::Unicode(_) => {
+                    if !self.options.use_unicode {
+                        self.add_unconverted_gaiji(&description, had_igeta);
+                    }
+                }
+            }
+        }
     }
 
     /// 画像をHTMLに変換
