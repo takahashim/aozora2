@@ -229,18 +229,28 @@ impl FontSizeType {
     }
 }
 
-/// コマンド文字列から段階レベルを抽出
+/// コマンド文字列から段階レベルを抽出（"N段階" の N）。
+///
+/// 参照実装 PAT_CHARSIZE は convert_japanese_number 後に `(\d*)段階` を取るので、
+/// 全角/半角数字も漢数字も段階の直前の値を読む。従来は 1〜5 の全半角数字しか
+/// 拾えず「６段階大きな文字」等が既定の 1 になっていた（dai1）。0〜9 と漢数字
+/// 一〜十を「段階」直前の1文字として拾う。
 fn extract_level(command: &str) -> Option<u32> {
-    // "１段階" "２段階" などを検出
     let chars: Vec<char> = command.chars().collect();
     for (i, c) in chars.iter().enumerate() {
-        // 漢数字を数値に変換
         let num = match c {
-            '１' | '1' => Some(1),
-            '２' | '2' => Some(2),
-            '３' | '3' => Some(3),
-            '４' | '4' => Some(4),
-            '５' | '5' => Some(5),
+            '０'..='９' => Some(*c as u32 - '０' as u32),
+            '0'..='9' => Some(*c as u32 - '0' as u32),
+            '一' => Some(1),
+            '二' => Some(2),
+            '三' => Some(3),
+            '四' => Some(4),
+            '五' => Some(5),
+            '六' => Some(6),
+            '七' => Some(7),
+            '八' => Some(8),
+            '九' => Some(9),
+            '十' => Some(10),
             _ => None,
         };
         if let Some(n) = num {
@@ -336,6 +346,23 @@ mod tests {
     fn test_text_node() {
         let node = Node::text("こんにちは");
         assert_eq!(node.to_text(), "こんにちは");
+    }
+
+    #[test]
+    fn test_font_size_level_beyond_five() {
+        // 1〜5 だけでなく 6〜9 の全角数字も段階レベルとして拾う（従来は既定 1 に落ちた）。
+        assert_eq!(
+            FontSizeType::from_command("６段階大きな文字"),
+            Some((FontSizeType::Dai, 6))
+        );
+        assert_eq!(
+            FontSizeType::from_command("九段階小さな文字"),
+            Some((FontSizeType::Sho, 9))
+        );
+        assert_eq!(
+            FontSizeType::from_command("2段階大きな文字"),
+            Some((FontSizeType::Dai, 2))
+        );
     }
 
     #[test]
