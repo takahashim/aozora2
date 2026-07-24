@@ -347,13 +347,13 @@ fn parse_command_to_node(content: &str) -> Node {
             explicit_close: false,
         },
 
-        CommandResult::WarigakiStart => Node::BlockStart {
-            block_type: BlockType::Warigaki,
+        CommandResult::WarichuStart => Node::BlockStart {
+            block_type: BlockType::Warichu,
             params: BlockParams::default(),
         },
 
-        CommandResult::WarigakiEnd => Node::BlockEnd {
-            block_type: BlockType::Warigaki,
+        CommandResult::WarichuEnd => Node::BlockEnd {
+            block_type: BlockType::Warichu,
             params: BlockParams::default(),
             explicit_close: false,
         },
@@ -481,20 +481,20 @@ fn parse_command_to_node_with_context(
     use command_parser::CommandResult;
 
     match parse_command(content) {
-        CommandResult::WarigakiStart => {
+        CommandResult::WarichuStart => {
             let mut params = BlockParams::default();
             params.has_open_paren = has_open_paren_before(nodes);
             Node::BlockStart {
-                block_type: BlockType::Warigaki,
+                block_type: BlockType::Warichu,
                 params,
             }
         }
 
-        CommandResult::WarigakiEnd => {
+        CommandResult::WarichuEnd => {
             let mut params = BlockParams::default();
             params.has_close_paren = has_close_paren_after(tokens, current_index);
             Node::BlockEnd {
-                block_type: BlockType::Warigaki,
+                block_type: BlockType::Warichu,
                 params,
                 explicit_close: false,
             }

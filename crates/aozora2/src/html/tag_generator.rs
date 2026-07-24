@@ -30,7 +30,7 @@ pub fn generate_block_start_tag(
         BlockType::FontSho => generate_font_sho_start(params),
         BlockType::Tcy => "<span dir=\"ltr\">".to_string(),
         BlockType::Caption => generate_caption_start(params),
-        BlockType::Warigaki => generate_warigaki_start(params),
+        BlockType::Warichu => generate_warichu_start(params),
         BlockType::Burasage => generate_burasage_start(params),
         BlockType::Style => generate_style_block_start(params),
         // 注記付き範囲はパース段階でRubyノードに解決されるので、ここには来ない
@@ -53,7 +53,7 @@ pub fn generate_block_end_tag(block_type: &BlockType, params: &BlockParams) -> S
         BlockType::FontDai | BlockType::FontSho => generate_font_end(params),
         BlockType::Tcy => "</span>".to_string(),
         BlockType::Caption => generate_caption_end(params),
-        BlockType::Warigaki => generate_warigaki_end(params),
+        BlockType::Warichu => generate_warichu_end(params),
         BlockType::Style => generate_style_block_end(params),
         // 注記付き範囲はパース段階でRubyノードに解決されるので、ここには来ない
         BlockType::AnnotationRange | BlockType::LeftAnnotationRange => String::new(),
@@ -179,12 +179,12 @@ fn generate_caption_end(params: &BlockParams) -> String {
     }
 }
 
-fn generate_warigaki_start(params: &BlockParams) -> String {
+fn generate_warichu_start(params: &BlockParams) -> String {
     let open_paren = if params.has_open_paren { "" } else { "（" };
     format!("<span class=\"warichu\">{open_paren}")
 }
 
-fn generate_warigaki_end(params: &BlockParams) -> String {
+fn generate_warichu_end(params: &BlockParams) -> String {
     let close_paren = if params.has_close_paren { "" } else { "）" };
     format!("{close_paren}</span>")
 }

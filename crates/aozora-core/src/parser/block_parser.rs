@@ -145,7 +145,7 @@ pub fn parse_inline_end(content: &str) -> CommandResult {
     // 固定パターン
     match content {
         "縦中横" => return CommandResult::TcyEnd,
-        "割り注" => return CommandResult::WarigakiEnd,
+        "割り注" => return CommandResult::WarichuEnd,
         "キャプション" => return CommandResult::CaptionEnd,
         _ => {}
     }
@@ -247,7 +247,7 @@ mod tests {
             CommandResult::Note("ここで割り注終わり".to_string())
         );
         // インラインの終了は従来どおり割り注として扱う
-        assert_eq!(parse_inline_end("割り注終わり"), CommandResult::WarigakiEnd);
+        assert_eq!(parse_inline_end("割り注終わり"), CommandResult::WarichuEnd);
     }
 
     /// 地付きは「地から」に限らず末尾が「字上げ」なら成立する
@@ -354,6 +354,6 @@ mod tests {
     #[test]
     fn test_parse_inline_end() {
         assert_eq!(parse_inline_end("縦中横終わり"), CommandResult::TcyEnd);
-        assert_eq!(parse_inline_end("割り注終わり"), CommandResult::WarigakiEnd);
+        assert_eq!(parse_inline_end("割り注終わり"), CommandResult::WarichuEnd);
     }
 }

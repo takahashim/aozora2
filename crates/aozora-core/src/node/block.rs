@@ -30,7 +30,7 @@ pub enum BlockType {
     /// キャプション
     Caption,
     /// 割り注
-    Warigaki,
+    Warichu,
     /// ぶら下げ（折り返し字下げ）
     Burasage,
     /// 装飾（傍点、傍線など）
@@ -77,7 +77,7 @@ impl BlockType {
         } else if command.contains("キャプション") {
             Some(BlockType::Caption)
         } else if command.contains("割り注") {
-            Some(BlockType::Warigaki)
+            Some(BlockType::Warichu)
         } else {
             None
         }

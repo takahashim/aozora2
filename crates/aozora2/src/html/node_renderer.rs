@@ -270,7 +270,7 @@ impl<'a> NodeRenderer<'a> {
                 format!("<span class=\"caption\">{inner}</span>")
             }
 
-            Node::Warigaki { upper, lower } => {
+            Node::Warichu { upper, lower } => {
                 let upper_html = self.render_nodes(upper, block_manager);
                 let lower_html = self.render_nodes(lower, block_manager);
                 format!(
@@ -336,7 +336,7 @@ impl<'a> NodeRenderer<'a> {
                     // Burasageは各行で個別にラップするため、終了タグを出力しない
                     if ctx.block_type == BlockType::Burasage {
                         String::new()
-                    } else if ctx.block_type == BlockType::Warigaki
+                    } else if ctx.block_type == BlockType::Warichu
                         || ctx.block_type == BlockType::Style
                     {
                         // 割り注/装飾の場合はBlockEndのparamsを使用

@@ -83,10 +83,10 @@ pub enum CommandResult {
     TcyEnd,
 
     /// 割り注開始
-    WarigakiStart,
+    WarichuStart,
 
     /// 割り注終了
-    WarigakiEnd,
+    WarichuEnd,
 
     /// 装飾開始
     StyleStart {
@@ -289,7 +289,7 @@ pub fn parse_command(content: &str) -> CommandResult {
 
     // 13. 割り注
     if content == "割り注" {
-        return CommandResult::WarigakiStart;
+        return CommandResult::WarichuStart;
     }
 
     // 13.5. 罫囲み（インライン）
@@ -594,9 +594,9 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_warigaki() {
-        assert_eq!(parse_command("割り注"), CommandResult::WarigakiStart);
-        assert_eq!(parse_command("割り注終わり"), CommandResult::WarigakiEnd);
+    fn test_parse_warichu() {
+        assert_eq!(parse_command("割り注"), CommandResult::WarichuStart);
+        assert_eq!(parse_command("割り注終わり"), CommandResult::WarichuEnd);
     }
 
     #[test]

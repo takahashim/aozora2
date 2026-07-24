@@ -234,7 +234,7 @@ fn resolve_style_references_in_children(node: &mut Node) {
         | Node::Midashi { children, .. } => {
             resolve_style_references(children);
         }
-        Node::Warigaki { upper, lower } => {
+        Node::Warichu { upper, lower } => {
             resolve_style_references(upper);
             resolve_style_references(lower);
         }

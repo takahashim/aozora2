@@ -110,7 +110,7 @@ pub enum Node {
     },
 
     /// 割書き
-    Warigaki {
+    Warichu {
         /// 上段のノード列
         upper: Vec<Node>,
         /// 下段のノード列
@@ -302,7 +302,7 @@ impl Node {
             Node::Keigakomi { children } => children.iter().map(|n| n.to_text()).collect(),
             Node::Yokogumi { children } => children.iter().map(|n| n.to_text()).collect(),
             Node::Caption { children } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Warigaki { upper, lower } => {
+            Node::Warichu { upper, lower } => {
                 let u: String = upper.iter().map(|n| n.to_text()).collect();
                 let l: String = lower.iter().map(|n| n.to_text()).collect();
                 format!("{u}（{l}）")
