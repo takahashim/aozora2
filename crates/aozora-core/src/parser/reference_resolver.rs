@@ -194,19 +194,13 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
             let spec_clone = spec.clone();
             let raw_clone = raw.clone();
 
-            // 前方のノードから対象テキストを探す
-            if let Some((_, found_node_idx, split_info)) =
-                find_target_in_preceding(&nodes[..i], &target_clone)
-            {
-                apply_resolution(
-                    nodes,
-                    &mut i,
-                    found_node_idx,
-                    split_info,
-                    &target_clone,
-                    &spec_clone,
-                );
-                continue;
+            // 参照実装 search_front_reference を移植: 直前ノード（バッファ末尾）
+            // から連続した接尾辞スパンとして対象を探す。i == 0 なら前が無い。
+            if i > 0 {
+                if let Some(m) = search_front_reference(&nodes[..i], i - 1, &target_clone) {
+                    apply_front_reference(nodes, &mut i, m, &spec_clone);
+                    continue;
+                }
             }
 
             // 解決できなかった場合は、もとの文字列のまま注記にする
@@ -216,146 +210,121 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
     }
 }
 
-/// 解決結果をノード列に適用
-fn apply_resolution(
-    nodes: &mut Vec<Node>,
-    i: &mut usize,
-    found_node_idx: usize,
-    split_info: SplitInfo,
-    target: &str,
-    spec: &RefSpec,
-) {
-    match split_info {
-        SplitInfo::ExactMatch => {
-            let new_node = spec.resolve(vec![Node::text(target)]);
-            nodes[found_node_idx] = new_node;
-            nodes.remove(*i);
-        }
-        SplitInfo::Split { before, after } => {
-            let new_node = spec.resolve(vec![Node::text(target)]);
-            let mut new_nodes = Vec::new();
-            if !before.is_empty() {
-                new_nodes.push(Node::text(&before));
-            }
-            new_nodes.push(new_node);
-            if !after.is_empty() {
-                new_nodes.push(Node::text(&after));
-            }
-            nodes.splice(found_node_idx..found_node_idx + 1, new_nodes.into_iter());
-            let adjustment =
-                if before.is_empty() { 0 } else { 1 } + if after.is_empty() { 0 } else { 1 };
-            let new_i = *i + adjustment;
-            if new_i < nodes.len() {
-                nodes.remove(new_i);
-            }
-        }
-        SplitInfo::MultiNodeExact { start_idx, end_idx } => {
-            let children: Vec<Node> = nodes[start_idx..=end_idx].to_vec();
-            let new_node = spec.resolve(children);
-            let nodes_removed = end_idx - start_idx + 1;
-            nodes.splice(start_idx..=end_idx, std::iter::once(new_node));
-            let new_i = *i - (nodes_removed - 1);
-            if new_i < nodes.len() {
-                nodes.remove(new_i);
-            }
-            // 対象ノード（i より前）が nodes_removed-1 個減ったぶん、現在位置も
-            // 前へずらす。従来は *i を更新せず continue していたため、直後の
-            // 未解決参照（例: 同行中見出しの後ろの縦中横）を読み飛ばして
-            // 解決し損ねていた。
-            *i = new_i;
-        }
-    }
+/// 前方参照の照合結果。start_idx..=（注記の直前）を子ノードに置き換える。
+struct FrontRefMatch {
+    /// 消費する最古ノードの位置
+    start_idx: usize,
+    /// 最古ノードが Text 分割だったときにバッファへ残す前半（それ以外は空）
+    prefix: String,
+    /// ラップ対象のノード列（古い順）
+    children: Vec<Node>,
 }
 
-/// 前方のノードから対象テキストを探す
-fn find_target_in_preceding(nodes: &[Node], target: &str) -> Option<(usize, usize, SplitInfo)> {
-    // まず単一ノード内で探す（後ろから）
-    for (i, node) in nodes.iter().enumerate().rev() {
-        match node {
-            Node::Text(text) => {
-                if text == target {
-                    return Some((i, i, SplitInfo::ExactMatch));
-                }
-                // 参照実装 search_front_reference は対象をバッファ末尾の**接尾辞**
-                // としてしか照合しない（last_string.match?(/target$/)）。文字列の
-                // 途中一致は取らない。よって ends_with（接尾辞一致）だけを見る。
-                // 従来の rfind は `をツさん［＃「をツ」に傍点］` のように対象が
-                // 直前の接尾辞でない場合まで解決してしまい（参照実装は注記のまま）、
-                // 過剰解決になっていた。
-                if text.ends_with(target) {
-                    let before = text[..text.len() - target.len()].to_string();
-                    return Some((
-                        i,
-                        i,
-                        SplitInfo::Split {
-                            before,
-                            after: String::new(),
-                        },
-                    ));
-                }
-            }
-            // 子を持つノードの場合、内容テキストが完全一致するかチェック
-            Node::FontSize { .. }
+/// 対象ノードが参照実装 ReferenceMentioned 相当か（スパンの一要素になれるか）。
+/// 対応: ルビ・装飾（Decorate: 傍点/傍線/太字/斜体/上下付き 等）・文字サイズ・
+/// 縦中横（Dir）・罫囲み・横組み・キャプション・見出し。画像/外字/アクセント/
+/// 訓点（送り仮名・返り点）はスパン不可（参照実装で false になる）。
+fn is_reference_mentioned(node: &Node) -> bool {
+    matches!(
+        node,
+        Node::Ruby { .. }
             | Node::Style { .. }
+            | Node::FontSize { .. }
             | Node::Tcy { .. }
             | Node::Keigakomi { .. }
             | Node::Yokogumi { .. }
             | Node::Caption { .. }
-            | Node::Midashi { .. } => {
-                let content = extract_plain_text(node);
-                if content == target {
-                    // ノード全体をラップ対象として返す
-                    return Some((
-                        i,
-                        i,
-                        SplitInfo::MultiNodeExact {
-                            start_idx: i,
-                            end_idx: i,
-                        },
-                    ));
-                }
-            }
-            _ => {}
-        }
+            | Node::Midashi { .. }
+    )
+}
+
+/// 参照実装 search_front_reference の移植。
+///
+/// バッファ末尾（end_idx）から連続した要素を消費して、対象 `target` を接尾辞
+/// スパンとして照合する。String 要素は末尾一致なら分割（前半を残す）、対象が
+/// その要素で終わるなら残りを前方へ再帰。ReferenceMentioned 要素は内部テキストが
+/// 対象末尾に一致するなら要素まるごとを子に取り込む。空文字列要素は読み飛ばす。
+/// それ以外（画像・外字など）に当たった時点で照合失敗。
+fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Option<FrontRefMatch> {
+    if target.is_empty() {
+        return None;
     }
-
-    // 複数ノードにまたがる場合を探す
-    // ノード列の末尾から連続したノードのプレーンテキストを結合して探す
-    for end_idx in (0..nodes.len()).rev() {
-        let mut combined = String::new();
-
-        // 末尾から連結していく
-        for start_idx in (0..=end_idx).rev() {
-            let text = extract_plain_text(&nodes[start_idx]);
-            combined = format!("{}{}", text, combined);
-
-            // 対象テキストが含まれていれば
-            if combined.contains(target) {
-                // 完全一致（連結テキスト == 対象）かチェック
-                if combined == target {
-                    return Some((
-                        start_idx,
-                        end_idx,
-                        SplitInfo::MultiNodeExact { start_idx, end_idx },
-                    ));
-                }
-                // 部分一致の場合、対象がノード境界に一致しているかチェック
-                if combined.ends_with(target) {
-                    // 末尾一致：前半のノードを分割する必要があるかも
-                    let prefix_len = combined.len() - target.len();
-                    if prefix_len == 0 {
-                        return Some((
-                            start_idx,
-                            end_idx,
-                            SplitInfo::MultiNodeExact { start_idx, end_idx },
-                        ));
-                    }
-                }
+    match &nodes[end_idx] {
+        Node::Text(s) => {
+            if s.is_empty() {
+                // 空文字列は捨てて同じ対象で1つ前へ。
+                return end_idx
+                    .checked_sub(1)
+                    .and_then(|e| search_front_reference(nodes, e, target));
             }
+            // 完全一致: s が対象で終わる → s を分割し前半を残す。
+            if let Some(prefix) = s.strip_suffix(target) {
+                return Some(FrontRefMatch {
+                    start_idx: end_idx,
+                    prefix: prefix.to_string(),
+                    children: vec![Node::text(target)],
+                });
+            }
+            // 部分一致: 対象が s で終わる → s は対象の末尾セグメント。残りを再帰。
+            if let Some(remaining) = target.strip_suffix(s.as_str()) {
+                let e = end_idx.checked_sub(1)?;
+                let mut sub = search_front_reference(nodes, e, remaining)?;
+                sub.children.push(Node::text(s));
+                return Some(sub);
+            }
+            None
         }
+        node if is_reference_mentioned(node) => {
+            let inner = extract_plain_text(node);
+            if inner.is_empty() {
+                return None;
+            }
+            if inner == target {
+                return Some(FrontRefMatch {
+                    start_idx: end_idx,
+                    prefix: String::new(),
+                    children: vec![node.clone()],
+                });
+            }
+            if let Some(remaining) = target.strip_suffix(inner.as_str()) {
+                let e = end_idx.checked_sub(1)?;
+                let mut sub = search_front_reference(nodes, e, remaining)?;
+                sub.children.push(node.clone());
+                return Some(sub);
+            }
+            None
+        }
+        _ => None,
     }
+}
 
-    None
+/// 照合結果をノード列に適用する。start_idx..=（注記の直前）を
+/// [分割前半?][解決済みノード] に置き換え、注記自身を除去する。
+fn apply_front_reference(
+    nodes: &mut Vec<Node>,
+    i: &mut usize,
+    m: FrontRefMatch,
+    spec: &RefSpec,
+) {
+    let new_node = spec.resolve(m.children);
+    let mut replacement = Vec::new();
+    if !m.prefix.is_empty() {
+        replacement.push(Node::text(&m.prefix));
+    }
+    replacement.push(new_node);
+    let r = replacement.len();
+
+    // 注記の直前（*i - 1）までがスパン。start_idx..=(*i-1) を置き換える。
+    let end = *i - 1;
+    nodes.splice(m.start_idx..=end, replacement);
+
+    // 置換後、注記は start_idx + r の位置へ移動している。除去して、続きは
+    // 注記の次のノードから（continue で再検査）。
+    let annotation_idx = m.start_idx + r;
+    if annotation_idx < nodes.len() {
+        nodes.remove(annotation_idx);
+    }
+    *i = annotation_idx;
 }
 
 /// ノードからプレーンテキストを抽出
@@ -377,15 +346,6 @@ fn extract_plain_text(node: &Node) -> String {
     }
 }
 
-/// 分割情報
-enum SplitInfo {
-    /// 完全一致
-    ExactMatch,
-    /// 分割が必要
-    Split { before: String, after: String },
-    /// 複数ノードにまたがる完全一致
-    MultiNodeExact { start_idx: usize, end_idx: usize },
-}
 
 /// 注記テキストをノード列にパース
 ///
@@ -536,37 +496,50 @@ mod tests {
     }
 
     #[test]
-    fn test_find_target_exact() {
+    fn test_search_front_reference_tail_only() {
+        // 末尾（接尾辞）としてのみ照合する。末尾でないノードは対象でも解決しない。
         let nodes = vec![
             Node::text("前の文"),
             Node::text("重要"),
             Node::text("後の文"),
         ];
-
-        let result = find_target_in_preceding(&nodes, "重要");
-        assert!(result.is_some());
-        let (_, idx, split) = result.unwrap();
-        assert_eq!(idx, 1);
-        assert!(matches!(split, SplitInfo::ExactMatch));
+        // 末尾 "後の文" は "重要" で終わらないので照合失敗。
+        assert!(search_front_reference(&nodes, nodes.len() - 1, "重要").is_none());
+        // 末尾が対象そのものなら分割（prefix 空）で解決。
+        let m = search_front_reference(&nodes[..2], 1, "重要").unwrap();
+        assert_eq!(m.start_idx, 1);
+        assert_eq!(m.prefix, "");
+        assert!(matches!(&m.children[..], [Node::Text(s)] if s == "重要"));
     }
 
     #[test]
-    fn test_find_target_suffix_only() {
-        // 参照実装 search_front_reference は対象を末尾（接尾辞）としてのみ照合する。
+    fn test_search_front_reference_suffix_split() {
         // 途中一致（これは[重要]なことだ）は解決しない＝注記のまま。
-        assert!(find_target_in_preceding(&[Node::text("これは重要なことだ")], "重要").is_none());
+        assert!(search_front_reference(&[Node::text("これは重要なことだ")], 0, "重要").is_none());
 
-        // 末尾一致は分割して解決する（after は空）。
-        let nodes = vec![Node::text("これは重要")];
-        let result = find_target_in_preceding(&nodes, "重要");
-        assert!(result.is_some());
-        let (_, idx, split) = result.unwrap();
-        assert_eq!(idx, 0);
-        if let SplitInfo::Split { before, after } = split {
-            assert_eq!(before, "これは");
-            assert_eq!(after, "");
-        } else {
-            panic!("Expected Split");
-        }
+        // 末尾一致は分割して前半を prefix に残す。
+        let nodes = [Node::text("これは重要")];
+        let m = search_front_reference(&nodes, 0, "重要").unwrap();
+        assert_eq!(m.start_idx, 0);
+        assert_eq!(m.prefix, "これは");
+        assert!(matches!(&m.children[..], [Node::Text(s)] if s == "重要"));
+    }
+
+    #[test]
+    fn test_search_front_reference_spans_reference_mentioned() {
+        // 対象が「Text＋既解決の装飾ノード」にまたがるとき、装飾ノードを丸ごと
+        // 子に取り込んでスパン解決する（例:「Ｘ１」で Ｘ＝Text、１＝下付き）。
+        let subscript = Node::Style {
+            children: vec![Node::text("１")],
+            style_type: StyleType::Subscript,
+        };
+        let nodes = vec![Node::text("前Ｘ"), subscript];
+        let m = search_front_reference(&nodes, 1, "Ｘ１").unwrap();
+        assert_eq!(m.start_idx, 0);
+        assert_eq!(m.prefix, "前");
+        // 子は古い順: [Text("Ｘ"), Subscript(１)]
+        assert_eq!(m.children.len(), 2);
+        assert!(matches!(&m.children[0], Node::Text(s) if s == "Ｘ"));
+        assert!(matches!(&m.children[1], Node::Style { .. }));
     }
 }
