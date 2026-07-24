@@ -315,10 +315,51 @@ different を再クラスタした結果、大きく2群:
   複数作品に共通するが解決器の対象探索の見直しが要る（次の候補）。
   ほか gaiji 一覧テーブル（000091）、末尾 `<br/>` 数など。
 
+**burasage blank_type クラスタの解消（2026-07 続き, 段2c, byte-exact 17246→17267）**:
+参照 TextBuffer#blank_type は「バッファに空でない **String** があれば false（＝
+その行を per-line burasage div で包む）」。逆に **Tag オブジェクトしか無い行**は
+blank_type true で包まれず `<br />`。どのノードが String を残し、どれが Tag に
+取り込むかを実測（`ruby -Ilib bin/aozora2html` に最小再現を通す。CRLF 必須）:
+- **String を残す（包む）**: 平文テキスト、明示形縦中横 ［＃縦中横］32［＃終わり］
+  （32 は Text として残る＝BlockStart/BlockEnd＋Text）、装飾/文字サイズ/縦中横が
+  対象の**外**に平文を持つ行、Accent の後続文字（〔e's〕の s）、unicode 化する外字。
+- **Tag に取り込む（包まない）**: 画像 Node::Img、ルビ Node::Ruby（親文字を取り込む）、
+  装飾 Node::Style（傍点/傍線/太字/斜体、対象をタグに取り込む）、文字サイズ
+  Node::FontSize（「N段階大きな文字」）、前方参照縦中横 Node::Tcy（「32」は縦中横）、
+  画像化する外字 Node::Img、注記 Node::Note、ブロック制御。
+これらを `nodes_have_inline_text`（renderer.rs）の false 分岐に列挙。前方参照系は
+対象を単一ノードに畳んで親文字を上位 Text から消すので「行全体がそれ**だけ**」の
+ときのみ包まれない（対象の外に平文があれば Text が残り従来どおり包む）。各ノード
+追加ごとにオラクルで悪化0を確認しコミット。あわせて修正した burasage の別件:
+- **同行中見出し＋本文**（045387）: 行頭 `<h4 dogyo-naka-midashi>` の後に本文が
+  続く行は blank_type false なので包む。包み判定 starts_with_block を `<div` のみに
+  絞り `<h` 始まりを除外基準から外した（chitsuki/jisage の行 div は `<div` 始まりで
+  依然包まない）。
+- **画像行**（001699 等）: Node::Img は Tag なので包まず `<img/><br />`。
+- **読点必須**（000061）: PAT_ORIKAESHI_JISAGE2 = `(\d*)字下げ、折り返して(\d*)字下げ` は
+  読点（、）必須。`１０字下げ折り返して１７字下げ`（読点なし）は不一致で
+  margin-left 空・text-indent 0。try_parse_burasage の分岐を `first_part.ends_with("字下げ、")`
+  ＆ `second_part.contains("字下げ")` に厳格化。
+- **折り返し最優先ディスパッチ**（001675 等, +4）: 参照 dispatch_aozora_command は
+  ORIKAESHI（折り返して）を他の全分岐より先に apply_burasage へ回す。「ここから」の
+  無い ［＃改行天付き、折り返して５字下げ］ もぶら下げ。parse_command 冒頭で
+  折り返して を検出し try_parse_burasage（pub 化）へ。従来は line_indent に落ちて
+  jisage ブロックにしていた。
+
+**残差の現状（byte-exact 17267/17509 = 98.62%, error 56, different 185）**。
+burasage-different は 24 件まで減。残りは個別の別クラスタ:
+- **入れ子ブロック閉じ行の空 burasage div**（真理値表 E/G, 上述の確定した限界）。
+- **@terprip=false 伝播**（000072『三右衛門手記』等 54444）: 新しい burasage/jisage が
+  既存 burasage を implicit_close するとき @terprip=false になり、続く空行が `<br />`
+  ではなく `</div>` を出す（general_output L526-535 の else 分岐）。1行差だが per-line
+  モデルの状態伝播が要る。
+- **深い入れ子**（jizume/keigakomi の中の burasage、060192/057368）: 中間の
+  div.jizume/keigakomi 層の有無。
+- **前方参照が対象内 ruby/gaiji で解決失敗し注記化**（長い尾の主群、052468/003597/047180
+  等）。対象探索の見直しが要る。gaiji 一覧テーブル、末尾 br 数など散在。
+
 次の作業の選択肢（どれもオラクル byte-exact で各段検証）:
-1. burasage の per-line モデル全面移植（段2c）。最大群を一気に詰められるが
-   最も大きく最もリスキー。着手時は本 §8 の最小再現から参照規則を実測し、
-   小さな段に割る。
-2. 長い尾から、複数作品に共通する一般バグ（例: 校正注記の誤コマンド化、
-   gaiji 一覧、末尾 br 数）を選んでループAで潰す。低リスク・小収量。
+1. @terprip=false 伝播（54444 系）。理解済みだが per-line 状態伝播が要りリスク中。
+2. 長い尾の前方参照解決失敗（対象内 ruby/gaiji）。複数作品共通だが解決器の
+   対象探索の見直しが要る。
 3. ループD 定常運用（コーパス/注記一覧更新・未対応記法の集計）に戻る。
