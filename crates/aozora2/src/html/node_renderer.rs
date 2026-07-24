@@ -311,7 +311,11 @@ impl<'a> NodeRenderer<'a> {
                 block_manager.push(*block_type, params.clone());
                 // Burasageは各行で個別にラップするため、開始タグを出力しない
                 if *block_type != BlockType::Burasage {
-                    output.push_str(&block_manager.render_block_start_tag(block_type, params));
+                    output.push_str(&block_manager.render_block_start_tag(
+                        block_type,
+                        params,
+                        !self.options.quirks.empty_indent_css,
+                    ));
                 }
                 output
             }

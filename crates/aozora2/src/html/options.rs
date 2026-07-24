@@ -29,6 +29,13 @@ pub struct Quirks {
     /// エスケープしない。タイトルに `"` を含む場合、meta 属性値が壊れるなど
     /// 規格上不正な HTML になりうる。オフにするとこれらをエスケープする。
     pub raw_header_metadata: bool,
+    /// 字下げ／ぶら下げの幅が空（参照実装の `(\d*)字下げ` が隣接数字を取れない
+    /// `３　字下げ` や、コンマなし `折り返してN字下げ` など）のとき、参照実装は
+    /// `class="jisage_"` や `margin-left: em`（数値の無い不正な CSS 長さ）を出す。
+    /// `margin-left: em` は無効値としてブラウザに無視され、`.jisage_`（空サフィックス）
+    /// も対応する CSS 規則が無いので、意味の無い出力になる。オフにすると空幅を
+    /// 出さず妥当な CSS にする（jisage は `class="jisage"`、ぶら下げは margin-left 0）。
+    pub empty_indent_css: bool,
 }
 
 impl Default for Quirks {
@@ -39,6 +46,7 @@ impl Default for Quirks {
             empty_image_dimensions: true,
             accent_name_typos: true,
             raw_header_metadata: true,
+            empty_indent_css: true,
         }
     }
 }
@@ -51,6 +59,7 @@ impl Quirks {
             empty_image_dimensions: false,
             accent_name_typos: false,
             raw_header_metadata: false,
+            empty_indent_css: false,
         }
     }
 }

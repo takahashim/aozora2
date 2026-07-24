@@ -154,6 +154,7 @@ impl BlockManager {
         &mut self,
         block_type: &BlockType,
         params: &BlockParams,
+        clean_empty_indent: bool,
     ) -> String {
         // 見出しの場合はIDを生成
         let midashi_id = if *block_type == BlockType::Midashi {
@@ -163,7 +164,7 @@ impl BlockManager {
             None
         };
 
-        generate_block_start_tag(block_type, params, midashi_id)
+        generate_block_start_tag(block_type, params, midashi_id, clean_empty_indent)
     }
 
     /// ブロック終了タグを生成

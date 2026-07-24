@@ -15,9 +15,10 @@ pub fn generate_block_start_tag(
     block_type: &BlockType,
     params: &BlockParams,
     midashi_id: Option<u32>,
+    clean_empty_indent: bool,
 ) -> String {
     match block_type {
-        BlockType::Jisage => generate_jisage_start(params),
+        BlockType::Jisage => generate_jisage_start(params, clean_empty_indent),
         BlockType::Chitsuki => generate_chitsuki_start(params),
         BlockType::Jizume => generate_jizume_start(params),
         BlockType::Keigakomi => generate_keigakomi_start(params),
@@ -61,11 +62,16 @@ pub fn generate_block_end_tag(block_type: &BlockType, params: &BlockParams) -> S
 
 // 個別タグ生成関数
 
-fn generate_jisage_start(params: &BlockParams) -> String {
-    if let Some(width) = params.width {
-        format!("<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">")
-    } else {
-        "<div class=\"jisage\">".to_string()
+fn generate_jisage_start(params: &BlockParams, clean_empty_indent: bool) -> String {
+    // 参照実装は常に jisage_#{width}（width は空文字列もありうる）。隣接数字が
+    // 無い（空幅）ときは jisage_ / margin-left: em になる（jisage の裸形は無い）が、
+    // これは無効な CSS（Quirk）。clean_empty_indent なら妥当な `class="jisage"` にする。
+    match params.width {
+        Some(width) => {
+            format!("<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">")
+        }
+        None if clean_empty_indent => "<div class=\"jisage\">".to_string(),
+        None => "<div class=\"jisage_\" style=\"margin-left: em\">".to_string(),
     }
 }
 
@@ -221,7 +227,7 @@ mod tests {
             width: Some(2),
             ..Default::default()
         };
-        let tag = generate_block_start_tag(&BlockType::Jisage, &params, None);
+        let tag = generate_block_start_tag(&BlockType::Jisage, &params, None, false);
         assert_eq!(tag, "<div class=\"jisage_2\" style=\"margin-left: 2em\">");
     }
 
@@ -231,14 +237,14 @@ mod tests {
             is_block: true,
             ..Default::default()
         };
-        let tag = generate_block_start_tag(&BlockType::Caption, &params, None);
+        let tag = generate_block_start_tag(&BlockType::Caption, &params, None, false);
         assert_eq!(tag, "<div class=\"caption\">");
     }
 
     #[test]
     fn test_generate_caption_start_inline() {
         let params = BlockParams::default();
-        let tag = generate_block_start_tag(&BlockType::Caption, &params, None);
+        let tag = generate_block_start_tag(&BlockType::Caption, &params, None, false);
         assert_eq!(tag, "<span class=\"caption\">");
     }
 

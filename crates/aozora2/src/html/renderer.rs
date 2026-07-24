@@ -156,8 +156,16 @@ impl HtmlRenderer {
                 // なので参照実装は burasage で包む。よって <h は除外基準にしない。
                 let starts_with_block = line_html.starts_with("<div");
                 if has_inline_text && !starts_with_block {
-                    // 折り返し幅が None のときは margin-left を空にする（参照実装のコンマなし形）
-                    let margin = wrap_width.map(|w| w.to_string()).unwrap_or_default();
+                    // 折り返し幅が None（コンマなし）のとき、参照実装は margin-left を空に
+                    // して不正な CSS `margin-left: em` を出す（Quirk empty_indent_css）。
+                    // clean（オフ）なら妥当な 0em。
+                    let margin = wrap_width.map(|w| w.to_string()).unwrap_or_else(|| {
+                        if self.options.quirks.empty_indent_css {
+                            String::new()
+                        } else {
+                            "0".to_string()
+                        }
+                    });
                     output.push_str(&format!(
                         "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">{line_html}</div>"
                     ));
@@ -178,7 +186,15 @@ impl HtmlRenderer {
                 // （<div class="burasage">{閉じタグ}</div>）。字下げ・地付きの閉じや
                 // ぶら下げ自身の開閉行はここに該当しない。
                 if is_decoration_block_close(&raw_line.nodes) {
-                    let margin = wrap_width.map(|w| w.to_string()).unwrap_or_default();
+                    // 折り返し幅が None（コンマなし）のとき、参照実装は margin-left を空に
+                    // して不正な CSS `margin-left: em` を出す（Quirk）。clean なら 0em。
+                    let margin = wrap_width.map(|w| w.to_string()).unwrap_or_else(|| {
+                        if self.options.quirks.empty_indent_css {
+                            String::new()
+                        } else {
+                            "0".to_string()
+                        }
+                    });
                     output.push_str(&format!(
                         "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">{line_html}</div>"
                     ));
@@ -504,6 +520,7 @@ mod tests {
     #[test]
     fn test_burasage_nocomma_has_empty_margin() {
         // コンマなし「折り返してN字下げ」は参照実装で margin-left 空・text-indent 0。
+        // Quirk empty_indent_css オン（既定）＝参照一致（不正な margin-left: em）。
         let input = "題\r\n著\r\n\r\n\
             ［＃ここから折り返して３字下げ］\r\n\
             テキスト\r\n\
@@ -513,6 +530,44 @@ mod tests {
         assert!(
             html.contains("<div class=\"burasage\" style=\"margin-left: em; text-indent: 0em;\">テキスト</div>"),
             "コンマなしぶら下げの margin-left が空になっていない: {html}"
+        );
+        // Quirk オフ＝妥当な CSS（margin-left: 0em）。
+        let opts = RenderOptions {
+            quirks: crate::html::options::Quirks::none(),
+            ..RenderOptions::default()
+        };
+        let mut renderer = HtmlRenderer::new(opts);
+        let html = renderer.render(input);
+        assert!(
+            html.contains("<div class=\"burasage\" style=\"margin-left: 0em; text-indent: 0em;\">テキスト</div>"),
+            "Quirk オフでコンマなしぶら下げが margin-left: 0em になっていない: {html}"
+        );
+    }
+
+    #[test]
+    fn test_jisage_empty_width_quirk_paired() {
+        // 全角空白で離れた「３　字下げ」は参照実装で空幅（jisage_ / margin-left: em）。
+        // Quirk empty_indent_css オン（既定）＝参照一致（不正な CSS）。
+        let input = "題\r\n著\r\n\r\n\
+            ［＃ここから３　字下げ］\r\n\
+            本文\r\n\
+            ［＃ここで字下げ終わり］\r\n\r\n底本：「甲」乙\r\n";
+        let mut renderer = HtmlRenderer::new(RenderOptions::default());
+        let html = renderer.render(input);
+        assert!(
+            html.contains("<div class=\"jisage_\" style=\"margin-left: em\">"),
+            "空幅字下げが jisage_ / margin-left: em になっていない: {html}"
+        );
+        // Quirk オフ＝妥当な `class=\"jisage\"`（不正な CSS を出さない）。
+        let opts = RenderOptions {
+            quirks: crate::html::options::Quirks::none(),
+            ..RenderOptions::default()
+        };
+        let mut renderer = HtmlRenderer::new(opts);
+        let html = renderer.render(input);
+        assert!(
+            html.contains("<div class=\"jisage\">") && !html.contains("margin-left: em"),
+            "Quirk オフで空幅字下げが妥当な jisage になっていない: {html}"
         );
     }
 

@@ -33,11 +33,20 @@ pub fn parse_block_start(content: &str) -> CommandResult {
     // どの単位も無い場合（段階指定など）は従来どおり全体から数字を拾う。
     // 漢数字（一字下げ 等）も参照実装同様に数字化してから読む。
     let normalized = convert_japanese_number(content);
-    let width = extract_number_before(&normalized, "字下げ")
-        .or_else(|| extract_number_before(&normalized, "字詰め"))
-        .or_else(|| extract_number_before(&normalized, "字上げ"))
-        .or_else(|| extract_number(&normalized));
-    if let Some(width) = width {
+    // 単位キーワード（字下げ/字詰め/字上げ）を含むなら、参照実装 `(\d*)字下げ` 等に
+    // 合わせて**そのキーワード直前の隣接数字だけ**を幅にする。隣接数字が無ければ
+    // 空幅（None）＝タグは jisage_ / margin-left: em になる（例:「３　字下げ」の
+    // ように全角空白で離れていると空幅）。単位キーワードが無いとき（段階指定など）
+    // だけ全体から数字を拾う。従来は空白で離れた数字を extract_number で拾って
+    // しまい 3字下げ 扱いになっていた。
+    let has_unit = normalized.contains("字下げ")
+        || normalized.contains("字詰め")
+        || normalized.contains("字上げ");
+    if has_unit {
+        params.width = extract_number_before(&normalized, "字下げ")
+            .or_else(|| extract_number_before(&normalized, "字詰め"))
+            .or_else(|| extract_number_before(&normalized, "字上げ"));
+    } else if let Some(width) = extract_number(&normalized) {
         params.width = Some(width);
     }
 
