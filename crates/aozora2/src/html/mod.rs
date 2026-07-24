@@ -162,6 +162,28 @@ mod tests {
         assert!(html.contains("<ruby>"));
     }
 
+    /// 割り注はペア（同一行）で `<span class="warichu">（…）</span>` になる。
+    #[test]
+    fn test_warichu_pair() {
+        let html = convert_line("前［＃割り注］中身［＃割り注終わり］後", &RenderOptions::default());
+        assert!(
+            html.contains("前<span class=\"warichu\">（中身）</span>後"),
+            "実際: {html}"
+        );
+    }
+
+    /// 参照実装 apply_warichu の END は状態を持たず、開いている割り注が無くても
+    /// 無条件に `）</span>` を出す（『ここから割り注』が注記化されて span が開いて
+    /// いない状態での『割り注終わり』）。孤立した割り注終わりでも `）</span>` を出す。
+    #[test]
+    fn test_warichu_orphan_end() {
+        let html = convert_line("前［＃ここから割り注］中身［＃割り注終わり］後", &RenderOptions::default());
+        assert!(
+            html.contains("中身）</span>後"),
+            "孤立した割り注終わりが `）</span>` を出していない: {html}"
+        );
+    }
+
     /// 中身が空のルビ 《》 は、ルビ要素にせず 《》 のテキストとして出す
     #[test]
     fn test_empty_ruby_is_literal_text() {

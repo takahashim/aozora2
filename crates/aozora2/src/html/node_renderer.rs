@@ -344,6 +344,11 @@ impl<'a> NodeRenderer<'a> {
                     } else {
                         block_manager.render_block_end_tag(&ctx.block_type, &ctx.params)
                     }
+                } else if *block_type == BlockType::Warichu {
+                    // 参照実装 apply_warichu の END は状態を持たず、開いている割り注が
+                    // 無くても無条件に `）</span>` を出す（例:『ここから割り注』が注記化
+                    // されて span が開いていない状態での『割り注終わり』）。これを再現する。
+                    block_manager.render_block_end_tag(block_type, params)
                 } else {
                     String::new()
                 }
