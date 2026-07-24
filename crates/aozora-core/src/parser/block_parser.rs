@@ -26,8 +26,16 @@ pub fn parse_block_start(content: &str) -> CommandResult {
         }
     }
 
-    // 数字を抽出
-    if let Some(width) = extract_number(content) {
+    // 幅を抽出。参照実装の apply_jisage は `(\d*)字下げ` のように数字を単位
+    // キーワードに固定して読むので、こちらも「字下げ／字詰め／字上げ」直前の
+    // 数字を取る。これで `３字下げ、地より１字上げ`（→3。31 にしない）や
+    // `２字下げ、地から３字下げ`（→2。23 にしない）を正しく解析する。
+    // どの単位も無い場合（段階指定など）は従来どおり全体から数字を拾う。
+    let width = extract_number_before(content, "字下げ")
+        .or_else(|| extract_number_before(content, "字詰め"))
+        .or_else(|| extract_number_before(content, "字上げ"))
+        .or_else(|| extract_number(content));
+    if let Some(width) = width {
         params.width = Some(width);
     }
 
