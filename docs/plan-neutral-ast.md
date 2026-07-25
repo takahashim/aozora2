@@ -353,3 +353,13 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   `line.chars()[span.start..span.end]` で原文断片を取得可。中立AST Inline への per-inline
   span は変換パーサ（後方参照・ルビ抽出・範囲畳み込み）を跨ぐ Node への span 付与が要る
   ため大規模——現状は RawAST span＋中立 line 番号で source-map 可能。
+
+- 2026-07-25 **main 整合＋aozora_farm（Tauri GUI）取り込み（オラクル 17361・回帰0）。**
+  main は html/strip を aozora-core へ移す再構成＋parser 分割（＝機能追加なしの整理）を
+  していた一方、私の branch は同 base から中立AST化した機能的スーパーセット。aozora_farm
+  が `aozora_core::html::convert` を使うため、**私の html/strip を aozora-core へ移設**
+  （main の構造に整合）し、aozora2 は後方互換で再エクスポート。`crates/aozora_farm` を
+  取り込み workspace に登録、GUI は GTK 依存のため default-members から除外。API 一致
+  （convert/RenderOptions）を確認、コード移動のみで出力不変。diverged parser の生マージ
+  （両者が大改稿し Frankenstein 化）は避け、私のコードを main レイアウトへ載せる形で end-state
+  を達成。main 固有の compatibility テスト/parser 分割は未取り込み（必要なら選択的に可能）。
