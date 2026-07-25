@@ -148,9 +148,67 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
     Some(out)
 }
 
-/// 解決済みノード列を中立ASTのインライン列に変換する（ブロックマーカーは除外）。
+/// 解決済みノード列を中立ASTのインライン列に変換する。
+///
+/// 同一行に開閉が揃う見出しコマンド範囲 `［＃中見出し］…［＃中見出し終わり］`
+/// （`BlockStart{Midashi, is_block=false}` … `BlockEnd{Midashi}`）はインライン
+/// 見出しに畳む（参照実装は block stack への push/pop で同行に h4 を開閉する）。
+/// それ以外のブロックマーカーは除外する（畳み込みが別途消費するか、未対応）。
 pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
-    nodes.iter().filter_map(inline_from_node).collect()
+    use crate::node::{BlockType, Node};
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < nodes.len() {
+        // 同行の見出しコマンド範囲を Inline::Midashi に畳む。
+        if let Node::BlockStart {
+            block_type: BlockType::Midashi,
+            params,
+        } = &nodes[i]
+        {
+            if !params.is_block {
+                if let Some(end) = find_matching_end(nodes, i, &BlockType::Midashi) {
+                    let inner = to_inlines(&nodes[i + 1..end]);
+                    out.push(Inline::Midashi {
+                        children: inner,
+                        level: params.level.unwrap_or(crate::node::MidashiLevel::O),
+                        style: params
+                            .midashi_style
+                            .unwrap_or(crate::node::MidashiStyle::Normal),
+                    });
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+        if let Some(inl) = inline_from_node(&nodes[i]) {
+            out.push(inl);
+        }
+        i += 1;
+    }
+    out
+}
+
+/// `start` の `BlockStart` に対応する同種の `BlockEnd` の添字を返す（入れ子対応）。
+fn find_matching_end(
+    nodes: &[crate::node::Node],
+    start: usize,
+    block_type: &crate::node::BlockType,
+) -> Option<usize> {
+    use crate::node::Node;
+    let mut depth = 0usize;
+    for (offset, node) in nodes.iter().enumerate().skip(start) {
+        match node {
+            Node::BlockStart { block_type: bt, .. } if bt == block_type => depth += 1,
+            Node::BlockEnd { block_type: bt, .. } if bt == block_type => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(offset);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// ブロック（部分木の節、または内容の1行）。

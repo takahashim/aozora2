@@ -67,17 +67,10 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
             }
             LineKind::LineWrap(kind) => {
                 // ［＃N字下げ］text／行スコープ地付き: 行全体を div で1行に包む。
-                // 行スコープマーカー（LineJisage / is_block=false の BlockStart）を除いた
-                // 残りをインライン化する。
-                let rest: Vec<Node> = nodes
-                    .into_iter()
-                    .filter(|n| {
-                        !matches!(
-                            n,
-                            Node::LineJisage { .. } | Node::BlockStart { .. } | Node::BlockEnd { .. }
-                        )
-                    })
-                    .collect();
+                // 先頭の行スコープマーカー1個（LineJisage、または is_block=false の
+                // 行スコープ BlockStart）だけを取り除き、残りは to_inlines に渡す
+                // （行内の見出しコマンド範囲などはそちらが畳む）。
+                let rest = strip_leading_line_scope_marker(nodes);
                 let inline = crate::ast::to_inlines(&rest);
                 push_block(&mut stack, &mut top, Block::LineWrap { kind, inline });
             }
@@ -104,6 +97,29 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
     }
 
     top
+}
+
+/// 行スコープ包みの先頭マーカー1個を取り除いた残りのノード列を返す。
+///
+/// ［＃N字下げ］（`LineJisage`、行内どこでも）を1個、または先頭の行スコープ
+/// `BlockStart`（is_block=false の Jisage/Chitsuki＝地付き）を取り除く。行内の
+/// 見出しコマンド範囲などブロックマーカーはそのまま残す（to_inlines が畳む）。
+fn strip_leading_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
+    // まず LineJisage を1個だけ落とす（参照 apply_jisage の位置除去）。
+    if let Some(pos) = nodes.iter().position(|n| matches!(n, Node::LineJisage { .. })) {
+        let mut rest = nodes;
+        rest.remove(pos);
+        return rest;
+    }
+    // 先頭が行スコープ BlockStart（is_block=false の Jisage/Chitsuki）なら落とす。
+    if let Some(Node::BlockStart { block_type, params }) = nodes.first() {
+        if !params.is_block
+            && matches!(block_type, BlockType::Jisage | BlockType::Chitsuki)
+        {
+            return nodes.into_iter().skip(1).collect();
+        }
+    }
+    nodes
 }
 
 /// 現在開いている最上位ブロック（あれば）へ、無ければトップレベルへ block を積む。
