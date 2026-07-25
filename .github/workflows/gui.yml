@@ -53,11 +53,13 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # macOS: 署名なしで .app と .dmg を生成する（icns 同梱・Gatekeeper 警告は
-      # 右クリック→開くで回避可）。成果物は下の upload-artifact で配布する。
-      - name: Build Tauri app (macOS, bundle)
+      # macOS: 署名なしで .dmg を生成する（icns 同梱）。生の .app を
+      # upload-artifact に通すとバンドル権限/ad-hoc 署名が壊れ「壊れているため
+      # 開けません」になるため、バンドルがそのまま保たれる .dmg のみ配布する。
+      # （未署名・未公証なので利用側で xattr で検疫属性を外す必要がある。）
+      - name: Build Tauri app (macOS, dmg)
         if: matrix.os == 'macos-latest'
-        run: npm run tauri -- build --bundles app dmg
+        run: npm run tauri -- build --bundles dmg
 
       # Windows: NSIS インストーラ(.exe)を生成する。外字/CSS などの bundle.resources
       # を同梱するので単体で使える（生 exe＝--no-bundle だとリソースが付かず実用不可）。
@@ -66,10 +68,11 @@ jobs:
         if: matrix.os == 'windows-latest'
         run: npm run tauri -- build --bundles nsis
 
-      # 生成した Mac アプリ（.app / .dmg）をアーティファクトとして公開。
-      # ワークスペースなので出力はリポジトリ直下 target/ に出る（保険で src-tauri
-      # 配下の target も glob）。Actions 実行画面の Artifacts からダウンロードできる。
-      - name: Upload macOS app
+      # 生成した Mac アプリ（.dmg のみ）をアーティファクトとして公開。ワークスペース
+      # なので出力はリポジトリ直下 target/ に出る（保険で src-tauri 配下も glob）。
+      # 利用手順: dmg をマウント→アプリを /Applications へ→
+      #   xattr -dr com.apple.quarantine "/Applications/青空ファーム.app"
+      - name: Upload macOS dmg
         if: matrix.os == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
@@ -77,9 +80,7 @@ jobs:
           if-no-files-found: error
           path: |
             target/release/bundle/dmg/*.dmg
-            target/release/bundle/macos/*.app
             crates/aozora_farm/src-tauri/target/release/bundle/dmg/*.dmg
-            crates/aozora_farm/src-tauri/target/release/bundle/macos/*.app
 
       # 生成した Windows インストーラ(.exe)を公開。
       - name: Upload Windows installer
