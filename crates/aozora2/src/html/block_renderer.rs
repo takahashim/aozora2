@@ -195,6 +195,21 @@ impl<'a> BlockRenderer<'a> {
             self.render_burasage(*wrap_width, *text_indent, children, out);
             return;
         }
+        // ブロック形見出し（［＃ここから中見出し］…）。h4/h3/h5 + midashi_anchor で
+        // 全内容行を包む。id はインライン見出しと同じカウンタを描画時に発番する。
+        if let BlockKind::Midashi { level, style } = kind {
+            let tag = midashi_html_tag(*level);
+            let class = midashi_combined_css_class(*level, *style);
+            let id = self.generate_midashi_id(*level);
+            out.push_str(&format!(
+                "<{tag} class=\"{class}\"><a class=\"midashi_anchor\" id=\"midashi{id}\">\r\n"
+            ));
+            for child in children {
+                self.render_block(child, out);
+            }
+            out.push_str(&format!("</a></{tag}>\r\n"));
+            return;
+        }
         // 閉じタグ直後の改行は互換メタデータで決める（暗黙閉じは次の開きと同じ行）。
         let close_nl = if explicit_close { "</div>\r\n" } else { "</div>" };
         // 開始タグ（旧 tag_generator の block 形と厳密一致）。複数行ブロックは開き

@@ -211,7 +211,12 @@ fn block_kind_of(block_type: &BlockType, params: &crate::node::BlockParams) -> O
                 text_indent: width - wrap_width as i32,
             })
         }
-        // TODO: Midashi（id カウンタ）を段階的に足す。
+        BlockType::Midashi => Some(BlockKind::Midashi {
+            level: params.level.unwrap_or(crate::node::MidashiLevel::O),
+            style: params
+                .midashi_style
+                .unwrap_or(crate::node::MidashiStyle::Normal),
+        }),
         _ => None,
     }
 }
