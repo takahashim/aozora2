@@ -222,3 +222,22 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   次段: tail セクション（after_text/bibliographical/notation_notes/card）と footer 状態
   蓄積を新経路へ接続 → 全文書 byte 一致を確認 → render() 切替 → BlockManager/renderer/
   node_renderer/tag_generator と出力HTML詮索を撤去。
+
+- 2026-07-25 **(b) 診断＋① 実装＋implicit_close 完全化で切替阻害を 280→52 に（exact 作品
+  body 一致 99.70%・overall 99.53%・旧経路無変更・oracle 17406 維持・回帰0）。**
+  ユーザ選択（方針1: burasage quirk を局所再現）に沿って精査した結果、**「burasage の
+  余分 </div>」の大半は quirk ではなく未実装の implicit_close** だった（重要な発見）:
+  - 診断: 現在 exact な 17406 作品で新経路 body-diff を全数実行 → 280 作品が不一致
+    （＝切替時に悪化する集合）。仕分けは burasage 222 / mid-line yokogumi 35 / 他。
+  - ① 実装: 同行開閉のブロック形（`TEXT［＃ここから横組み］…終わり］`）を
+    `Inline::BlockInline` に畳み、`［＃ここで…終わり］`（explicit_close=true）行の
+    行末 br 抑制（@terprip）を lower で決定。同行 yokogumi/caption/shatai/tcy/keigakomi/
+    warigaki も範囲畳み込み。→ 280→238。
+  - **implicit_close 完全化**: 参照 close_conflicting_blocks に合わせ、Burasage 開始で
+    Jisage/Burasage を、Chitsuki 開始で Chitsuki/Burasage を最上位から続く限り閉じる
+    （従来 Jisage 開始・top1つのみ）。Burasage 開始行は可視タグ無し→暗黙閉じ </div> に
+    行末 \r\n（explicit_close=true）。→ 238→52（回帰0）。
+  - 残 52（exact 作品の 0.30%）の内訳: 空幅 CSS quirk（`margin-left: em`、empty_indent_css）
+    数件・mid-line で開き複数行にまたがるブロック（斜体等）数件・複雑な連続ネストでの
+    burasage/jisage 閉じ位置ズレ（真の div 収支 quirk）多数。後2者はストリーミング状態
+    由来で、tree では局所再現が難しい残差。
