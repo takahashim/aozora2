@@ -69,10 +69,16 @@ export interface AozoraDiagnostic {
   message: string
 }
 
+export interface FoldRange {
+  start_line: number
+  end_line: number
+}
+
 export interface Analysis {
   tokens: SemToken[]
   symbols: OutlineSymbol[]
   diagnostics: AozoraDiagnostic[]
+  folds: FoldRange[]
 }
 
 /** バッファ全体を解析してトークン／アウトライン／診断を得る。 */

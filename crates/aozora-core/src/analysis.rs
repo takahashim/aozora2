@@ -12,7 +12,7 @@
 //! 出力には一切影響しない。位置は LSP と同じく **0 起点**（行・char とも）で、`end` は
 //! 含まない半開区間。フロント（CodeMirror）側で行番号を +1 して用いる。
 
-use crate::ast::BlockKind;
+use crate::ast::{Block, BlockKind};
 use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node};
 use crate::parser::reference_resolver::reference_resolves;
@@ -103,6 +103,16 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+/// 折りたたみ可能な範囲（複数行ブロック）。行はいずれも 0 起点。
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct FoldRange {
+    /// ブロックを開いた行。
+    pub start_line: usize,
+    /// ブロックの最終行（この行までを畳める）。
+    pub end_line: usize,
+}
+
 /// 解析結果。
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
@@ -113,6 +123,8 @@ pub struct Analysis {
     pub symbols: Vec<Symbol>,
     /// 診断。
     pub diagnostics: Vec<Diagnostic>,
+    /// 折りたたみ可能な範囲（複数行ブロック）。
+    pub folds: Vec<FoldRange>,
 }
 
 /// バッファ全体を解析する。
@@ -180,9 +192,9 @@ pub fn analyze(input: &str) -> Analysis {
         extract_symbols(raw, &mut analysis.symbols);
     }
 
-    // 構造診断: EOF まで閉じられなかったブロック（字下げ等の「終わり」忘れ）。
-    // lower を通すが Block 出力は捨てる（診断だけ利用）。convert には無影響。
-    let (_blocks, lower_diags) = lower_to_blocks_with_diagnostics(&doc);
+    // 構造診断＋折りたたみ範囲: lower を通して Block 木を得る（convert には無影響）。
+    let (blocks, lower_diags) = lower_to_blocks_with_diagnostics(&doc);
+    collect_folds(&blocks, &mut analysis.folds);
     for d in lower_diags {
         let end = doc
             .lines
@@ -205,6 +217,35 @@ pub fn analyze(input: &str) -> Analysis {
     }
 
     analysis
+}
+
+/// Block 木から折りたたみ範囲を集める（複数行の Nested ブロックのみ）。
+fn collect_folds(blocks: &[Block], out: &mut Vec<FoldRange>) {
+    for b in blocks {
+        if let Block::Nested { line, children, .. } = b {
+            let end = block_max_line(b);
+            if end > *line {
+                out.push(FoldRange {
+                    start_line: *line,
+                    end_line: end,
+                });
+            }
+            collect_folds(children, out);
+        }
+    }
+}
+
+/// ブロックの部分木に現れる最大の行番号。
+fn block_max_line(b: &Block) -> usize {
+    match b {
+        Block::Line { line, .. } | Block::LineWrap { line, .. } => *line,
+        Block::Nested { line, children, .. } => children
+            .iter()
+            .map(block_max_line)
+            .max()
+            .unwrap_or(*line)
+            .max(*line),
+    }
 }
 
 /// ブロック種別の表示名（診断メッセージ用）。
@@ -486,6 +527,21 @@ mod tests {
     fn properly_closed_block_has_no_unclosed_diagnostic() {
         let a = analyze("［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］");
         assert!(a.diagnostics.iter().all(|d| d.code != "unclosed-block"));
+    }
+
+    #[test]
+    fn multiline_block_produces_fold_range() {
+        // 3行の字下げブロック（0: 開始, 1: 本文, 2: 終わり）。
+        let a = analyze("［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］");
+        assert_eq!(a.folds.len(), 1);
+        assert_eq!(a.folds[0].start_line, 0);
+        assert!(a.folds[0].end_line >= 1);
+    }
+
+    #[test]
+    fn single_line_has_no_fold() {
+        let a = analyze("ただの本文\nもう一行");
+        assert!(a.folds.is_empty());
     }
 
     #[test]

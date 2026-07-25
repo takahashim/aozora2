@@ -14,6 +14,7 @@ import { StateField, StateEffect, RangeSetBuilder } from '@codemirror/state'
 import type { Extension, Text } from '@codemirror/state'
 import { setDiagnostics, lintGutter } from '@codemirror/lint'
 import type { Diagnostic as CmDiagnostic } from '@codemirror/lint'
+import { codeFolding, foldGutter, foldService } from '@codemirror/language'
 import {
   analyze,
   type Analysis,
@@ -255,6 +256,24 @@ function outlinePanel(view: EditorView): Panel {
 /** アウトライン（見出しジャンプ）パネル拡張。テスト用に公開。 */
 export const outline = showPanel.of(outlinePanel)
 
+// --- 折りたたみ -----------------------------------------------------------------
+// analysisField.folds（複数行ブロックの範囲）を CodeMirror の折りたたみに供給する。
+const folding = [
+  codeFolding(),
+  foldGutter(),
+  foldService.of((state, lineStart) => {
+    const a = state.field(analysisField, false)
+    if (!a) return null
+    const line0 = state.doc.lineAt(lineStart).number - 1
+    const fold = a.folds.find((f) => f.start_line === line0)
+    if (!fold) return null
+    const start = state.doc.line(Math.min(fold.start_line + 1, state.doc.lines))
+    const end = state.doc.line(Math.min(fold.end_line + 1, state.doc.lines))
+    // 開始行の末尾から終了行の末尾までを畳む（開始行だけ残す）。
+    return end.to > start.to ? { from: start.to, to: end.to } : null
+  }),
+]
+
 // --- ハイライト/診断の見た目 -----------------------------------------------------
 const lspTheme = EditorView.theme({
   '.cm-aoz-ruby': { color: '#6c9249' },
@@ -298,6 +317,7 @@ export function aozoraLsp(delayMs = 200): Extension[] {
     highlightPlugin,
     hover,
     outline,
+    ...folding,
     lspTheme,
     lintGutter(),
     analysisRunner(delayMs),

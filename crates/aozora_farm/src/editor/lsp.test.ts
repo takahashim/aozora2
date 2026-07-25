@@ -101,6 +101,7 @@ describe('tokenAtPos', () => {
         tokens: [{ range: { line: 0, start: 2, end: 9 }, kind: 'ruby', detail: 'ルビ: とうきょう' }],
         symbols: [],
         diagnostics: [],
+        folds: [],
       }),
     })
     // 《…》の内側（絶対 2..9）
@@ -129,6 +130,7 @@ describe('outline panel', () => {
           { range: { line: 2, start: 0, end: 3 }, level: 2, text: '第二章' },
         ],
         diagnostics: [],
+        folds: [],
       }),
     })
     const select = view.dom.querySelector('.cm-aoz-outline-select') as HTMLSelectElement
