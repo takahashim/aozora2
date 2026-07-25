@@ -80,7 +80,7 @@ pub fn compare_body(input: &str, options: &RenderOptions) -> (String, String) {
     let body_lines = extract_body_lines(&lines);
     let raw = parse_document_raw(&body_lines);
     let blocks = lower_to_blocks(&raw);
-    let new_body = block_renderer::render_body_blocks(&blocks);
+    let new_body = block_renderer::render_body_blocks(&blocks, options);
 
     (old_body, new_body)
 }

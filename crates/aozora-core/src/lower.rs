@@ -65,6 +65,16 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 }
                 // 対応する開きが無ければ捨てる（旧経路も未マッチ終了は無出力）。
             }
+            LineKind::LineJisage(width) => {
+                // ［＃N字下げ］text: 行全体を字下げ div で1行に包む（apply_jisage）。
+                // マーカーを除いた残りをインライン化する。
+                let rest: Vec<Node> = nodes
+                    .into_iter()
+                    .filter(|n| !matches!(n, Node::LineJisage { .. }))
+                    .collect();
+                let inline = crate::ast::to_inlines(&rest);
+                push_block(&mut stack, &mut top, Block::LineJisage { width, inline });
+            }
             LineKind::Content => {
                 let inline = crate::ast::to_inlines(&nodes);
                 let line = Block::Line {
@@ -105,6 +115,8 @@ enum LineKind {
     BlockOpen(BlockKind),
     /// ブロック終了（`ここで…終わり`）。単独行の BlockEnd。
     BlockClose,
+    /// 行単位字下げ ［＃N字下げ］text（同行に本文あり）。
+    LineJisage(u32),
     /// 内容行。
     Content,
 }
@@ -124,6 +136,17 @@ fn classify_line(nodes: &[Node]) -> LineKind {
     }
     if let [Node::BlockEnd { .. }] = nodes {
         return LineKind::BlockClose;
+    }
+    // 行単位字下げ ［＃N字下げ］。行にこのマーカーしか無ければ複数行ブロックを開く
+    // （参照 apply_jisage の unshift 相当＝ここから字下げと同一）。本文が続けば行包み。
+    if let [Node::LineJisage { width }] = nodes {
+        return LineKind::BlockOpen(BlockKind::Jisage { width: *width });
+    }
+    if let Some(Node::LineJisage { width }) = nodes
+        .iter()
+        .find(|n| matches!(n, Node::LineJisage { .. }))
+    {
+        return LineKind::LineJisage(*width);
     }
     LineKind::Content
 }
