@@ -63,6 +63,9 @@ struct ResourcePaths {
 
 fn main() {
     tauri::Builder::default()
+        // OS 標準メニュー（macOS の Edit メニュー＝コピー/切り取り/貼り付け/全選択/取り消し）。
+        // これが無いと macOS では Cmd+C/V/X の標準ショートカットが webview に届かない。
+        .menu(|handle| tauri::menu::Menu::default(handle))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
