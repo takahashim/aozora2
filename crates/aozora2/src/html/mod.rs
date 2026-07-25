@@ -2,40 +2,24 @@
 //!
 //! 青空文庫形式のテキストをHTMLに変換します。
 //!
-//! # 2つの経路（docs/plan-neutral-ast.md）
+//! # 経路（docs/plan-neutral-ast.md）
 //!
-//! - **本番＝中立AST新経路**: [`convert`]/[`convert_line`] → [`render_via_blocks`]
-//!   （`lower_to_blocks` → [`block_renderer::BlockRenderer`]）。本文は状態を持たない
-//!   木歩きで描画し、`@indent_stack`/`@terprip` 等の逐次判断は Lowerer が一度だけ
-//!   計算する。head/metadata/tail 枠は [`document_renderer`] を共有。
-//! - **旧 BlockManager 経路（差分オラクル専用）**: [`convert_legacy`] のみが入口。
-//!   `renderer`/`node_renderer`/`block_manager`/`tag_generator` は**この差分オラクル
-//!   （[`compare_body`]/[`compare_full`]）のためだけに残す**。本番からは参照しない。
-//!   参照実装引退時、または全 quirk を新経路へ移した後にまとめて撤去できる。
+//! 本番は**中立AST新経路のみ**: [`convert`]/[`convert_line`] → [`render_via_blocks`]
+//! （`lower_to_blocks` → [`block_renderer::BlockRenderer`]）。本文は状態を持たない
+//! 木歩きで描画し、`@indent_stack`/`@terprip` 等の逐次判断は Lowerer が一度だけ
+//! 計算する。head/metadata/tail 枠は [`document_renderer`] を共有。
+//! 旧 BlockManager ストリーミング経路（renderer/node_renderer/block_manager/
+//! tag_generator）は移行完了・オラクル検証済みのため撤去済み。
 
-mod block_manager; // legacy: convert_legacy（差分オラクル）専用
 mod block_renderer;
 mod document_renderer;
-mod node_renderer; // legacy: convert_legacy（差分オラクル）専用
 mod options;
 mod presentation;
-mod renderer; // legacy: convert_legacy（差分オラクル）専用
-mod tag_generator; // legacy: convert_legacy（差分オラクル）専用
 
 pub use options::{Quirks, RenderOptions};
 pub use presentation::html_escape;
-pub use renderer::HtmlRenderer;
 
-/// 青空文庫形式のテキストをHTMLに変換
-///
-/// # Arguments
-///
-/// * `input` - 青空文庫形式のテキスト
-/// * `options` - レンダリングオプション
-///
-/// # Returns
-///
-/// HTML文字列
+/// 青空文庫形式のテキストをHTMLに変換（中立AST新経路）
 ///
 /// # Examples
 ///
@@ -48,15 +32,7 @@ pub use renderer::HtmlRenderer;
 /// assert!(html.contains("<ruby>"));
 /// ```
 pub fn convert(input: &str, options: &RenderOptions) -> String {
-    // 中立AST 新経路（docs/plan-neutral-ast.md B4）へ切替。旧 BlockManager 経路は
-    // convert_legacy として当面残す（差分検証用・撤去は後続段）。
     render_via_blocks(input, options)
-}
-
-/// 旧 BlockManager 経路での全文書変換（切替前の参照実装・検証用）。
-pub fn convert_legacy(input: &str, options: &RenderOptions) -> String {
-    let mut renderer = HtmlRenderer::new(options.clone());
-    renderer.render(input)
 }
 
 /// 1行をHTMLに変換（インライン列のみ・中立AST新経路）。
@@ -143,57 +119,6 @@ pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
     doc.render_card_section(&mut output);
     doc.render_html_foot(&mut output);
     output
-}
-
-/// 旧 convert() と新 render_via_blocks() の**全文書**を返す（切替検証用）。
-pub fn compare_full(input: &str, options: &RenderOptions) -> (String, String) {
-    (convert_legacy(input, options), render_via_blocks(input, options))
-}
-
-/// 旧経路（BlockManager）と新経路（中立AST）の**本文（main_text 内側）**を返す。
-/// 中立ASTバックエンドの移行（docs/plan-neutral-ast.md）の一致率計測用。
-/// 戻り値 `(old_body, new_body)`。両者が等しければ新経路がその作品の本文を
-/// byte 再現できている。
-pub fn compare_body(input: &str, options: &RenderOptions) -> (String, String) {
-    use aozora_core::document::extract_body_lines;
-    use aozora_core::lower::lower_to_blocks;
-    use aozora_core::parser::parse_document_raw;
-
-    // 旧: convert 出力から main_text の内側を切り出す。
-    let full = convert_legacy(input, options);
-    let open = "<div class=\"main_text\">";
-    let old_body = match full.find(open) {
-        Some(s) => {
-            let start = s + open.len();
-            let rest = &full[start..];
-            // main_text の閉じ `</div>\r\n` の直後に来る tail セクション開始のうち、
-            // 最も手前の位置で切る（after_text / bibliographical / notation_notes / card）。
-            let end = [
-                "</div>\r\n<div class=\"after_text\">",
-                "</div>\r\n<div class=\"bibliographical_information\">",
-                "</div>\r\n<div class=\"notation_notes\">",
-                "</div>\r\n<div id=\"card\"",
-            ]
-            .iter()
-            .filter_map(|pat| rest.find(pat))
-            .min()
-            .unwrap_or(rest.len());
-            rest[..end].to_string()
-        }
-        None => String::new(),
-    };
-
-    // 新: body 行 → RawDoc → Vec<Block> → 本文HTML。
-    let mut lines: Vec<&str> = input.split("\r\n").collect();
-    if lines.last() == Some(&"") {
-        lines.pop();
-    }
-    let body_lines = extract_body_lines(&lines);
-    let raw = parse_document_raw(&body_lines);
-    let blocks = lower_to_blocks(&raw);
-    let new_body = block_renderer::render_body_blocks(&blocks, options);
-
-    (old_body, new_body)
 }
 
 #[cfg(test)]

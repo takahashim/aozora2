@@ -5,7 +5,7 @@
 
 use aozora_core::document::HeaderInfo;
 
-use super::node_renderer::UnconvertedGaiji;
+use super::presentation::UnconvertedGaiji;
 use super::options::RenderOptions;
 use super::presentation::html_escape;
 

@@ -4,65 +4,14 @@
 
 use aozora_core::node::{MidashiLevel, MidashiStyle, StyleType};
 
-/// 行のHTML出力タイプ
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LineType {
-    /// 空行
-    Empty,
-    /// ブロック要素（div, h3-h5など）- brタグ不要、ぶら下げラップ不要
-    Block,
-    /// インラインコンテンツ - brタグ必要、ぶら下げラップ可能
-    Inline,
-}
-
-/// HTMLの行タイプを判定
-pub fn classify_line(html: &str) -> LineType {
-    if html.is_empty() {
-        return LineType::Empty;
-    }
-
-    // ブロック要素の開始/終了で終わる場合
-    if html.starts_with("<div class=\"")
-        || html.starts_with("<h3")
-        || html.starts_with("<h4")
-        || html.starts_with("<h5")
-        || html.ends_with("</div>")
-        || html.ends_with("</h3>")
-        || html.ends_with("</h4>")
-        || html.ends_with("</h5>")
-    {
-        return LineType::Block;
-    }
-
-    LineType::Inline
-}
-
-/// 見出し行（h3/h4/h5 で閉じる行）かどうか。
-/// burasage ブロック内での見出しの特殊な閉じ処理に使う。
-pub fn is_midashi_line(html: &str) -> bool {
-    html.ends_with("</h3>") || html.ends_with("</h4>") || html.ends_with("</h5>")
-}
-
-/// レンダリング済み1行の分類。レンダラのループが必要とする3つの信号を
-/// 一箇所にまとめる。中身は当面 line_html の文字列判定だが、
-/// この型を継ぎ目にすれば将来ノード由来の判定へ差し替えやすい。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct LineInfo {
-    /// burasage ブロック内で個別 div に包める（インライン行）か
-    pub burasage_wrappable: bool,
-    /// 見出し行（burasage 内で行末 </div> を閉じる対象）か
-    pub is_midashi: bool,
-    /// ブロック要素だけの行で、行末 <br /> を抑制するか
-    pub suppresses_br: bool,
-}
-
-/// レンダリング済み1行を分類する（出力 HTML から判定）。
-pub fn classify_output_line(html: &str) -> LineInfo {
-    LineInfo {
-        burasage_wrappable: classify_line(html) == LineType::Inline,
-        is_midashi: is_midashi_line(html),
-        suppresses_br: is_block_only_line(html),
-    }
+/// 未変換外字情報（フッタ「表記について」用）。
+#[derive(Debug, Clone)]
+pub struct UnconvertedGaiji {
+    /// 外字名（説明の最後の「、」より前の部分）
+    pub gaiji_name: String,
+    /// ページ-行数（説明の最後の「、」より後の部分）。
+    /// 同じ外字が複数回現れた場合は出現箇所を順に並べる。
+    pub page_lines: Vec<String>,
 }
 
 /// StyleType のCSSクラス名を取得
@@ -158,74 +107,6 @@ pub fn jis_code_to_path(jis_code: &str) -> (String, String) {
     }
 }
 
-/// 行がブロック要素だけかどうかを判定（<br />を追加しない）
-/// Ruby版aozora2htmlと同じロジック
-pub fn is_block_only_line(html: &str) -> bool {
-    // すでに<br />で終わっている
-    if html.ends_with("<br />") {
-        return true;
-    }
-
-    // </p>で終わる
-    if html.ends_with("</p>") {
-        return true;
-    }
-
-    // </h1>, </h2>, etc.で終わる（ただし同行見出しと窓見出しは除く）
-    if html.ends_with("</h1>")
-        || html.ends_with("</h2>")
-        || html.ends_with("</h3>")
-        || html.ends_with("</h4>")
-        || html.ends_with("</h5>")
-        || html.ends_with("</h6>")
-    {
-        // 同行見出しと窓見出しの場合は<br />を追加する
-        if !html.contains("dogyo-") && !html.contains("mado-") {
-            return true;
-        }
-    }
-
-    // </div>で終わる
-    if html.ends_with("</div>") {
-        return true;
-    }
-
-    // <div...>で終わる（開始タグ）
-    if html.ends_with(">") {
-        if let Some(last_lt) = html.rfind('<') {
-            let last_tag = &html[last_lt..];
-            if last_tag.starts_with("<div") && !last_tag.starts_with("</div") {
-                return true;
-            }
-            // 見出しの開始アンカー
-            if last_tag.starts_with("<a class=\"midashi_anchor\"") {
-                return true;
-            }
-        }
-    }
-
-    // 見出し開始タグで終わる
-    if html.ends_with("\">") {
-        if html.contains("<h3") || html.contains("<h4") || html.contains("<h5") {
-            return true;
-        }
-    }
-
-    // 全体が単一のタグ: ^<[^>]*>$
-    if html.starts_with('<') && html.ends_with('>') && html.len() > 2 {
-        // 自己終了タグはブロック要素ではない
-        if html.ends_with(" />") || html.ends_with("/>") {
-            return false;
-        }
-        let inner = &html[1..html.len() - 1];
-        if !inner.contains('>') {
-            return true;
-        }
-    }
-
-    false
-}
-
 /// 後付け（bibliographical_information）内のテキストを自動リンク化
 ///
 /// 以下の固定文字列のみをリンク化する：
@@ -281,51 +162,6 @@ mod tests {
     }
 
     #[test]
-    fn test_classify_line_empty() {
-        assert_eq!(classify_line(""), LineType::Empty);
-    }
-
-    #[test]
-    fn test_classify_line_block() {
-        assert_eq!(classify_line("<div class=\"test\">"), LineType::Block);
-        assert_eq!(classify_line("</div>"), LineType::Block);
-        assert_eq!(classify_line("<h3 class=\"midashi\">"), LineType::Block);
-        assert_eq!(classify_line("</h3>"), LineType::Block);
-        assert_eq!(classify_line("<h4>title</h4>"), LineType::Block);
-        assert_eq!(classify_line("<h5>title</h5>"), LineType::Block);
-    }
-
-    #[test]
-    fn test_classify_line_inline() {
-        assert_eq!(classify_line("plain text"), LineType::Inline);
-        assert_eq!(
-            classify_line("<ruby>漢字<rt>かんじ</rt></ruby>"),
-            LineType::Inline
-        );
-        assert_eq!(
-            classify_line("<span class=\"test\">text</span>"),
-            LineType::Inline
-        );
-    }
-
-    #[test]
-    fn test_classify_output_line_composes_signals() {
-        // インライン行: 包める・見出しでない・<br /> 抑制しない
-        let inline = classify_output_line("ふつうの本文");
-        assert_eq!(
-            inline,
-            LineInfo {
-                burasage_wrappable: true,
-                is_midashi: false,
-                suppresses_br: false,
-            }
-        );
-        // 見出し行: 包めない・見出し・<br /> 抑制
-        let midashi = classify_output_line("<h4 class=\"naka-midashi\">章</h4>");
-        assert!(!midashi.burasage_wrappable && midashi.is_midashi && midashi.suppresses_br);
-    }
-
-    #[test]
     fn test_html_escape() {
         assert_eq!(html_escape("<test>"), "&lt;test&gt;");
         assert_eq!(html_escape("a & b"), "a &amp; b");
@@ -336,13 +172,6 @@ mod tests {
         let (folder, file) = jis_code_to_path("1-02-22");
         assert_eq!(folder, "1-02");
         assert_eq!(file, "1-02-22");
-    }
-
-    #[test]
-    fn test_is_block_only_line() {
-        assert!(is_block_only_line("</div>"));
-        assert!(is_block_only_line("<div class=\"test\">"));
-        assert!(!is_block_only_line("text"));
     }
 
     /// style_css_class / style_html_tag が参照実装 aozora2html の

@@ -13,11 +13,10 @@ use aozora_core::parser::reference_resolver::resolve_inline_ruby;
 use aozora_core::token::Token;
 use aozora_core::tokenizer::tokenize;
 
-use super::node_renderer::UnconvertedGaiji;
 use super::options::RenderOptions;
 use super::presentation::{
     html_escape, jis_code_to_path, midashi_combined_css_class, midashi_html_tag, style_css_class,
-    style_html_tag,
+    style_html_tag, UnconvertedGaiji,
 };
 
 /// 画像化できない外字を本文中で示す記号
@@ -818,12 +817,6 @@ impl<'a> BlockRenderer<'a> {
     }
 }
 
-/// ブロック列を本文HTML（main_text の内側）に変換する便宜関数（テスト・
-/// `compare_body` 用）。状態は使い捨てる。
-pub fn render_body_blocks(blocks: &[Block], options: &RenderOptions) -> String {
-    BlockRenderer::new(options).render_body(blocks)
-}
-
 /// 単一行のインラインHTML（行末 `<br />`/`\r\n` なし）を新経路で描画する。
 /// 旧 `HtmlRenderer::render_line` の中立AST版（インライン列のみ）。
 pub fn render_line_inline(line: &str, options: &RenderOptions) -> String {
@@ -868,7 +861,7 @@ mod tests {
         let body_lines = extract_body_lines(&lines);
         let raw = parse_document_raw(&body_lines);
         let blocks = lower_to_blocks(&raw);
-        let new_inner = render_body_blocks(&blocks, &RenderOptions::default());
+        let new_inner = BlockRenderer::new(&RenderOptions::default()).render_body(&blocks);
 
         assert_eq!(new_inner, old_inner, "\n新:{new_inner:?}\n旧:{old_inner:?}");
     }
