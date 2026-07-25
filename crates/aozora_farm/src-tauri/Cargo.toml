@@ -1,0 +1,23 @@
+[package]
+name = "aozora_farm"
+version = "0.1.0"
+description = "Aozora Bunko format previewer and editor"
+authors = ["takahashim"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+aozora-core = { workspace = true }
+tauri = { version = "2", features = ["protocol-asset", "devtools"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = { workspace = true }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]

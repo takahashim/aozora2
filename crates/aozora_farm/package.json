@@ -1,0 +1,37 @@
+{
+  "name": "aozora_farm",
+  "version": "0.1.0",
+  "description": "Aozora Bunko format previewer and editor",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "jsdom": "^27.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.6",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@codemirror/lang-markdown": "^6.3.2",
+    "@codemirror/language": "^6.10.8",
+    "@codemirror/search": "^6.5.8",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.3",
+    "@lezer/highlight": "^1.2.3",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-fs": "^2",
+    "codemirror": "^6.0.1"
+  }
+}

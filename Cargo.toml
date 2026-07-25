@@ -4,6 +4,7 @@ members = [
     "crates/aozora-core",
     "crates/aozora2",
     "crates/aozora2text",
+    "crates/aozora_farm/src-tauri",
 ]
 
 [workspace.package]
