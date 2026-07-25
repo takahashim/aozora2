@@ -75,11 +75,24 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 push_block(&mut stack, &mut top, Block::LineWrap { kind, inline });
             }
             LineKind::Content => {
-                let inline = crate::ast::to_inlines(&nodes);
-                let line = Block::Line {
-                    inline,
-                    brk: Break::Br,
+                // ［＃ここで…終わり］（explicit_close=true）を含む行は @terprip=false で
+                // 行末 <br /> を抑制する（同行開閉の横組み等・複数行ブロックの閉じ行）。
+                let has_explicit_close = nodes.iter().any(|n| {
+                    matches!(
+                        n,
+                        Node::BlockEnd {
+                            explicit_close: true,
+                            ..
+                        }
+                    )
+                });
+                let brk = if has_explicit_close {
+                    Break::None
+                } else {
+                    Break::Br
                 };
+                let inline = crate::ast::to_inlines(&nodes);
+                let line = Block::Line { inline, brk };
                 push_block(&mut stack, &mut top, line);
             }
         }
@@ -183,7 +196,10 @@ fn classify_line(nodes: &[Node]) -> LineKind {
 }
 
 /// RawAST の BlockType＋params を中立ASTの BlockKind に写す（対応済みのものだけ）。
-fn block_kind_of(block_type: &BlockType, params: &crate::node::BlockParams) -> Option<BlockKind> {
+pub(crate) fn block_kind_of(
+    block_type: &BlockType,
+    params: &crate::node::BlockParams,
+) -> Option<BlockKind> {
     let w = || params.width.unwrap_or(0);
     match block_type {
         BlockType::Jisage => Some(BlockKind::Jisage { width: w() }),

@@ -171,6 +171,22 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
                     }
                 }
             }
+            // 行の途中で開閉する **ブロック形**（is_block=true、例:
+            // `TEXT［＃ここから横組み］…［＃ここで横組み終わり］`）は、参照が
+            // ブロック開始タグ（div/h4）を行内に埋め込むので BlockInline に畳む。
+            if params.is_block {
+                if let Some(end) = find_matching_end(nodes, i, block_type) {
+                    if let Some(kind) = crate::lower::block_kind_of(block_type, params) {
+                        let inner = to_inlines(&nodes[i + 1..end]);
+                        out.push(Inline::BlockInline {
+                            kind,
+                            children: inner,
+                        });
+                        i = end + 1;
+                        continue;
+                    }
+                }
+            }
             // 行の途中で開く地付き（is_block=false の Chitsuki）は行末まで包む
             // （参照 close_inline_blocks が行末で閉じる）。行頭のものは classify_line
             // が LineWrap で処理済みなので、ここに来るのは本文の後に続くケース。
@@ -457,6 +473,11 @@ pub enum Inline {
     /// `<div class="chitsuki_N" style="text-align:right; margin-right: Nem">…</div>`
     /// で包む（後続に <br /> は付かない＝ブロックのみ行扱い）。
     ChitsukiInline { width: u32, children: Vec<Inline> },
+    /// 同一行で開閉するブロック形コマンド（`TEXT［＃ここから横組み］…［＃ここで横組み
+    /// 終わり］TEXT`）。参照は is_block=true のブロック開始タグ（div/h4）を行内に埋め
+    /// 込み、行末の close_inline_blocks／同行終わりで閉じる。開き直後の `\r\n` や
+    /// 内側 `<br />` は出ない（インライン埋め込み）。
+    BlockInline { kind: BlockKind, children: Vec<Inline> },
 }
 
 #[cfg(test)]

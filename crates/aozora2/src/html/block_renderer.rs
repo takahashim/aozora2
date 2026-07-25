@@ -355,6 +355,25 @@ impl<'a> BlockRenderer<'a> {
                 self.render_inlines(children, out);
                 out.push_str("</div>");
             }
+            Inline::BlockInline { kind, children } => {
+                // 同行で開閉するブロック形。見出しは h4/a＋id、その他は div で包む。
+                if let BlockKind::Midashi { level, style } = kind {
+                    let tag = midashi_html_tag(*level);
+                    let class = midashi_combined_css_class(*level, *style);
+                    let id = self.generate_midashi_id(*level);
+                    out.push_str(&format!(
+                        "<{tag} class=\"{class}\"><a class=\"midashi_anchor\" id=\"midashi{id}\">"
+                    ));
+                    self.render_inlines(children, out);
+                    out.push_str(&format!("</a></{tag}>"));
+                } else if let Some(open) = block_open_tag(kind) {
+                    out.push_str(&open);
+                    self.render_inlines(children, out);
+                    out.push_str("</div>");
+                } else {
+                    self.render_inlines(children, out);
+                }
+            }
             Inline::Kaeriten(text) => {
                 out.push_str(&format!("<sub class=\"kaeriten\">{}</sub>", html_escape(text)))
             }
