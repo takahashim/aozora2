@@ -241,3 +241,16 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
     数件・mid-line で開き複数行にまたがるブロック（斜体等）数件・複雑な連続ネストでの
     burasage/jisage 閉じ位置ズレ（真の div 収支 quirk）多数。後2者はストリーミング状態
     由来で、tree では局所再現が難しい残差。
+
+- 2026-07-25 **(A) 採択: 空幅CSS quirk 回収＋残差は文書化受容。** BlockKind::Jisage を
+  width:Option、Burasage を wrap_width/width:Option にし、empty_indent_css quirk で
+  参照の不正CSS（`jisage_`/`margin-left: em`）を compat 時のみ再現。切替阻害 52→49
+  （回帰0・exact body 99.72%）。残 49（exact の 0.28%）は真のストリーミング由来 quirk
+  （burasage/jisage 閉じ位置ズレ・mid-line で複数行にまたがるブロック）＝文書化受容。
+- 2026-07-25 **render() 切替の 悪化0 分岐点（要ユーザ承認）**: 新経路は本文を exact 作品
+  17357/17406 で byte 再現。残 49 作品は現在 oracle exact（旧＝oracle）なので、render()
+  を新経路へ丸ごと切替えると **その 49 作品が oracle 悪化**する（新≠旧＝≠oracle）。
+  よって「文書化受容」は実質「49 作品を quirk 由来の既知悪化として 悪化0 の例外に
+  する」合意を意味する。tail セクション統合（after_text/bibliographical/notation_notes/
+  card＋footer 状態）は additive で安全に進められるが、**最終フリップには 49 悪化の
+  明示承認が要る**。承認まではフリップせず additive（新経路を並行構築・旧経路 live 維持）。
