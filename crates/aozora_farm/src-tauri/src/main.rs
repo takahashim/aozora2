@@ -12,7 +12,10 @@ use tauri::Manager;
 /// 本文が空になる）。
 #[tauri::command]
 fn convert_to_html(input: &str) -> Result<String, String> {
-    let options = RenderOptions::default();
+    // プレビューは外字を極力 Unicode 文字（数値文字参照）で出す。Unicode を持たない外字
+    // だけ画像になるので、画像取得が激減してプレビューが軽くなる（オラクル用の convert は
+    // 既定 use_unicode=false のまま＝aozora2html と画像でバイト一致）。
+    let options = RenderOptions::default().with_unicode(true);
     let html = convert_editor(input, &options);
     Ok(html)
 }
