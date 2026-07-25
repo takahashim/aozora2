@@ -344,3 +344,12 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
     中立AST に漏れない（型で保証）ため、Node の完全分割は低優先・任意。`CloseKind`/
     `Break` を中立コアに置くかは設計論点として保留（実用上は機能）。
   → **RawAST・中立AST の仕様は実質固まった**（2層・型の壁・位置情報あり・レガシー無し）。
+
+- 2026-07-25 **位置情報を char 単位 span まで拡張（出力 byte 不変）。**
+  `token::Span`（行内 char オフセット [start,end)）を追加。tokenizer を next_token 抽出＋
+  `tokenize_spanned`、parser に `parse_raw_nodes_spanned` を追加し、`RawLine.spans` に各
+  生ノードの由来トークン span を格納（`nodes[i]↔spans[i]`）。**位置情報は源泉忠実な
+  RawAST に置く**設計（char span＝RawLine.spans／中立AST は派生の行番号＝Block.line）。
+  `line.chars()[span.start..span.end]` で原文断片を取得可。中立AST Inline への per-inline
+  span は変換パーサ（後方参照・ルビ抽出・範囲畳み込み）を跨ぐ Node への span 付与が要る
+  ため大規模——現状は RawAST span＋中立 line 番号で source-map 可能。
