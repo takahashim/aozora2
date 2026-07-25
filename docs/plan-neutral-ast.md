@@ -330,3 +330,17 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   - **strip を中立AST-only化**: strip::convert/convert_line の既定を中立AST経由に統一し、
     旧トークン経路（extract/Tokenizer）と --via-ast を撤去。**HTML・プレーンテキスト双方が
     本番で中立ASTのみから生成される**（第2バックエンドが実証から本番へ）。
+
+- 2026-07-25 **仕様整理: レガシー撤去＋位置情報付与（出力 byte 不変・オラクル 17361）。**
+  - **RawAST の正規化**: 旧 `RawAst(Vec<Node>)`/`Ast(Vec<Node>)`/`parse_raw`/`lower`（薄い
+    未使用ラッパ）を撤去し、`parse_raw_nodes`＋`parse` に一本化。**RawAST の器は
+    RawDoc/RawLine に確定**。neutral AST の器は `ast::Block`/`Inline`。この2層で
+    「RawAST（マーカー含む Vec<Node>）／中立AST（マーカー無し・型安全な木）」が明確に。
+  - **位置情報**: `RawLine.line_no`（本文0起点）を追加し、`lower_to_blocks` が各 Block
+    （Line/Nested/LineWrap）へ由来行 `line` を伝播（Nested は開いた行）。バックエンドは
+    無視するので出力不変。将来の char 単位 span はこの上に載せられる。
+  - **残る任意項目**: `Node` enum は依然 raw マーカー（BlockStart/BlockEnd/LineJisage/
+    UnresolvedReference）と解決済みノードを兼ねる中間表現。マーカーは lower で消費され
+    中立AST に漏れない（型で保証）ため、Node の完全分割は低優先・任意。`CloseKind`/
+    `Break` を中立コアに置くかは設計論点として保留（実用上は機能）。
+  → **RawAST・中立AST の仕様は実質固まった**（2層・型の壁・位置情報あり・レガシー無し）。
