@@ -1,6 +1,6 @@
 # 中立AST 木化・BlockManager 撤去 実行計画
 
-策定: 2026-07-25 / 状態: 実行中（Phase A 着手）
+策定: 2026-07-25 / 状態: 実行中（Phase B4・新経路 body 被覆率 96.6%・未接続）
 
 ## 0. 目的（最上位。ぶれたらここへ戻る）
 
@@ -191,3 +191,34 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
     ヘルパを移植）。次に Note/Img/Accent、burasage per-line、Break、フッタ、tail。
     被覆率が全件一致に達したら render() を新経路へ切替え、BlockManager と
     出力HTML詮索を撤去。各段オラクル悪化0。
+
+- 2026-07-25 **本文被覆率を 34% → 96.6% へ（同一セッション大幅前進・未接続）。** 旧経路
+  無変更・oracle 17406 維持・各段でユニットテスト全通過。`body-diff`（3582サンプル・
+  byte 一致率）を各段で測りながら最大レバー順に block_renderer / lower / to_inlines /
+  ast を厳密移植した。主なマイルストーン（コミット単位）:
+  - インライン移植（Note/FontSize/Midashi/Warichu/Okurigana/AnnotationEnd）＋
+    LineJisage（同行字下げ）: 41.7% → 57.0%。
+  - 行スコープ包み LineWrap で字下げ＋地付き line-form を統一: 57.0% → 74.8%（大レバー）。
+  - `to_inlines` を範囲畳み込み対応にし同行コマンド範囲を畳む: 見出し 74.8→75.7、
+    装飾/大小文字 75.7→77.7。
+  - ブロック形の大小文字・太字・斜体（Nested）: 77.7 → 78.6。
+  - ルビ親文字の外字注記を rb 外へ振り分け（render_ruby_base）: 78.6 → 81.4。
+  - ぶら下げ per-line モデル（外側 div なし・空行は素 br）: 81.4 → 85.3。
+  - 見出し・ブロックのみ行の行末 br 抑制（is_block_only_line を描画時に判定）: 85.3 → 86.0。
+  - ブロック形見出し（ここから中見出し等、h4/a、id 共通カウンタ）: 86.0 → 86.3。
+  - **行の途中で開く地付き（mid-line chitsuki）を Inline::ChitsukiInline で行末まで包む**:
+    86.3 → 95.5（trailing attribution `本文。［＃地付き］（大正…）` が非常に多く最大レバー）。
+  - 計測修正（compare_body が after_text/notation_notes を終端に含めず過剰取得していた）:
+    実測 95.5 → 96.6。
+- 2026-07-25 **残差（約3.4%）の内訳と方針**: 最大クラスタは **ぶら下げの div 収支 quirk**
+  （burasage 内の見出し・入れ子ブロックが参照実装で余分な `</div>` を出すストリーミング
+  由来。新経路は均衡した綺麗な HTML を出すため byte が食い違う）。ユーザ方針「余分な
+  閉じタグは全部 quirks 扱い」＋ memory `div-balance-quirk-category` に該当。残りは
+  mid-line jisage・特定文脈の欧文引用符など少数の一点物。
+- 2026-07-25 **render() 切替に向けた次の分岐点**: 悪化0 を守るには、切替時に *現在 oracle を
+  通っている作品すべて* で新 body が旧 body と byte 一致する必要がある。96.6% では不足。
+  残る burasage div 収支 quirk を「(a) quirk フラグ付きで参照の余分 `</div>` を再現する」か
+  「(b) 当該作品が元々 non-exact であることを確認して除外扱いにする」かを決める必要がある。
+  次段: tail セクション（after_text/bibliographical/notation_notes/card）と footer 状態
+  蓄積を新経路へ接続 → 全文書 byte 一致を確認 → render() 切替 → BlockManager/renderer/
+  node_renderer/tag_generator と出力HTML詮索を撤去。
