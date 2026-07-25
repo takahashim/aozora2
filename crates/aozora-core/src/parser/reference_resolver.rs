@@ -7,6 +7,20 @@ use crate::node::{BlockType, Node, RefSpec, RubyDirection};
 use crate::parser::ruby_parser::extract_ruby_base_from_nodes;
 use crate::tokenizer::tokenize;
 
+/// 対象テキスト `target` が `preceding`（参照ノードの直前までのノード列）内に
+/// 前方参照として見つかるか。`resolve_references` が使う `search_front_reference` と
+/// 同じ探索で、解決の成否だけを返す（ノードは変更しない）。
+///
+/// エディタ支援 `analysis` の未解決診断が「本当に解決できないか」を判定するために使う
+/// （生ノードは解決前なので `UnresolvedReference` が残っているが、その多くは正当に
+/// 解決するので、この述語で偽陽性を除く）。
+pub fn reference_resolves(preceding: &[Node], target: &str) -> bool {
+    if preceding.is_empty() {
+        return false;
+    }
+    search_front_reference(preceding, preceding.len() - 1, target).is_some()
+}
+
 /// ノード列の前方参照を解決
 ///
 /// ルビの親文字抽出と、「〇〇」に傍点 形式の装飾コマンドを解決します。

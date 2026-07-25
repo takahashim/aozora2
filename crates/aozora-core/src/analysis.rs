@@ -6,7 +6,7 @@
 //!
 //! - [`Analysis::tokens`]  … セマンティックトークン（正確なハイライト／ホバーの土台）
 //! - [`Analysis::symbols`] … アウトライン（見出しの一覧＝ドキュメントシンボル）
-//! - [`Analysis::diagnostics`] … 診断（現状は解決できなかった注記＝誤記の指摘）
+//! - [`Analysis::diagnostics`] … 診断（解決できない注記／解決できない外字／未閉じブロック）
 //!
 //! すべて `convert()`（本文レンダリング）とは独立した**追加レイヤ**であり、オラクル
 //! 出力には一切影響しない。位置は LSP と同じく **0 起点**（行・char とも）で、`end` は
@@ -15,6 +15,7 @@
 use crate::ast::BlockKind;
 use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node};
+use crate::parser::reference_resolver::reference_resolves;
 use crate::parser::{parse_document_raw, RawLine};
 
 #[cfg(feature = "serde")]
@@ -126,7 +127,7 @@ pub fn analyze(input: &str) -> Analysis {
 
     for raw in &doc.lines {
         // `nodes[i]` と `spans[i]` は 1:1 対応（parse_raw_nodes_spanned の契約）。
-        for (node, span) in raw.nodes.iter().zip(raw.spans.iter()) {
+        for (idx, (node, span)) in raw.nodes.iter().zip(raw.spans.iter()).enumerate() {
             let range = Range {
                 line: raw.line_no,
                 start: span.start,
@@ -141,15 +142,38 @@ pub fn analyze(input: &str) -> Analysis {
                 });
             }
 
-            // パーサが対象を解決できなかった注記＝誤記の可能性が高い。
-            // 「解決できなかった」という事実そのものが診断源なので誤検知しない。
-            if let Node::UnresolvedReference { raw: original, .. } = node {
-                analysis.diagnostics.push(Diagnostic {
-                    range,
-                    severity: Severity::Warning,
-                    code: "unresolved-reference",
-                    message: format!("注記の対象を前方に見つけられません: {original}"),
-                });
+            match node {
+                // 前方参照は生ノードでは未解決だが、その多くは同じ行の前方テキストに
+                // 正当に解決する。実際に解決できないものだけを診断する（偽陽性を除く）。
+                Node::UnresolvedReference {
+                    target,
+                    raw: original,
+                    ..
+                } if !reference_resolves(&raw.nodes[..idx], target) => {
+                    analysis.diagnostics.push(Diagnostic {
+                        range,
+                        severity: Severity::Warning,
+                        code: "unresolved-reference",
+                        message: format!("注記の対象を前方に見つけられません: {original}"),
+                    });
+                }
+                // 面区点にも U+ にも解決できない外字（画像にも文字にもならない）。
+                Node::Gaiji {
+                    description,
+                    unicode: None,
+                    jis_code: None,
+                    ..
+                } => {
+                    analysis.diagnostics.push(Diagnostic {
+                        range,
+                        severity: Severity::Warning,
+                        code: "unresolved-gaiji",
+                        message: format!(
+                            "外字を文字・画像に解決できません（面区点/U+ 指定なし）: {description}"
+                        ),
+                    });
+                }
+                _ => {}
             }
         }
 
@@ -407,6 +431,37 @@ mod tests {
         let detail = gaiji.detail.as_deref().unwrap_or("");
         assert!(detail.starts_with("外字:"), "detail={detail}");
         assert!(detail.contains('○'), "実文字を含む: {detail}");
+    }
+
+    #[test]
+    fn valid_annotation_is_not_flagged() {
+        // 対象「序章」が直前にある正当な見出し注記は誤検知しない。
+        let a = analyze("序章［＃「序章」は大見出し］");
+        assert!(
+            a.diagnostics
+                .iter()
+                .all(|d| d.code != "unresolved-reference"),
+            "正当な注記を未解決扱いしない"
+        );
+    }
+
+    #[test]
+    fn unresolvable_gaiji_becomes_diagnostic() {
+        // 面区点も U+ も無い外字は文字・画像に解決できない。
+        let a = analyze("※［＃「謎の字」］");
+        let g: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "unresolved-gaiji")
+            .collect();
+        assert_eq!(g.len(), 1);
+    }
+
+    #[test]
+    fn resolvable_gaiji_is_not_flagged() {
+        // U+ 指定つき外字は解決できるので診断しない。
+        let a = analyze("※［＃「丸印」、U+25CB］");
+        assert!(a.diagnostics.iter().all(|d| d.code != "unresolved-gaiji"));
     }
 
     #[test]
