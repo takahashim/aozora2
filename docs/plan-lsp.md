@@ -53,9 +53,9 @@ CodeMirror は行 1 起点なので、フロントで `line+1` して変換す�
 
 | LSP 機能 | 土台データ | 実現度 | フェーズ |
 |----------|-----------|--------|----------|
-| セマンティックハイライト | `analysis.tokens`（span 付き） | 実装済（描画は未接続） | 1 |
-| アウトライン／シンボル | `analysis.symbols` | 実装済（パネル未実装） | 1 |
-| 診断: 未解決注記 | `Node::UnresolvedReference` | 実装済 | 1 |
+| セマンティックハイライト | `analysis.tokens`（span 付き） | **実装・CM接続済**（`editor/lsp.ts`） | 1 |
+| アウトライン／シンボル | `analysis.symbols` | 実装済（データ供給・パネル未実装） | 1 |
+| 診断: 未解決注記 | `Node::UnresolvedReference` | **実装・CM接続済**（linter＋lintGutter） | 1 |
 | 診断: 未閉じブロック | `lower` 末尾 `stack.pop()` の残り（`open_line`） | 設計済・未実装 | 2 |
 | 診断: 未知コマンド | `CommandKind::Unknown` を span 付きで | 設計済・未実装 | 2 |
 | 診断: 未解決外字 | `Node::Gaiji` の JIS/U+ が表引きで解決不能 | 設計済・未実装 | 2 |
@@ -96,8 +96,10 @@ const toPos = (doc: Text, line: number, ch: number) => doc.line(line + 1).from +
 
 ## 5. フェーズ計画
 
-- **フェーズ1（土台・本コミットで Rust 側完了）**: `analysis` モジュール＋Tauri コマンド＋
-  TS ブリッジ。次の小タスクで CM 側の linter/decoration/outline を接続（要 `@codemirror/lint`）。
+- **フェーズ1（土台＋CM接続・完了）**: `analysis` モジュール＋Tauri コマンド＋TS ブリッジ。
+  CM 側 `editor/lsp.ts` で **診断（linter＋lintGutter）とセマンティックハイライト（Decoration.mark）**
+  を接続済み（`@codemirror/lint` 依存追加・解析は 200ms デバウンス・位置は `toPos` で 0起点→CM 変換）。
+  残: **ホバー**（token に説明が要る→フェーズ2）・**アウトラインパネル**（`getOutline` でデータ供給済み、UI 未実装）。
 - **フェーズ2（診断の拡充）**:
   - **未閉じブロック**: `lower` に `lower_to_blocks_with_diagnostics(&RawDoc) -> (Vec<Block>,
     Vec<Diagnostic>)` を追加。既存 `lower_to_blocks` はこれを呼んで診断を捨てる薄い包みにし、

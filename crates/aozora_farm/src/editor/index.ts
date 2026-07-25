@@ -9,6 +9,7 @@ import { getCodeMirrorPhrases, onLangChange } from '@/i18n'
 import { aozoraKeymap } from './keymap'
 import { aozoraToolbar } from './toolbar'
 import { aozoraPalette } from './palette'
+import { aozoraLsp } from './lsp'
 
 export type ChangeCallback = (content: string) => void
 
@@ -70,6 +71,7 @@ const baseExtensions: Extension[] = [
   aozoraLanguage,
   aozoraEditorTheme,
   aozoraHighlighting,
+  ...aozoraLsp(),
 ]
 
 export function createEditor(parent: HTMLElement, onChange?: ChangeCallback): EditorView {
