@@ -60,8 +60,8 @@ CodeMirror は行 1 起点なので、フロントで `line+1` して変換す�
 | 診断: 未解決外字 | `Node::Gaiji`（unicode=None かつ jis_code=None） | **実装済** | 2 |
 | 診断: 未知コマンド | 区別できる signal 無し（誤記も編集注も `Note`） | **見送り** | — |
 | ホバー | token の `detail`（外字の実文字・ルビ読み・見出しレベル等） | **実装・CM接続済**（`hoverTooltip`） | 2 |
-| 補完 | `［＃` 直後に注記コマンド候補（`palette.ts` の台帳を流用） | 設計済・未実装 | 3 |
-| 折りたたみ | ブロック `BlockStart`/`BlockEnd`（or Block 木）の行範囲 | 設計済・未実装 | 3 |
+| 補完 | `［＃` 直後に注記候補（`completion.ts` の SNIPPETS 台帳） | **実装・CM接続済**（autocomplete） | 3 |
+| 折りたたみ | `analysis.folds`（Block 木の複数行 Nested 範囲） | **実装・CM接続済**（foldGutter/foldService） | 3 |
 | go-to / peek | 対象参照（注・図版）※青空記法では用途限定 | 要検討 | 後 |
 
 ## 4. CodeMirror 6 への接続設計
@@ -112,8 +112,17 @@ const toPos = (doc: Text, line: number, ch: number) => doc.line(line + 1).from +
     誤検知していた。`reference_resolves` 述語で実際に解決できないものだけに絞った。
   - **ホバー**（完了）: `SemToken.detail`（外字の実文字・ルビ読み・見出しレベル等）を
     `hoverTooltip` で表示。
-- **フェーズ3（編集支援・未着手）**: `［＃` 補完（`palette.ts` 台帳流用）、ブロック折りたたみ、
-  StreamLanguage を decorations へ完全移行、アウトラインの常時表示サイドバー化。
+- **フェーズ3（ほぼ完了）**:
+  - **`［＃` 補完**（完了）: `completion.ts` の SNIPPETS 台帳＋autocomplete。漢字/読み両対応、
+    選択で ［＃…］ 一式を挿入し「」や開閉ペアの間へカーソル。
+  - **ブロック折りたたみ**（完了）: `analysis.folds`（Block 木の複数行 Nested 範囲）を
+    foldService/foldGutter に供給。
+  - **ハイライト一本化**（完了）: StreamLanguage（regex）を撤去し、解析ベースの
+    Decoration.mark に統一（二重着色を解消。トレードオフ: ~200ms 遅延・要バックエンド）。
+  - **アウトライン常時サイドバー化**（未・要視覚イテレーション）: 現状は上部パネルの
+    見出しジャンプで代替。サイドバー化は 2 ペイン flex レイアウトの変更を伴うため、実機で
+    見ながら調整するのが安全。
+- **将来**: `aozora-lsp` バイナリ（tower-lsp）で同ロジックを標準 LSP として外部エディタへ。
 - **将来**: `aozora-lsp` バイナリ（tower-lsp）で同ロジックを標準 LSP として外部エディタへ。
 
 ## 6. 設計上の決定・注意
