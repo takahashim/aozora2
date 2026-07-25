@@ -333,8 +333,10 @@ pub enum Block {
 /// パラメータは種類ごとに持つ（RawAST の `BlockParams` を種類別に畳んだもの）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BlockKind {
-    /// 字下げ（N字下げ）。幅 em。
-    Jisage { width: u32 },
+    /// 字下げ（N字下げ）。幅 em。幅が空（`［＃ここから字下げ］` の数字なし）のとき
+    /// None。参照は空幅で `class="jisage_" style="margin-left: em"`（不正CSS）を出す
+    /// （Quirk empty_indent_css）。
+    Jisage { width: Option<u32> },
     /// 地付き／字上げ（chitsuki）。右寄せ、右マージン em。
     Chitsuki { width: u32 },
     /// 字詰め。幅 em。
@@ -343,10 +345,11 @@ pub enum BlockKind {
     /// 各内容行を個別の `<div class="burasage" style="margin-left: {wrap_width}em;
     /// text-indent: {text_indent}em;">` で包む（空行は素の `<br />`）。
     Burasage {
-        /// margin-left em（折り返し字下げ幅。参照 wrap_width、既定 1）
-        wrap_width: u32,
-        /// text-indent em（字下げ幅 - wrap_width。通常は負値）
-        text_indent: i32,
+        /// margin-left em（折り返し字下げ幅。参照 wrap_width）。空（コンマなし）のとき
+        /// None → margin-left を空文字（Quirk）にする。
+        wrap_width: Option<u32>,
+        /// 字下げ幅 em（空のとき None＝0 扱い）。text-indent = width - wrap_width。
+        width: Option<u32>,
     },
     /// 見出し（後続の行を包む）。
     Midashi {

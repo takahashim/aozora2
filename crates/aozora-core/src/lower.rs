@@ -195,13 +195,13 @@ fn classify_line(nodes: &[Node]) -> LineKind {
     // 行単位字下げ ［＃N字下げ］。行にこのマーカーしか無ければ複数行ブロックを開く
     // （参照 apply_jisage の unshift 相当＝ここから字下げと同一）。本文が続けば行包み。
     if let [Node::LineJisage { width }] = nodes {
-        return LineKind::BlockOpen(BlockKind::Jisage { width: *width });
+        return LineKind::BlockOpen(BlockKind::Jisage { width: Some(*width) });
     }
     if let Some(Node::LineJisage { width }) = nodes
         .iter()
         .find(|n| matches!(n, Node::LineJisage { .. }))
     {
-        return LineKind::LineWrap(BlockKind::Jisage { width: *width });
+        return LineKind::LineWrap(BlockKind::Jisage { width: Some(*width) });
     }
     // 行スコープ地付き／字上げ ［＃地付き］text（先頭が is_block=false の Chitsuki）。
     // 参照 renderer は先頭ノードで判定し、行末でブロックを閉じる（1行包み）。
@@ -222,7 +222,7 @@ pub(crate) fn block_kind_of(
 ) -> Option<BlockKind> {
     let w = || params.width.unwrap_or(0);
     match block_type {
-        BlockType::Jisage => Some(BlockKind::Jisage { width: w() }),
+        BlockType::Jisage => Some(BlockKind::Jisage { width: params.width }),
         BlockType::Chitsuki => Some(BlockKind::Chitsuki { width: w() }),
         BlockType::Jizume => Some(BlockKind::Jizume { width: w() }),
         BlockType::Keigakomi => Some(BlockKind::Keigakomi),
@@ -238,15 +238,10 @@ pub(crate) fn block_kind_of(
         }),
         BlockType::Futoji => Some(BlockKind::Futoji),
         BlockType::Shatai => Some(BlockKind::Shatai),
-        BlockType::Burasage => {
-            // 参照 generate_burasage_start: wrap_width 既定 1、text_indent = width - wrap_width。
-            let wrap_width = params.wrap_width.unwrap_or(1);
-            let width = params.width.unwrap_or(0) as i32;
-            Some(BlockKind::Burasage {
-                wrap_width,
-                text_indent: width - wrap_width as i32,
-            })
-        }
+        BlockType::Burasage => Some(BlockKind::Burasage {
+            wrap_width: params.wrap_width,
+            width: params.width,
+        }),
         BlockType::Midashi => Some(BlockKind::Midashi {
             level: params.level.unwrap_or(crate::node::MidashiLevel::O),
             style: params

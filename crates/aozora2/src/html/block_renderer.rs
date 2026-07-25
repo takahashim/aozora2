@@ -30,11 +30,17 @@ fn strip_kuten_prefix(description: &str) -> String {
 
 /// ブロックの開始タグ（`\r\n` を含まない）。複数行 Nested は末尾に `\r\n` を足し、
 /// 行スコープ包み（[`Block::LineWrap`]）はそのまま内容を続ける。None は div 非包み。
-fn block_open_tag(kind: &BlockKind) -> Option<String> {
+fn block_open_tag(kind: &BlockKind, empty_indent_css: bool) -> Option<String> {
     match kind {
-        BlockKind::Jisage { width } => Some(format!(
-            "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">"
-        )),
+        // 空幅（None）は参照が `jisage_` / `margin-left: em`（不正CSS, Quirk）を出す。
+        // empty_indent_css=false（clean）なら妥当な `class="jisage"`。
+        BlockKind::Jisage { width } => Some(match width {
+            Some(w) => format!("<div class=\"jisage_{w}\" style=\"margin-left: {w}em\">"),
+            None if empty_indent_css => {
+                "<div class=\"jisage_\" style=\"margin-left: em\">".to_string()
+            }
+            None => "<div class=\"jisage\">".to_string(),
+        }),
         BlockKind::Chitsuki { width } => Some(format!(
             "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">"
         )),
@@ -165,7 +171,7 @@ impl<'a> BlockRenderer<'a> {
             Block::LineWrap { kind, inline } => {
                 // 行全体をブロック div で1行に包む（行スコープ字下げ／地付き）。
                 // 開き直後の改行も内側 <br /> も出さず、行末に `\r\n` のみ。
-                if let Some(open) = block_open_tag(kind) {
+                if let Some(open) = block_open_tag(kind, self.options.quirks.empty_indent_css) {
                     out.push_str(&open);
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
@@ -187,12 +193,8 @@ impl<'a> BlockRenderer<'a> {
     ) {
         // ぶら下げ（折り返し字下げ）は per-line モデル。外側 div を作らず、各内容行を
         // 個別に burasage div で包む（空行は素の `<br />`）。閉じは何も出さない。
-        if let BlockKind::Burasage {
-            wrap_width,
-            text_indent,
-        } = kind
-        {
-            self.render_burasage(*wrap_width, *text_indent, children, out);
+        if let BlockKind::Burasage { wrap_width, width } = kind {
+            self.render_burasage(*wrap_width, *width, children, out);
             return;
         }
         // ブロック形見出し（［＃ここから中見出し］…）。h4/h3/h5 + midashi_anchor で
@@ -214,7 +216,7 @@ impl<'a> BlockRenderer<'a> {
         let close_nl = if explicit_close { "</div>\r\n" } else { "</div>" };
         // 開始タグ（旧 tag_generator の block 形と厳密一致）。複数行ブロックは開き
         // 直後に `\r\n` を出す（行スコープ包みとの違い）。None なら div で包まない。
-        match block_open_tag(kind) {
+        match block_open_tag(kind, self.options.quirks.empty_indent_css) {
             Some(open) => {
                 out.push_str(&open);
                 out.push_str("\r\n");
@@ -236,11 +238,20 @@ impl<'a> BlockRenderer<'a> {
     /// 行以外の子（行スコープ包み・入れ子ブロック・見出し等）は包まずそのまま描画する。
     fn render_burasage(
         &mut self,
-        wrap_width: u32,
-        text_indent: i32,
+        wrap_width: Option<u32>,
+        width: Option<u32>,
         children: &[Block],
         out: &mut String,
     ) {
+        // margin-left は折り返し幅。空（None）のとき参照は空文字（Quirk）／clean で 0。
+        let margin = wrap_width.map(|w| w.to_string()).unwrap_or_else(|| {
+            if self.options.quirks.empty_indent_css {
+                String::new()
+            } else {
+                "0".to_string()
+            }
+        });
+        let text_indent = width.unwrap_or(0) as i32 - wrap_width.unwrap_or(0) as i32;
         for child in children {
             match child {
                 Block::Line { inline, .. } if inline.is_empty() => {
@@ -249,7 +260,7 @@ impl<'a> BlockRenderer<'a> {
                 }
                 Block::Line { inline, .. } => {
                     out.push_str(&format!(
-                        "<div class=\"burasage\" style=\"margin-left: {wrap_width}em; text-indent: {text_indent}em;\">"
+                        "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">"
                     ));
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
@@ -366,7 +377,8 @@ impl<'a> BlockRenderer<'a> {
                     ));
                     self.render_inlines(children, out);
                     out.push_str(&format!("</a></{tag}>"));
-                } else if let Some(open) = block_open_tag(kind) {
+                } else if let Some(open) = block_open_tag(kind, self.options.quirks.empty_indent_css)
+                {
                     out.push_str(&open);
                     self.render_inlines(children, out);
                     out.push_str("</div>");
