@@ -271,3 +271,13 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
     render)・node_renderer・tag_generator・classify_output_line の撤去。convert_legacy を
     差分オラクルとして当面残すか撤去するかは要判断。48件の quirk 再現は別途 quirk 化 or
     受容。
+
+- 2026-07-25 **撤去 Phase（convert_legacy 保持方針）: 本番経路を全て新経路へ寄せ、旧
+  BlockManager スタックを差分オラクル専用に隔離。** convert_line を
+  `block_renderer::render_line_inline`（中立AST・インライン列）へ移行。これで本番HTML
+  （convert / convert_line / html サブコマンド）は完全に新経路。旧
+  renderer/node_renderer/block_manager/tag_generator は **convert_legacy（差分オラクル
+  compare_body/compare_full）の唯一の入口からのみ到達**（mod.rs に2経路と legacy
+  マーカーを明記）。物理削除は convert_legacy を残す間は保留（参照実装引退時／全 quirk
+  を新経路へ移行後にまとめて撤去可能）。全テスト通過・オラクル 17361 維持。
+  → **Phase B4 実質完了**（BlockManager は本番から排除、木の状態なし歩きが本番経路）。
