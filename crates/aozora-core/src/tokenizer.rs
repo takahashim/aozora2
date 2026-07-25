@@ -1,7 +1,7 @@
 //! 青空文庫形式の字句解析（トークナイザ）
 
 use crate::delimiters::*;
-use crate::token::Token;
+use crate::token::{Span, Token};
 
 /// 1行をトークン列に変換するトークナイザ
 pub struct Tokenizer {
@@ -38,63 +38,63 @@ impl Tokenizer {
     /// 入力をトークン列に変換
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
-
         while !self.is_eof() {
-            let ch = self.current_char().unwrap();
+            tokens.push(self.next_token());
+        }
+        tokens
+    }
 
-            match ch {
-                // コマンド ［＃...］ または外字 ※［＃...］の一部
-                COMMAND_BEGIN => {
-                    if self.peek_nth(1) == Some(IGETA) {
-                        tokens.push(self.read_command());
-                    } else {
-                        // ［ だけならテキスト
-                        tokens.push(Token::Text(ch.to_string()));
-                        self.skip(1);
-                    }
-                }
+    /// トークンを char 位置範囲（[`Span`]）付きで返す。span は入力先頭からの char
+    /// オフセット `[start, end)`。`Tokenizer::new_top_level` の入力（1行）に対する位置。
+    pub fn tokenize_spanned(&mut self) -> Vec<(Token, Span)> {
+        let mut out = Vec::new();
+        while !self.is_eof() {
+            let start = self.pos;
+            let token = self.next_token();
+            out.push((token, Span::new(start, self.pos)));
+        }
+        out
+    }
 
-                // ルビ 《...》
-                RUBY_BEGIN => {
-                    tokens.push(self.read_ruby());
-                }
-
-                // 明示ルビ ｜...《...》
-                RUBY_PREFIX => {
-                    tokens.push(self.read_prefixed_ruby());
-                }
-
-                // 外字 ※［...］（＃は任意）。
-                // 参照 dispatch_gaiji は「※」の次が「［」なら外字扱いする（＃不問）。
-                GAIJI_MARK => {
-                    if self.peek_nth(1) == Some(COMMAND_BEGIN) {
-                        tokens.push(self.read_gaiji());
-                    } else {
-                        // ※ だけならテキスト
-                        tokens.push(Token::Text(ch.to_string()));
-                        self.skip(1);
-                    }
-                }
-
-                // アクセント 〔...〕
-                ACCENT_BEGIN => {
-                    if let Some(token) = self.try_read_accent() {
-                        tokens.push(token);
-                    } else {
-                        // アクセント記号がなければテキスト
-                        tokens.push(Token::Text(ch.to_string()));
-                        self.skip(1);
-                    }
-                }
-
-                // その他はテキスト
-                _ => {
-                    tokens.push(self.read_text());
+    /// 現在位置から1トークン読む（tokenize / tokenize_spanned が共有）。
+    fn next_token(&mut self) -> Token {
+        let ch = self.current_char().unwrap();
+        match ch {
+            // コマンド ［＃...］ または外字 ※［＃...］の一部
+            COMMAND_BEGIN => {
+                if self.peek_nth(1) == Some(IGETA) {
+                    self.read_command()
+                } else {
+                    // ［ だけならテキスト
+                    self.skip(1);
+                    Token::Text(ch.to_string())
                 }
             }
+            // ルビ 《...》
+            RUBY_BEGIN => self.read_ruby(),
+            // 明示ルビ ｜...《...》
+            RUBY_PREFIX => self.read_prefixed_ruby(),
+            // 外字 ※［...］（＃は任意）。※ の次が ［ なら外字扱い（参照 dispatch_gaiji）。
+            GAIJI_MARK => {
+                if self.peek_nth(1) == Some(COMMAND_BEGIN) {
+                    self.read_gaiji()
+                } else {
+                    self.skip(1);
+                    Token::Text(ch.to_string())
+                }
+            }
+            // アクセント 〔...〕
+            ACCENT_BEGIN => {
+                if let Some(token) = self.try_read_accent() {
+                    token
+                } else {
+                    self.skip(1);
+                    Token::Text(ch.to_string())
+                }
+            }
+            // その他はテキスト
+            _ => self.read_text(),
         }
-
-        tokens
     }
 
     // --- トークン読み取り ---
@@ -353,6 +353,11 @@ impl Tokenizer {
 /// 文字列をトークン列に変換するユーティリティ関数
 pub fn tokenize(input: &str) -> Vec<Token> {
     Tokenizer::new_top_level(input).tokenize()
+}
+
+/// 文字列を char 位置範囲（[`Span`]）付きトークン列に変換する。
+pub fn tokenize_spanned(input: &str) -> Vec<(Token, Span)> {
+    Tokenizer::new_top_level(input).tokenize_spanned()
 }
 
 #[cfg(test)]

@@ -11,8 +11,8 @@ pub mod ruby_parser;
 mod utils;
 
 use crate::node::{BlockParams, BlockType, InlineKind, Node, RefSpec, RubyDirection};
-use crate::token::Token;
-use crate::tokenizer::tokenize;
+use crate::token::{Span, Token};
+use crate::tokenizer::{tokenize, tokenize_spanned};
 
 pub use command_parser::{parse_command, CommandResult};
 pub use reference_resolver::{resolve_inline_ruby, resolve_references};
@@ -32,6 +32,9 @@ pub struct RawLine {
     pub nodes: Vec<Node>,
     /// 本文（extract_body_lines 後）における 0 起点の行番号（位置情報）。
     pub line_no: usize,
+    /// 各生ノードの char 位置範囲（[`Span`]、行内の char オフセット）。`nodes[i]` に
+    /// `spans[i]` が対応。ソース忠実な位置情報の置き場（中立AST は派生的に line 番号を持つ）。
+    pub spans: Vec<Span>,
 }
 
 /// 文書全体の RawAST（[`RawLine`] の列）。
@@ -47,10 +50,14 @@ pub fn parse_document_raw(lines: &[&str]) -> RawDoc {
     let raw_lines = lines
         .iter()
         .enumerate()
-        .map(|(line_no, line)| RawLine {
-            source: (*line).to_string(),
-            nodes: parse_raw_nodes(&tokenize(line)),
-            line_no,
+        .map(|(line_no, line)| {
+            let (nodes, spans) = parse_raw_nodes_spanned(&tokenize_spanned(line));
+            RawLine {
+                source: (*line).to_string(),
+                nodes,
+                line_no,
+                spans,
+            }
         })
         .collect();
     RawDoc { lines: raw_lines }
@@ -66,6 +73,23 @@ pub fn parse_raw_nodes(tokens: &[Token]) -> Vec<Node> {
         nodes.extend(parsed);
     }
     nodes
+}
+
+/// `parse_raw_nodes` の span 付き版。各生ノードに、由来トークンの char 位置範囲
+/// （[`Span`]）を対応付けて返す（`nodes[i]` と `spans[i]` が対応）。1トークンが複数
+/// ノードに展開される場合、それらは同じトークン span を共有する。
+pub fn parse_raw_nodes_spanned(spanned: &[(Token, Span)]) -> (Vec<Node>, Vec<Span>) {
+    let tokens: Vec<Token> = spanned.iter().map(|(t, _)| t.clone()).collect();
+    let mut nodes = Vec::new();
+    let mut spans = Vec::new();
+    for (i, (token, span)) in spanned.iter().enumerate() {
+        let parsed = parse_token_with_context(token, &nodes, &tokens, i);
+        for n in parsed {
+            nodes.push(n);
+            spans.push(*span);
+        }
+    }
+    (nodes, spans)
 }
 
 /// トークン列をノード列にパースし、行内で完結する前方参照を解決する
@@ -661,6 +685,32 @@ mod tests {
             assert_eq!(unicode.as_deref(), Some("○"));
         } else {
             panic!("Expected Gaiji node");
+        }
+    }
+}
+
+#[cfg(test)]
+mod span_tests {
+    use super::*;
+
+    /// RawLine.spans が各生ノードの char 位置範囲を正しく表す（行を char で切り出せる）。
+    #[test]
+    fn raw_nodes_have_char_spans() {
+        let line = "あ※［＃「丸」、U+25CB］い《い》";
+        let doc = parse_document_raw(&[line]);
+        let rl = &doc.lines[0];
+        assert_eq!(rl.nodes.len(), rl.spans.len(), "nodes と spans は同数");
+        let chars: Vec<char> = line.chars().collect();
+        // 先頭ノードは Text("あ") で span [0,1)
+        assert_eq!(rl.spans[0], Span::new(0, 1));
+        let s0: String = chars[rl.spans[0].start..rl.spans[0].end].iter().collect();
+        assert_eq!(s0, "あ");
+        // 2番目は外字 ※［＃…］。span はその範囲を覆う（先頭が ※）。
+        let g = &rl.spans[1];
+        assert_eq!(chars[g.start], '※');
+        // span で行を char 単位に切り出せることを確認（全 span が行内）。
+        for sp in &rl.spans {
+            assert!(sp.end <= chars.len(), "span が行内: {sp:?}");
         }
     }
 }
