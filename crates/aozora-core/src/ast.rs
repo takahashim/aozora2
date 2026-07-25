@@ -180,13 +180,13 @@ pub enum Block {
         /// バックエンドはこのフラグで閉じタグ直後の改行有無を状態なしに決める。
         explicit_close: bool,
     },
-    /// 行単位字下げ ［＃N字下げ］text（同じ行に本文があるケース）。
-    /// 参照実装 apply_jisage は行全体を字下げ div で1行に包む：
-    /// `<div class="jisage_w" style="margin-left: wem">{inline}</div>\r\n`。
-    /// 複数行 Nested と違い、開きタグ直後の `\r\n` も内側 `<br />` も出ない。
-    LineJisage {
-        /// 字下げ幅（em）
-        width: u32,
+    /// 行単位のブロック包み（同じ行に本文がある字下げ／地付き等）。
+    /// 参照実装 apply_jisage / 行スコープ地付き（is_block=false）は行全体を1行の
+    /// div で包む：`<div class="…">{inline}</div>\r\n`。複数行 Nested と違い、
+    /// 開きタグ直後の `\r\n` も内側 `<br />` も出ない。
+    LineWrap {
+        /// ブロックの種類（Jisage / Chitsuki など）
+        kind: BlockKind,
         /// 行の内容（インライン列）
         inline: Vec<Inline>,
     },

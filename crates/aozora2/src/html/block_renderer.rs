@@ -28,6 +28,29 @@ fn strip_kuten_prefix(description: &str) -> String {
     description.replace("「※」は", "").replace("「※」の", "")
 }
 
+/// ブロックの開始タグ（`\r\n` を含まない）。複数行 Nested は末尾に `\r\n` を足し、
+/// 行スコープ包み（[`Block::LineWrap`]）はそのまま内容を続ける。None は div 非包み。
+fn block_open_tag(kind: &BlockKind) -> Option<String> {
+    match kind {
+        BlockKind::Jisage { width } => Some(format!(
+            "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">"
+        )),
+        BlockKind::Chitsuki { width } => Some(format!(
+            "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">"
+        )),
+        BlockKind::Jizume { width } => Some(format!(
+            "<div class=\"jizume_{width}\" style=\"width: {width}em\">"
+        )),
+        BlockKind::Keigakomi => {
+            Some("<div class=\"keigakomi\" style=\"border: solid 1px\">".to_string())
+        }
+        BlockKind::Yokogumi => Some("<div class=\"yokogumi\">".to_string()),
+        BlockKind::Caption => Some("<div class=\"caption\">".to_string()),
+        // TODO: Burasage（per-line 包み）・Midashi・FontSize/Futoji/Shatai。
+        _ => None,
+    }
+}
+
 /// フォントサイズ（大/小＋段階）の class と style（参照 render_font_size と同じ）。
 fn font_size_class_style(size_type: FontSizeType, level: u32) -> (String, String) {
     match size_type {
@@ -125,14 +148,18 @@ impl<'a> BlockRenderer<'a> {
                 children,
                 explicit_close,
             } => self.render_nested(kind, children, *explicit_close, out),
-            Block::LineJisage { width, inline } => {
-                // 行全体を字下げ div で1行に包む（apply_jisage）。開き直後の改行も
-                // 内側 <br /> も出さず、行末に `\r\n` のみ。
-                out.push_str(&format!(
-                    "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">"
-                ));
-                self.render_inlines(inline, out);
-                out.push_str("</div>\r\n");
+            Block::LineWrap { kind, inline } => {
+                // 行全体をブロック div で1行に包む（行スコープ字下げ／地付き）。
+                // 開き直後の改行も内側 <br /> も出さず、行末に `\r\n` のみ。
+                if let Some(open) = block_open_tag(kind) {
+                    out.push_str(&open);
+                    self.render_inlines(inline, out);
+                    out.push_str("</div>\r\n");
+                } else {
+                    // div で包まない種類（想定外）は内容だけ出す。
+                    self.render_inlines(inline, out);
+                    out.push_str("\r\n");
+                }
             }
         }
     }
@@ -146,28 +173,12 @@ impl<'a> BlockRenderer<'a> {
     ) {
         // 閉じタグ直後の改行は互換メタデータで決める（暗黙閉じは次の開きと同じ行）。
         let close_nl = if explicit_close { "</div>\r\n" } else { "</div>" };
-        // 開始タグ（旧 tag_generator の block 形と厳密一致）。None なら div で包まない。
-        let open = match kind {
-            BlockKind::Jisage { width } => Some(format!(
-                "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">\r\n"
-            )),
-            BlockKind::Chitsuki { width } => Some(format!(
-                "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">\r\n"
-            )),
-            BlockKind::Jizume { width } => Some(format!(
-                "<div class=\"jizume_{width}\" style=\"width: {width}em\">\r\n"
-            )),
-            BlockKind::Keigakomi => {
-                Some("<div class=\"keigakomi\" style=\"border: solid 1px\">\r\n".to_string())
-            }
-            BlockKind::Yokogumi => Some("<div class=\"yokogumi\">\r\n".to_string()),
-            BlockKind::Caption => Some("<div class=\"caption\">\r\n".to_string()),
-            // TODO: Burasage（per-line 包み）・Midashi・FontSize/Futoji/Shatai。
-            _ => None,
-        };
-        match open {
+        // 開始タグ（旧 tag_generator の block 形と厳密一致）。複数行ブロックは開き
+        // 直後に `\r\n` を出す（行スコープ包みとの違い）。None なら div で包まない。
+        match block_open_tag(kind) {
             Some(open) => {
                 out.push_str(&open);
+                out.push_str("\r\n");
                 for child in children {
                     self.render_block(child, out);
                 }

@@ -64,11 +64,27 @@ pub fn run(args: Args) -> io::Result<()> {
             i += 1;
         }
         let ctx = |s: &str| {
-            let start = i.saturating_sub(30);
-            let end = (i + 40).min(s.len());
-            s.get(start..end).unwrap_or("").replace('\r', "").replace('\n', "⏎")
+            // マルチバイト境界に落ちないよう前後を char 境界まで広げる。
+            let mut start = i.saturating_sub(40);
+            while start > 0 && !s.is_char_boundary(start) {
+                start -= 1;
+            }
+            let mut end = (i + 40).min(s.len());
+            while end < s.len() && !s.is_char_boundary(end) {
+                end += 1;
+            }
+            s.get(start..end)
+                .unwrap_or("")
+                .replace('\r', "")
+                .replace('\n', "⏎")
         };
-        println!("DIFF\told:{}\tnew:{}", ctx(&old_body), ctx(&new_body));
+        println!(
+            "DIFF@{i} (old {} new {})\told:{}\tnew:{}",
+            old_body.len(),
+            new_body.len(),
+            ctx(&old_body),
+            ctx(&new_body)
+        );
     }
     Ok(())
 }

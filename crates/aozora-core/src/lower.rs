@@ -65,15 +65,21 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 }
                 // 対応する開きが無ければ捨てる（旧経路も未マッチ終了は無出力）。
             }
-            LineKind::LineJisage(width) => {
-                // ［＃N字下げ］text: 行全体を字下げ div で1行に包む（apply_jisage）。
-                // マーカーを除いた残りをインライン化する。
+            LineKind::LineWrap(kind) => {
+                // ［＃N字下げ］text／行スコープ地付き: 行全体を div で1行に包む。
+                // 行スコープマーカー（LineJisage / is_block=false の BlockStart）を除いた
+                // 残りをインライン化する。
                 let rest: Vec<Node> = nodes
                     .into_iter()
-                    .filter(|n| !matches!(n, Node::LineJisage { .. }))
+                    .filter(|n| {
+                        !matches!(
+                            n,
+                            Node::LineJisage { .. } | Node::BlockStart { .. } | Node::BlockEnd { .. }
+                        )
+                    })
                     .collect();
                 let inline = crate::ast::to_inlines(&rest);
-                push_block(&mut stack, &mut top, Block::LineJisage { width, inline });
+                push_block(&mut stack, &mut top, Block::LineWrap { kind, inline });
             }
             LineKind::Content => {
                 let inline = crate::ast::to_inlines(&nodes);
@@ -115,8 +121,8 @@ enum LineKind {
     BlockOpen(BlockKind),
     /// ブロック終了（`ここで…終わり`）。単独行の BlockEnd。
     BlockClose,
-    /// 行単位字下げ ［＃N字下げ］text（同行に本文あり）。
-    LineJisage(u32),
+    /// 行スコープの1行包み（同行に本文あり）。字下げ／地付き。
+    LineWrap(BlockKind),
     /// 内容行。
     Content,
 }
@@ -146,7 +152,16 @@ fn classify_line(nodes: &[Node]) -> LineKind {
         .iter()
         .find(|n| matches!(n, Node::LineJisage { .. }))
     {
-        return LineKind::LineJisage(*width);
+        return LineKind::LineWrap(BlockKind::Jisage { width: *width });
+    }
+    // 行スコープ地付き／字上げ ［＃地付き］text（先頭が is_block=false の Chitsuki）。
+    // 参照 renderer は先頭ノードで判定し、行末でブロックを閉じる（1行包み）。
+    if let Some(Node::BlockStart { block_type, params }) = nodes.first() {
+        if !params.is_block && *block_type == BlockType::Chitsuki {
+            return LineKind::LineWrap(BlockKind::Chitsuki {
+                width: params.width.unwrap_or(0),
+            });
+        }
     }
     LineKind::Content
 }
