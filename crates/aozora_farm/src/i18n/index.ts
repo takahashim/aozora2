@@ -1,7 +1,7 @@
 import { ja } from './ja'
 import { en } from './en'
 
-type TranslationKey = keyof typeof ja
+export type TranslationKey = keyof typeof ja
 type TranslationMap = Record<TranslationKey, string>
 type Translations = Record<string, TranslationMap>
 

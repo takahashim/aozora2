@@ -1,5 +1,5 @@
 import { EditorView, showPanel, Panel } from '@codemirror/view'
-import { t, onLangChange } from '@/i18n'
+import { t, onLangChange, type TranslationKey } from '@/i18n'
 import {
   insertRuby,
   insertRubyRange,
@@ -18,8 +18,8 @@ import { openAnnotationPalette } from './palette'
 
 interface ToolbarButton {
   id: string
-  labelKey: string
-  tooltipKey: string
+  labelKey: TranslationKey
+  tooltipKey: TranslationKey
   shortcut: string | null
   command: AozoraCommand
   icon: string
