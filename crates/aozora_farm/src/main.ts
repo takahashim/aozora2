@@ -162,7 +162,7 @@ function debouncedConvert(content: string): void {
     } else {
       setStatus(t('status.ready'), '')
     }
-  }, 300)
+  }, 500)
 }
 
 // Set status message

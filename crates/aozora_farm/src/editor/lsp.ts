@@ -176,9 +176,11 @@ function analysisRunner(delayMs: number): Extension {
     const text = view.state.doc.toString()
     analyze(text)
       .then((a) => {
-        // ハイライト/アウトライン用に保持しつつ、診断をセットする。
-        view.dispatch({ effects: setAnalysisEffect.of(a) })
-        view.dispatch(setDiagnostics(view.state, toCmDiagnostics(view.state.doc, a.diagnostics)))
+        // ハイライト/アウトライン用の保持と診断セットを 1 トランザクションにまとめる
+        // （dispatch を 2 回するとエディタ更新も 2 回走るため）。
+        view.dispatch(setDiagnostics(view.state, toCmDiagnostics(view.state.doc, a.diagnostics)), {
+          effects: setAnalysisEffect.of(a),
+        })
       })
       .catch(() => {
         // Tauri 非接続（素の vite 等）では解析不可。支援なしで動作継続。
@@ -311,7 +313,7 @@ const lspTheme = EditorView.theme({
  * 青空文庫 LSP 拡張一式（診断＋セマンティックハイライト）。
  * baseExtensions に展開して使う。delayMs は解析デバウンス（既定 200ms）。
  */
-export function aozoraLsp(delayMs = 200): Extension[] {
+export function aozoraLsp(delayMs = 400): Extension[] {
   return [
     analysisField,
     highlightPlugin,
