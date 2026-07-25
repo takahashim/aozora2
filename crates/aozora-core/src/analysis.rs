@@ -14,9 +14,10 @@
 
 use crate::ast::{Block, BlockKind};
 use crate::lower::lower_to_blocks_with_diagnostics;
-use crate::node::{BlockType, MidashiLevel, Node};
-use crate::parser::reference_resolver::resolve_references;
+use crate::node::{BlockType, MidashiLevel, Node, RefSpec};
+use crate::parser::reference_resolver::resolve_references_collecting_failures;
 use crate::parser::{parse_document_raw, RawLine};
+use std::collections::HashSet;
 
 #[cfg(feature = "serde")]
 use serde::Serialize;
@@ -138,8 +139,18 @@ pub fn analyze(input: &str) -> Analysis {
     let mut analysis = Analysis::default();
 
     for raw in &doc.lines {
+        // 前方参照はこの行のなかで解決される（ルビ親文字も含む）。生ノードでは未解決
+        // なので、実際の解決を **1 行 1 回**走らせて、注記化された（＝解決に失敗した）
+        // raw の集合を得ておく。個々の参照を再解決する二次コストを避けるため。
+        let failed: HashSet<String> = {
+            let mut nodes = raw.nodes.clone();
+            resolve_references_collecting_failures(&mut nodes)
+                .into_iter()
+                .collect()
+        };
+
         // `nodes[i]` と `spans[i]` は 1:1 対応（parse_raw_nodes_spanned の契約）。
-        for (idx, (node, span)) in raw.nodes.iter().zip(raw.spans.iter()).enumerate() {
+        for (node, span) in raw.nodes.iter().zip(raw.spans.iter()) {
             let range = Range {
                 line: raw.line_no,
                 start: span.start,
@@ -155,12 +166,8 @@ pub fn analyze(input: &str) -> Analysis {
             }
 
             match node {
-                // 前方参照は生ノードでは未解決だが、その多くは同じ行の前方テキストに
-                // 正当に解決する（ルビ親文字も含む）。実際に解決を走らせて失敗した
-                // ものだけを診断する（ルビ併用などの偽陽性を除く）。
-                Node::UnresolvedReference { raw: original, .. }
-                    if reference_fails(&raw.nodes, idx, original) =>
-                {
+                // 実際に解決できず注記化されたものだけ診断（ルビ併用などの偽陽性を除く）。
+                Node::UnresolvedReference { raw: original, .. } if failed.contains(original) => {
                     analysis.diagnostics.push(Diagnostic {
                         range,
                         severity: Severity::Warning,
@@ -216,16 +223,6 @@ pub fn analyze(input: &str) -> Analysis {
     }
 
     analysis
-}
-
-/// `idx` の前方参照が解決に失敗するか。実際の `resolve_references`（ルビ親文字解決を含む）を
-/// 前方スライスに対して走らせ、この参照の `raw` がそのまま `Note` として残れば失敗と判定する。
-/// 参照は前方のみ見るので、`nodes[..=idx]` を分離して解決しても結果は行全体と同じ。
-fn reference_fails(line_nodes: &[Node], idx: usize, raw: &str) -> bool {
-    let mut slice = line_nodes[..=idx].to_vec();
-    resolve_references(&mut slice);
-    // 解決成功なら Midashi/Style 等に化ける。失敗時のみ raw と同じ Note が残る。
-    slice.iter().any(|n| matches!(n, Node::Note(s) if s == raw))
 }
 
 /// Block 木から折りたたみ範囲を集める（複数行の Nested ブロックのみ）。
@@ -290,6 +287,19 @@ fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
                     text: text_of(children),
                 });
             }
+            // 後置形の見出し `対象［＃「対象」は大見出し］`（未解決の生ノード）。
+            // 対象テキストを見出し名にする。
+            Node::UnresolvedReference {
+                spec: RefSpec::Midashi { level, .. },
+                target,
+                ..
+            } => {
+                out.push(Symbol {
+                    range: span_range(raw, i, i),
+                    level: level_number(*level),
+                    text: target.clone(),
+                });
+            }
             Node::BlockStart {
                 block_type: BlockType::Midashi,
                 params,
@@ -344,6 +354,16 @@ fn classify(node: &Node) -> Option<SemTokenKind> {
         Node::Gaiji { .. } => Some(SemTokenKind::Gaiji),
         Node::Accent { .. } => Some(SemTokenKind::Accent),
         Node::Img { .. } => Some(SemTokenKind::Image),
+        // 後置形の参照（未解決の生ノード）: 見出し・強調は種別色にする。
+        // 例 `序章［＃「序章」は大見出し］` は Node::Midashi ではなく UnresolvedReference。
+        Node::UnresolvedReference {
+            spec: RefSpec::Midashi { .. },
+            ..
+        } => Some(SemTokenKind::Heading),
+        Node::UnresolvedReference {
+            spec: RefSpec::Style(_),
+            ..
+        } => Some(SemTokenKind::Emphasis),
         // ブロック見出しの開始／終了マーカーも見出し色にする。
         Node::BlockStart {
             block_type: BlockType::Midashi,
@@ -492,6 +512,19 @@ mod tests {
                 .iter()
                 .all(|d| d.code != "unresolved-reference"),
             "正当な注記を未解決扱いしない"
+        );
+    }
+
+    #[test]
+    fn postfix_heading_becomes_symbol_and_heading_token() {
+        // 最も一般的な後置形見出し（Node::Midashi ではなく UnresolvedReference）。
+        let a = analyze("タイトル\n著者\n\n序章［＃「序章」は大見出し］");
+        let heading: Vec<_> = a.symbols.iter().filter(|s| s.text == "序章").collect();
+        assert_eq!(heading.len(), 1, "後置形見出しがアウトラインに出る");
+        assert_eq!(heading[0].level, 1);
+        assert!(
+            a.tokens.iter().any(|t| t.kind == SemTokenKind::Heading),
+            "後置形見出しが見出し色になる"
         );
     }
 

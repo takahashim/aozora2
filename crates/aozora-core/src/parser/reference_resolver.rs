@@ -190,7 +190,25 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
 }
 
 /// 装飾の前方参照を解決
+/// 前方参照を解決しつつ、解決できず注記化した参照の `raw` 文字列を返す。
+/// ノード変換の結果は [`resolve_references`] と完全に同一で、失敗リストを追加返却するだけ。
+/// エディタ支援 `analysis` が「実際に解決できなかった参照」を **1 行 1 回**の解決で
+/// 知るために使う（参照ごとに resolve をやり直す二次的コストを避ける）。
+pub fn resolve_references_collecting_failures(nodes: &mut Vec<Node>) -> Vec<String> {
+    resolve_ruby_bases(nodes);
+    resolve_annotation_ranges(nodes);
+    let mut failed = Vec::new();
+    resolve_style_references_collecting(nodes, &mut failed);
+    failed
+}
+
 fn resolve_style_references(nodes: &mut Vec<Node>) {
+    resolve_style_references_collecting(nodes, &mut Vec::new());
+}
+
+/// [`resolve_style_references`] と同じ解決を行い、解決できず注記化したトップレベル参照の
+/// `raw` を `failed` に集める（子ノード内の失敗は集めない）。
+fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<String>) {
     let mut i = 0;
     while i < nodes.len() {
         if let Node::UnresolvedReference { target, spec, raw } = &nodes[i] {
@@ -208,6 +226,7 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
             }
 
             // 解決できなかった場合は、もとの文字列のまま注記にする
+            failed.push(raw_clone.clone());
             nodes[i] = Node::Note(raw_clone);
         }
         i += 1;
