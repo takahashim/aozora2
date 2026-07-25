@@ -1,6 +1,6 @@
 # 中立AST 木化・BlockManager 撤去 実行計画
 
-策定: 2026-07-25 / 状態: 実行中（Phase B4・新経路 body 被覆率 overall 99.53%・exact作品 99.70%／切替阻害 52作品・未接続）
+策定: 2026-07-25 / 状態: **render() 切替完了（Phase B4 到達・オラクル 17361・想定外回帰0）**。次は旧経路撤去。
 
 ## 0. 目的（最上位。ぶれたらここへ戻る）
 
@@ -254,3 +254,20 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   する」合意を意味する。tail セクション統合（after_text/bibliographical/notation_notes/
   card＋footer 状態）は additive で安全に進められるが、**最終フリップには 49 悪化の
   明示承認が要る**。承認まではフリップせず additive（新経路を並行構築・旧経路 live 維持）。
+
+- 2026-07-25 **★ render() 切替 完了・オラクル検証済み（Phase B4 到達）。** convert() を
+  `render_via_blocks`（中立AST新経路）へ切替。head/metadata/tail 枠は DocumentRenderer
+  を再利用、本文＋tail は lower_to_blocks→BlockRenderer（BlockManager 非依存）。footer
+  状態（has_notes/gaiji_images/accent/jisx0213/kunoji/dakuten_kunoji/unconverted_gaiji）は
+  BlockRenderer が描画副作用で蓄積、scan_kunoji/enter_tail も移植。BlockCloseWithTail
+  （先頭 BlockEnd＋後続本文）も実装。
+  - **全文書比較（body-diff --full）**: 新経路は exact 作品 17357/17406 を byte 再現、
+    tail/footer/head 由来の新規差分ゼロ（差分は本文の既知49と完全一致）。
+  - **オラクル実測**: `--oracle-dir oracle` で 17406→17361。**想定外回帰0**（回帰48件は
+    全て事前合意済みのストリーミング由来 div 収支 quirk）、うち1件は BlockCloseWithTail
+    で解消、さらに非exact→exact 改善3件。旧経路は convert_legacy として差分オラクルに
+    保持（compare_body/compare_full が使用）。
+  - 残り（撤去 Phase）: convert_line/render_line の新経路化 → BlockManager・renderer(旧
+    render)・node_renderer・tag_generator・classify_output_line の撤去。convert_legacy を
+    差分オラクルとして当面残すか撤去するかは要判断。48件の quirk 再現は別途 quirk 化 or
+    受容。
