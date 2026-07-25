@@ -1,0 +1,111 @@
+/* Annotation Command Palette */
+.aozora-palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 2000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+}
+
+.aozora-palette {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 60vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.palette-search-container {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-search {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 1rem;
+  outline: none;
+}
+
+.palette-search:focus {
+  border-color: var(--accent);
+}
+
+.palette-search::placeholder {
+  color: var(--text-secondary);
+}
+
+.palette-commands {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.palette-category-header {
+  padding: 8px 16px 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.palette-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.palette-item:hover,
+.palette-item.selected {
+  background: var(--bg-secondary);
+}
+
+.palette-item.selected {
+  background: var(--accent);
+  color: white;
+}
+
+.palette-item.selected .palette-item-preview {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.palette-item-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.palette-item-preview {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-family: "SF Mono", "Monaco", "Consolas", monospace;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Empty state */
+.palette-commands:empty::after {
+  content: '該当する注記がありません';
+  display: block;
+  padding: 20px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}

@@ -4,6 +4,14 @@ members = [
     "crates/aozora-core",
     "crates/aozora2",
     "crates/aozora2text",
+    "crates/aozora_farm/src-tauri",
+]
+# aozora_farm（Tauri GUI）は GTK/webkit のシステムライブラリが要るので、既定の
+# build/test からは外す。GUI をビルドするときだけ `cargo build -p aozora_farm`。
+default-members = [
+    "crates/aozora-core",
+    "crates/aozora2",
+    "crates/aozora2text",
 ]
 
 [workspace.package]

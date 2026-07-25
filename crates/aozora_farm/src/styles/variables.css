@@ -1,0 +1,23 @@
+:root {
+  /* Backgrounds */
+  --bg-primary: #f3f5f2;
+  --bg-secondary: #e6ebe5;
+  --bg-panel: #f8faf7;
+
+  /* Text */
+  --text-primary: #394339;
+  --text-secondary: #6a746a;
+
+  /* Accent */
+  --accent: #6c9249;
+  --accent-hover: #8fad97;
+
+  /* UI */
+  --border: #c8c3b8;
+  --success: #6f9277;
+  --error: #b86b6b;
+
+  /* Editor */
+  --editor-bg: #fafbf9;
+  --editor-line-height: 1.8;
+}

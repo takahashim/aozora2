@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>青空ファーム</title>
+  <link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <div class="header-left">
+        <h1 data-i18n="app.title">青空ファーム</h1>
+        <p class="subtitle" data-i18n="app.subtitle">青空文庫形式プレビューア＆エディタ</p>
+      </div>
+      <div class="header-right">
+        <button id="lang-toggle" class="btn btn-small">EN</button>
+      </div>
+    </header>
+
+    <main>
+      <div class="panel-container">
+        <!-- Input Panel -->
+        <div class="panel input-panel">
+          <div class="panel-header">
+            <h2 data-i18n="panel.input">入力</h2>
+            <div class="panel-actions">
+              <button id="open-file" class="btn" data-i18n="btn.open-file">ファイルを開く</button>
+              <button id="save-text" class="btn btn-secondary" data-i18n="btn.save-text">テキストを保存</button>
+            </div>
+          </div>
+          <div id="editor-container" class="editor-container"></div>
+          <div class="file-info" id="file-info"></div>
+        </div>
+
+        <!-- Preview Panel -->
+        <div class="panel preview-panel">
+          <div class="panel-header">
+            <h2 data-i18n="panel.preview">プレビュー</h2>
+            <div class="panel-actions">
+              <button id="view-html" class="btn btn-secondary" data-i18n="btn.view-html">HTMLを表示</button>
+              <button id="save-html" class="btn" data-i18n="btn.save-html">HTMLを保存</button>
+            </div>
+          </div>
+          <div class="preview-container">
+            <iframe id="preview-frame" sandbox="allow-same-origin allow-scripts"></iframe>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="status" id="status" data-i18n="status.ready">準備完了</div>
+    </footer>
+  </div>
+
+  <!-- HTML Source Modal -->
+  <div id="html-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 data-i18n="modal.html-source">HTMLソース</h3>
+        <div class="modal-actions">
+          <button id="copy-html" class="btn" data-i18n="btn.copy-html">HTMLをコピー</button>
+          <button id="close-modal" class="btn btn-secondary" data-i18n="btn.close">閉じる</button>
+        </div>
+      </div>
+      <pre id="html-source" class="html-source"></pre>
+    </div>
+  </div>
+
+  <!-- About Modal -->
+  <div id="about-modal" class="modal">
+    <div class="modal-content about-content">
+      <div class="about-icon">
+        <img src="/app-icon.png" alt="青空ファーム">
+      </div>
+      <h2 class="about-title" id="about-title"></h2>
+      <p class="about-version" id="about-version"></p>
+      <p class="about-description" id="about-description"></p>
+      <button id="close-about" class="btn" data-i18n="btn.close">閉じる</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
