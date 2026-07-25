@@ -16,8 +16,8 @@ use aozora_core::tokenizer::tokenize;
 use super::node_renderer::UnconvertedGaiji;
 use super::options::RenderOptions;
 use super::presentation::{
-    html_escape, is_block_only_line, jis_code_to_path, midashi_combined_css_class,
-    midashi_html_tag, style_css_class, style_html_tag,
+    html_escape, jis_code_to_path, midashi_combined_css_class, midashi_html_tag, style_css_class,
+    style_html_tag,
 };
 
 /// 画像化できない外字を本文中で示す記号
@@ -181,16 +181,10 @@ impl<'a> BlockRenderer<'a> {
     fn render_block(&mut self, block: &Block, out: &mut String) {
         match block {
             Block::Line { inline, brk } => {
-                // 行を組み立ててから行末 <br /> の要否を決める。参照実装は描画済みの
-                // 行HTMLで判定する（見出し・ブロックのみの行は <br /> を抑制）。
-                let mut line_html = String::new();
-                self.render_inlines(inline, &mut line_html);
-                out.push_str(&line_html);
-                let needs_br = match brk {
-                    Break::None => false,
-                    Break::Br => !is_block_only_line(&line_html),
-                };
-                if needs_br {
+                // 行末 <br /> の要否は Lower 時に確定済み（brk）。バックエンドは木を
+                // 状態なしに歩くだけで、描画済みHTMLの詮索はしない。
+                self.render_inlines(inline, out);
+                if *brk == Break::Br {
                     out.push_str("<br />");
                 }
                 out.push_str("\r\n");

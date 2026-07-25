@@ -265,6 +265,41 @@ fn wrap_inline_range(
     }
 }
 
+/// この行のインライン列を描画すると「ブロックのみ行」になるか（末尾が `</div>` や
+/// `</hN>`＝参照が行末 `<br />` を抑制する形）。旧 `is_block_only_line`（描画済みHTML
+/// 判定）の木版で、Lower 時に `Break` を確定させ、バックエンドの HTML 詮索を無くす。
+/// 末尾インラインだけで決まる（is_block_only_line は行末タグを見るため）。
+pub fn line_is_block_only(inlines: &[Inline]) -> bool {
+    match inlines.last() {
+        // 見出しは Normal のみ `</hN>`（dogyo-/mado- はインラインなので br）。
+        Some(Inline::Midashi { style, .. }) => *style == crate::node::MidashiStyle::Normal,
+        // 行末で開いた地付き（`…</div>`）。
+        Some(Inline::ChitsukiInline { .. }) => true,
+        // 同行開閉のブロック形（div で包むか、Normal 見出し）。
+        Some(Inline::BlockInline { kind, .. }) => block_kind_is_block_only(kind),
+        _ => false,
+    }
+}
+
+/// `BlockInline` の種類が末尾 `</div>`/`</hN>`（ブロックのみ）になるか。
+fn block_kind_is_block_only(kind: &BlockKind) -> bool {
+    match kind {
+        BlockKind::Midashi { style, .. } => *style == crate::node::MidashiStyle::Normal,
+        // div で包む種類は末尾が `</div>`。
+        BlockKind::Jisage { .. }
+        | BlockKind::Chitsuki { .. }
+        | BlockKind::Jizume { .. }
+        | BlockKind::Keigakomi
+        | BlockKind::Yokogumi
+        | BlockKind::Caption
+        | BlockKind::FontSize { .. }
+        | BlockKind::Futoji
+        | BlockKind::Shatai => true,
+        // Burasage は BlockInline には現れない。
+        BlockKind::Burasage { .. } => false,
+    }
+}
+
 /// `start` の `BlockStart` に対応する同種の `BlockEnd` の添字を返す（入れ子対応）。
 fn find_matching_end(
     nodes: &[crate::node::Node],

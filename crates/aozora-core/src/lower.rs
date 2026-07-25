@@ -96,7 +96,11 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 // 先頭 BlockEnd を除いた後続本文を同じ行に出す（explicit なら br 抑制）。
                 let rest: Vec<Node> = nodes.into_iter().skip(1).collect();
                 let inline = crate::ast::to_inlines(&rest);
-                let brk = if explicit { Break::None } else { Break::Br };
+                let brk = if explicit || crate::ast::line_is_block_only(&inline) {
+                    Break::None
+                } else {
+                    Break::Br
+                };
                 push_block(&mut stack, &mut top, Block::Line { inline, brk });
             }
             LineKind::LineWrap(kind) => {
@@ -120,12 +124,14 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                         }
                     )
                 });
-                let brk = if has_explicit_close {
+                let inline = crate::ast::to_inlines(&nodes);
+                // 行末 <br /> の要否を Lower 時に確定（@terprip：ここで…終わり行、
+                // および見出し・ブロックのみ行では抑制）。
+                let brk = if has_explicit_close || crate::ast::line_is_block_only(&inline) {
                     Break::None
                 } else {
                     Break::Br
                 };
-                let inline = crate::ast::to_inlines(&nodes);
                 let line = Block::Line { inline, brk };
                 push_block(&mut stack, &mut top, line);
             }
