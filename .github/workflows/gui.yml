@@ -34,7 +34,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: crates/aozora_farm/package-lock.json
 
@@ -53,9 +53,29 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # tauri build は beforeBuildCommand (tsc && vite build) を実行してから
-      # src-tauri (aozora-core をリンク) をコンパイルする。--no-bundle により
-      # インストーラ生成（Windows の .ico や署名が必要）はスキップし、
-      # フロントエンド＋Rust アプリのビルド／リンク成立のみを検証する。
-      - name: Build Tauri app (no bundle)
+      # macOS: 署名なしで .app と .dmg を生成する（icns 同梱・Gatekeeper 警告は
+      # 右クリック→開くで回避可）。成果物は下の upload-artifact で配布する。
+      - name: Build Tauri app (macOS, bundle)
+        if: matrix.os == 'macos-latest'
+        run: npm run tauri -- build --bundles app dmg
+
+      # Windows: beforeBuildCommand (tsc && vite build) → src-tauri コンパイルまでを
+      # 検証する。インストーラ生成はスキップ（--no-bundle）。
+      - name: Build Tauri app (Windows, no bundle)
+        if: matrix.os == 'windows-latest'
         run: npm run tauri -- build --no-bundle
+
+      # 生成した Mac アプリ（.app / .dmg）をアーティファクトとして公開。
+      # ワークスペースなので出力はリポジトリ直下 target/ に出る（保険で src-tauri
+      # 配下の target も glob）。Actions 実行画面の Artifacts からダウンロードできる。
+      - name: Upload macOS app
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aozora-farm-macos
+          if-no-files-found: error
+          path: |
+            target/release/bundle/dmg/*.dmg
+            target/release/bundle/macos/*.app
+            crates/aozora_farm/src-tauri/target/release/bundle/dmg/*.dmg
+            crates/aozora_farm/src-tauri/target/release/bundle/macos/*.app
