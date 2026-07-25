@@ -5,13 +5,13 @@
 //! のみ）。旧経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ足す。
 //! バックエンドは木を**状態なしに歩く**だけ（BlockManager を持たない）。
 
-use aozora_core::ast::{to_inlines, Block, BlockKind, Break, CloseKind, Inline};
-use aozora_core::gaiji::{parse_gaiji, GaijiResult};
-use aozora_core::node::{FontSizeType, MidashiLevel, RubyDirection};
-use aozora_core::parser::parse;
-use aozora_core::parser::reference_resolver::resolve_inline_ruby;
-use aozora_core::token::Token;
-use aozora_core::tokenizer::tokenize;
+use crate::ast::{to_inlines, Block, BlockKind, Break, CloseKind, Inline};
+use crate::gaiji::{parse_gaiji, GaijiResult};
+use crate::node::{FontSizeType, MidashiLevel, RubyDirection};
+use crate::parser::parse;
+use crate::parser::reference_resolver::resolve_inline_ruby;
+use crate::token::Token;
+use crate::tokenizer::tokenize;
 
 use super::options::RenderOptions;
 use super::presentation::{
@@ -387,7 +387,7 @@ impl<'a> BlockRenderer<'a> {
                 out.push_str(&s);
             }
             Inline::DakutenKatakana { num } => {
-                out.push_str(aozora_core::node::Node::dakuten_katakana_char(num))
+                out.push_str(crate::node::Node::dakuten_katakana_char(num))
             }
             Inline::ChitsukiInline { width, children } => {
                 out.push_str(&format!(
@@ -821,9 +821,9 @@ impl<'a> BlockRenderer<'a> {
 /// 単一行のインラインHTML（行末 `<br />`/`\r\n` なし）を新経路で描画する。
 /// 旧 `HtmlRenderer::render_line` の中立AST版（インライン列のみ）。
 pub fn render_line_inline(line: &str, options: &RenderOptions) -> String {
-    use aozora_core::ast::to_inlines;
-    use aozora_core::parser::parse;
-    use aozora_core::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
+    use crate::ast::to_inlines;
+    use crate::parser::parse;
+    use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 
     let tokens = tokenize(line);
     let mut nodes = parse(&tokens);
@@ -840,9 +840,9 @@ pub fn render_line_inline(line: &str, options: &RenderOptions) -> String {
 mod tests {
     use super::*;
     use crate::html::{convert, RenderOptions};
-    use aozora_core::document::extract_body_lines;
-    use aozora_core::lower::lower_to_blocks;
-    use aozora_core::parser::parse_document_raw;
+    use crate::document::extract_body_lines;
+    use crate::lower::lower_to_blocks;
+    use crate::parser::parse_document_raw;
 
     /// 旧経路（convert）と新経路（lower_to_blocks→render_body_blocks）の本文HTMLが
     /// jisage 文書で byte 一致することを固定する（垂直スライスの最小核）。

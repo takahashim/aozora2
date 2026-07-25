@@ -17,8 +17,9 @@
 //! assert_eq!(plain, "吾輩は猫である");
 //! ```
 
-pub mod html;
-pub mod strip;
+// html / strip は aozora-core へ移動（aozora_farm が aozora_core::html を使うため）。
+// 後方互換のため aozora2::html / aozora2::strip として再エクスポートする。
+pub use aozora_core::{html, strip};
 
 // Re-export aozora-core for downstream crates
 pub use aozora_core;

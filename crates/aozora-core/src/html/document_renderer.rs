@@ -3,7 +3,7 @@
 //! HTMLヘッダー、フッター、メタデータセクションなどの
 //! ドキュメント構造を生成します。
 
-use aozora_core::document::HeaderInfo;
+use crate::document::HeaderInfo;
 
 use super::presentation::UnconvertedGaiji;
 use super::options::RenderOptions;

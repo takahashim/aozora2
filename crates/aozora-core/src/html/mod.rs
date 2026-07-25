@@ -24,7 +24,7 @@ pub use presentation::html_escape;
 /// # Examples
 ///
 /// ```
-/// use aozora2::html::{convert, RenderOptions};
+/// use aozora_core::html::{convert, RenderOptions};
 ///
 /// // 青空文庫形式: ヘッダー、空行、本文。行の区切りは CRLF
 /// let input = "タイトル\r\n\r\n吾輩《わがはい》は猫である";
@@ -45,12 +45,12 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
 /// `lower_to_blocks`→`BlockRenderer` で描画する（BlockManager 非依存）。
 /// フッタ「表記について」用の状態は BlockRenderer が描画の副作用で蓄積する。
 pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
-    use aozora_core::document::{
+    use crate::document::{
         extract_after_text_lines, extract_bibliographical_lines, extract_body_lines,
         extract_header_info,
     };
-    use aozora_core::lower::lower_to_blocks;
-    use aozora_core::parser::parse_document_raw;
+    use crate::lower::lower_to_blocks;
+    use crate::parser::parse_document_raw;
     use block_renderer::BlockRenderer;
     use document_renderer::DocumentRenderer;
     use presentation::auto_link;

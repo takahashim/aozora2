@@ -2,9 +2,9 @@
 //!
 //! 青空文庫形式のテキストからルビ・注記を除去してプレーンテキストに変換します。
 
-use aozora_core::document;
-use aozora_core::encoding;
-use aozora_core::gaiji::convert_gaiji;
+use crate::document;
+use crate::encoding;
+use crate::gaiji::convert_gaiji;
 
 /// 青空文庫形式のバイト列をプレーンテキストに変換（中立AST経由）。
 ///
@@ -18,12 +18,12 @@ use aozora_core::gaiji::convert_gaiji;
 ///
 /// ```
 /// let input = "タイトル\n著者\n\n本文です\n底本：青空文庫";
-/// let plain = aozora2::strip::convert(input.as_bytes());
+/// let plain = aozora_core::strip::convert(input.as_bytes());
 /// assert_eq!(plain, "本文です\n");
 /// ```
 pub fn convert(input: &[u8]) -> String {
-    use aozora_core::lower::lower_to_blocks;
-    use aozora_core::parser::parse_document_raw;
+    use crate::lower::lower_to_blocks;
+    use crate::parser::parse_document_raw;
 
     let text = encoding::decode_to_utf8(input);
     let lines: Vec<&str> = text.lines().collect();
@@ -50,8 +50,8 @@ pub fn convert(input: &[u8]) -> String {
 }
 
 /// ブロックを1行1文字列でプレーンテキスト化して push する。
-fn render_block_plain(block: &aozora_core::ast::Block, out: &mut Vec<String>) {
-    use aozora_core::ast::Block;
+fn render_block_plain(block: &crate::ast::Block, out: &mut Vec<String>) {
+    use crate::ast::Block;
     match block {
         Block::Line { inline, .. } => {
             let mut s = String::new();
@@ -72,8 +72,8 @@ fn render_block_plain(block: &aozora_core::ast::Block, out: &mut Vec<String>) {
 }
 
 /// インライン列をプレーンテキスト化する（読める文字だけ残す）。
-fn render_inlines_plain(inlines: &[aozora_core::ast::Inline], out: &mut String) {
-    use aozora_core::ast::Inline;
+fn render_inlines_plain(inlines: &[crate::ast::Inline], out: &mut String) {
+    use crate::ast::Inline;
     for i in inlines {
         match i {
             Inline::Text(s) => out.push_str(s),
@@ -104,7 +104,7 @@ fn render_inlines_plain(inlines: &[aozora_core::ast::Inline], out: &mut String) 
                     out.push_str(u);
                 } else if let Some(u) = jis_code
                     .as_deref()
-                    .and_then(aozora_core::jis_table::jis_to_unicode)
+                    .and_then(crate::jis_table::jis_to_unicode)
                 {
                     out.push_str(&u);
                 } else {
@@ -118,7 +118,7 @@ fn render_inlines_plain(inlines: &[aozora_core::ast::Inline], out: &mut String) 
                 }
             }
             Inline::DakutenKatakana { num } => {
-                out.push_str(aozora_core::node::Node::dakuten_katakana_char(num))
+                out.push_str(crate::node::Node::dakuten_katakana_char(num))
             }
             // 注記・返り点・送り仮名・画像・割り注マーカーはコマンド由来なので落とす。
             Inline::Note(_)
@@ -138,14 +138,14 @@ fn render_inlines_plain(inlines: &[aozora_core::ast::Inline], out: &mut String) 
 ///
 /// ```
 /// let input = "吾輩《わがはい》は猫《ねこ》である";
-/// let plain = aozora2::strip::convert_line(input);
+/// let plain = aozora_core::strip::convert_line(input);
 /// assert_eq!(plain, "吾輩は猫である");
 /// ```
 pub fn convert_line(input: &str) -> String {
-    use aozora_core::ast::to_inlines;
-    use aozora_core::parser::parse;
-    use aozora_core::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
-    use aozora_core::tokenizer::tokenize;
+    use crate::ast::to_inlines;
+    use crate::parser::parse;
+    use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
+    use crate::tokenizer::tokenize;
 
     let mut nodes = parse(&tokenize(input));
     resolve_references(&mut nodes);
