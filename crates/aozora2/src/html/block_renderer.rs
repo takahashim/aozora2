@@ -179,7 +179,7 @@ impl<'a> BlockRenderer<'a> {
 
     fn render_block(&mut self, block: &Block, out: &mut String) {
         match block {
-            Block::Line { inline, brk } => {
+            Block::Line { inline, brk, .. } => {
                 // 行末 <br /> の要否は Lower 時に確定済み（brk）。バックエンドは木を
                 // 状態なしに歩くだけで、描画済みHTMLの詮索はしない。
                 self.render_inlines(inline, out);
@@ -192,8 +192,9 @@ impl<'a> BlockRenderer<'a> {
                 kind,
                 children,
                 close,
+                ..
             } => self.render_nested(kind, children, *close, out),
-            Block::LineWrap { kind, inline } => {
+            Block::LineWrap { kind, inline, .. } => {
                 // 行全体をブロック div で1行に包む（行スコープ字下げ／地付き）。
                 // 開き直後の改行も内側 <br /> も出さず、行末に `\r\n` のみ。
                 if let Some(open) = block_open_tag(kind, self.options.quirks.empty_indent_css) {

@@ -336,6 +336,8 @@ pub enum Block {
         inline: Vec<Inline>,
         /// 行末の改行制御
         brk: Break,
+        /// この行の由来（本文 0 起点の行番号）＝位置情報。
+        line: usize,
     },
     /// 入れ子ブロック（字下げ・地付き・字詰め・ぶら下げ・見出し・罫囲み等）。
     Nested {
@@ -346,6 +348,8 @@ pub enum Block {
         /// 閉じタグの出力形（互換メタデータ）。参照実装は1ソース行につき1つの `\r\n`
         /// を出すので、閉じの改行・`<br />` はどの契機で閉じたかで決まる（[`CloseKind`]）。
         close: CloseKind,
+        /// このブロックを開いた本文行の番号（0 起点）＝位置情報。
+        line: usize,
     },
     /// 行単位のブロック包み（同じ行に本文がある字下げ／地付き等）。
     /// 参照実装 apply_jisage / 行スコープ地付き（is_block=false）は行全体を1行の
@@ -356,6 +360,8 @@ pub enum Block {
         kind: BlockKind,
         /// 行の内容（インライン列）
         inline: Vec<Inline>,
+        /// この行の由来（本文 0 起点の行番号）＝位置情報。
+        line: usize,
     },
 }
 

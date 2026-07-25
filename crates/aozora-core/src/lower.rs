@@ -16,11 +16,12 @@ use crate::parser::RawDoc;
 
 /// RawDoc（未解決・平坦マーカー）を中立ASTのブロック列に畳む。
 pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
-    // 開いている Nested ブロックのビルダー（種類と、たまった子ブロック列）。
-    let mut stack: Vec<(BlockKind, Vec<Block>)> = Vec::new();
+    // 開いている Nested ブロックのビルダー（種類・たまった子ブロック列・開いた行番号）。
+    let mut stack: Vec<(BlockKind, Vec<Block>, usize)> = Vec::new();
     let mut top: Vec<Block> = Vec::new();
 
     for raw_line in &raw.lines {
+        let line_no = raw_line.line_no;
         // 前方参照とルビ親文字を解決してから畳む（旧経路と同順）。
         let mut nodes = raw_line.nodes.clone();
         resolve_references(&mut nodes);
@@ -44,8 +45,8 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 };
                 // Jisage は1つだけ、Chitsuki/Burasage は続く限り閉じる。
                 let close_once = matches!(kind, BlockKind::Jisage { .. });
-                while stack.last().is_some_and(|(top, _)| matches_top(top)) {
-                    let (k, children) = stack.pop().expect("top exists");
+                while stack.last().is_some_and(|(top, _, _)| matches_top(top)) {
+                    let (k, children, open_line) = stack.pop().expect("top exists");
                     push_block(
                         &mut stack,
                         &mut top,
@@ -53,16 +54,17 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                             kind: k,
                             children,
                             close,
+                            line: open_line,
                         },
                     );
                     if close_once {
                         break;
                     }
                 }
-                stack.push((kind, Vec::new()));
+                stack.push((kind, Vec::new(), line_no));
             }
             LineKind::BlockClose(explicit) => {
-                if let Some((kind, children)) = stack.pop() {
+                if let Some((kind, children, open_line)) = stack.pop() {
                     // `ここで…終わり`（explicit）は `</div>\r\n`。bare `…終わり` は
                     // @terprip 維持で `</div><br />\r\n`（memory bare-block-end）。
                     let close = if explicit {
@@ -74,6 +76,7 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                         kind,
                         children,
                         close,
+                        line: open_line,
                     };
                     push_block(&mut stack, &mut top, nested);
                 }
@@ -82,7 +85,7 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
             LineKind::BlockCloseWithTail(explicit) => {
                 // ブロックを閉じる（`</div>` 改行なし＝explicit_close=false）。閉じの
                 // `\r\n` は後続本文行が出す。開きが無ければ閉じタグは出ない。
-                if let Some((kind, children)) = stack.pop() {
+                if let Some((kind, children, open_line)) = stack.pop() {
                     push_block(
                         &mut stack,
                         &mut top,
@@ -90,6 +93,7 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                             kind,
                             children,
                             close: CloseKind::NoBreak,
+                            line: open_line,
                         },
                     );
                 }
@@ -101,7 +105,15 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 } else {
                     Break::Br
                 };
-                push_block(&mut stack, &mut top, Block::Line { inline, brk });
+                push_block(
+                    &mut stack,
+                    &mut top,
+                    Block::Line {
+                        inline,
+                        brk,
+                        line: line_no,
+                    },
+                );
             }
             LineKind::LineWrap(kind) => {
                 // ［＃N字下げ］text／行スコープ地付き: 行全体を div で1行に包む。
@@ -110,7 +122,15 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 // （行内の見出しコマンド範囲などはそちらが畳む）。
                 let rest = strip_leading_line_scope_marker(nodes);
                 let inline = crate::ast::to_inlines(&rest);
-                push_block(&mut stack, &mut top, Block::LineWrap { kind, inline });
+                push_block(
+                    &mut stack,
+                    &mut top,
+                    Block::LineWrap {
+                        kind,
+                        inline,
+                        line: line_no,
+                    },
+                );
             }
             LineKind::Content => {
                 // ［＃ここで…終わり］（explicit_close=true）を含む行は @terprip=false で
@@ -132,7 +152,11 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 } else {
                     Break::Br
                 };
-                let line = Block::Line { inline, brk };
+                let line = Block::Line {
+                    inline,
+                    brk,
+                    line: line_no,
+                };
                 push_block(&mut stack, &mut top, line);
             }
         }
@@ -140,10 +164,11 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
 
     // 閉じられていないブロックはそのまま閉じる（旧経路の末尾 pop 相当）。
     // 末尾クローズは行を持たないので `</div>\r\n`（Newline）とする。
-    while let Some((kind, children)) = stack.pop() {
+    while let Some((kind, children, open_line)) = stack.pop() {
         let nested = Block::Nested {
             kind,
             children,
+            line: open_line,
             close: CloseKind::Newline,
         };
         push_block(&mut stack, &mut top, nested);
@@ -188,8 +213,8 @@ fn never_matches(_: &BlockKind) -> bool {
 }
 
 /// 現在開いている最上位ブロック（あれば）へ、無ければトップレベルへ block を積む。
-fn push_block(stack: &mut [(BlockKind, Vec<Block>)], top: &mut Vec<Block>, block: Block) {
-    if let Some((_, children)) = stack.last_mut() {
+fn push_block(stack: &mut [(BlockKind, Vec<Block>, usize)], top: &mut Vec<Block>, block: Block) {
+    if let Some((_, children, _)) = stack.last_mut() {
         children.push(block);
     } else {
         top.push(block);
@@ -292,5 +317,35 @@ pub(crate) fn block_kind_of(
                 .unwrap_or(crate::node::MidashiStyle::Normal),
         }),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod position_tests {
+    use super::*;
+    use crate::ast::Block;
+    use crate::parser::parse_document_raw;
+
+    /// 中立ASTの各ブロックが由来の本文行番号（位置情報）を持つ。
+    #[test]
+    fn blocks_carry_source_line_numbers() {
+        // 本文（extract 後を模した行列）。0 起点で数える。
+        let lines = vec![
+            "本文0",                       // 0
+            "［＃ここから２字下げ］",       // 1 (Nested open)
+            "内容2",                       // 2
+            "［＃ここで字下げ終わり］",     // 3
+        ];
+        let raw = parse_document_raw(&lines);
+        let blocks = lower_to_blocks(&raw);
+        // [ Line(本文0, line0), Nested(open line1, 子[Line(内容2, line2)]) ]
+        assert!(matches!(blocks[0], Block::Line { line: 0, .. }));
+        match &blocks[1] {
+            Block::Nested { line, children, .. } => {
+                assert_eq!(*line, 1, "Nested は開いた行1");
+                assert!(matches!(children[0], Block::Line { line: 2, .. }));
+            }
+            other => panic!("Nested を期待: {other:?}"),
+        }
     }
 }

@@ -18,105 +18,71 @@ pub use command_parser::{parse_command, CommandResult};
 pub use reference_resolver::{resolve_inline_ruby, resolve_references};
 pub use ruby_parser::extract_ruby_base;
 
-/// RawAST の1行分。ソース行と、その行を忠実にパースした生ノード列を持つ。
+/// RawAST（生AST）の1行分。ソース行・生ノード列・本文内での行番号を持つ。
 ///
-/// ブロックの開始/終了は、この段階では各行の中の平坦なマーカーノード
-/// （`BlockStart`/`BlockEnd`/`LineJisage`）として存在する。行をまたぐ対応付けは
-/// 後段（Lowerer）が行う。
+/// これが RawAST の正の器（旧 `RawAst(Vec<Node>)` は撤去）。ブロックの開始/終了は
+/// この段階では各行の中の平坦なマーカーノード（`BlockStart`/`BlockEnd`/`LineJisage`）
+/// として存在し、前方参照も未解決。行をまたぐ対応付けと解決は後段（Lowerer＝
+/// `crate::lower::lower_to_blocks`）が行い、[`crate::ast::Block`] の中立AST木にする。
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawLine {
     /// もとのソース行（くの字点走査などで参照する）
     pub source: String,
     /// この行を忠実にパースした生ノード列（前方参照は未解決）
     pub nodes: Vec<Node>,
+    /// 本文（extract_body_lines 後）における 0 起点の行番号（位置情報）。
+    pub line_no: usize,
 }
 
-/// 文書全体の RawAST（RawLine の列）。
+/// 文書全体の RawAST（[`RawLine`] の列）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawDoc {
     /// 行の列
     pub lines: Vec<RawLine>,
 }
 
-/// 行の列を文書単位の RawAST にパースする（各行を tokenize + parse_raw）。
+/// 行の列を文書単位の RawAST（[`RawDoc`]）にパースする。各行を tokenize +
+/// [`parse_raw_nodes`]（前方参照は未解決・ブロックは平坦マーカーのまま）。
 pub fn parse_document_raw(lines: &[&str]) -> RawDoc {
     let raw_lines = lines
         .iter()
-        .map(|line| RawLine {
+        .enumerate()
+        .map(|(line_no, line)| RawLine {
             source: (*line).to_string(),
-            nodes: parse_raw(&tokenize(line)).into_nodes(),
+            nodes: parse_raw_nodes(&tokenize(line)),
+            line_no,
         })
         .collect();
     RawDoc { lines: raw_lines }
 }
 
-/// パーサが出力する RawAST。
-///
-/// 青空文庫記法を忠実に写した段階で、前方参照は未解決、ブロックは平坦な
-/// マーカーのまま。[`lower`] で中立AST [`Ast`] に変換する。
-///
-/// （現段階では中身は依然 [`Vec<Node>`] で、raw と ast の違いは root 型のみ。
-///  今後 raw専用ノードと block/line/inline の木へ段階的に分ける。）
-#[derive(Debug, Clone, PartialEq)]
-pub struct RawAst(Vec<Node>);
-
-/// Lowerer が RawAST を変換した、レンダラが消費する中立AST。
-#[derive(Debug, Clone, PartialEq)]
-pub struct Ast(Vec<Node>);
-
-impl RawAst {
-    /// 中身のノード列を借用する
-    pub fn nodes(&self) -> &[Node] {
-        &self.0
-    }
-    /// 中身のノード列を取り出す
-    pub fn into_nodes(self) -> Vec<Node> {
-        self.0
-    }
-}
-
-impl Ast {
-    /// 中身のノード列を借用する
-    pub fn nodes(&self) -> &[Node] {
-        &self.0
-    }
-    /// 中身のノード列を取り出す
-    pub fn into_nodes(self) -> Vec<Node> {
-        self.0
-    }
-}
-
-/// トークン列を RawAST にパースする（構文→木の忠実な変換のみ。前方参照は未解決）。
-pub fn parse_raw(tokens: &[Token]) -> RawAst {
+/// トークン列を**生ノード列**（RawAST の中身）にパースする。構文→木の忠実な変換のみで、
+/// 前方参照は未解決・ブロックは平坦なマーカー（`BlockStart`/`BlockEnd`/`LineJisage`/
+/// `UnresolvedReference`）のまま。文書単位の RawAST は [`RawLine`]/[`RawDoc`] が器。
+pub fn parse_raw_nodes(tokens: &[Token]) -> Vec<Node> {
     let mut nodes = Vec::new();
     for (i, token) in tokens.iter().enumerate() {
         let parsed = parse_token_with_context(token, &nodes, tokens, i);
         nodes.extend(parsed);
     }
-    RawAst(nodes)
+    nodes
 }
 
-/// RawAST を中立AST に lower する（前方参照の解決など）。
-pub fn lower(raw: RawAst) -> Ast {
-    let mut nodes = raw.into_nodes();
-    resolve_references(&mut nodes);
-    Ast(nodes)
-}
-
-/// トークン列をノード列にパースする（`parse_raw` → `lower` の合成の簡便版）。
+/// トークン列をノード列にパースし、行内で完結する前方参照を解決する
+/// （[`parse_raw_nodes`] → [`resolve_references`] の簡便合成）。
 ///
 /// # Examples
 ///
 /// ```
 /// use aozora_core::tokenizer::tokenize;
 /// use aozora_core::parser::parse;
-/// use aozora_core::node::Node;
 ///
-/// let tokens = tokenize("東京《とうきょう》");
-/// let nodes = parse(&tokens);
+/// let nodes = parse(&tokenize("東京《とうきょう》"));
 /// ```
 pub fn parse(tokens: &[Token]) -> Vec<Node> {
-    lower(parse_raw(tokens)).into_nodes()
+    let mut nodes = parse_raw_nodes(tokens);
+    resolve_references(&mut nodes);
+    nodes
 }
 
 /// 直前のノードがテキストで `（` で終わるかチェック
