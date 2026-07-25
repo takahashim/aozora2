@@ -49,6 +49,8 @@ export type SemTokenKind =
 export interface SemToken {
   range: AozoraRange
   kind: SemTokenKind
+  /** ホバー用の説明（外字の実文字・ルビ読みなど）。無ければ null。 */
+  detail: string | null
 }
 
 export interface OutlineSymbol {

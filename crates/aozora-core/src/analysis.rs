@@ -59,6 +59,8 @@ pub struct SemToken {
     pub range: Range,
     /// 種別。
     pub kind: SemTokenKind,
+    /// ホバー用の説明（外字の実文字・ルビ読み・見出しレベルなど）。無ければ `None`。
+    pub detail: Option<String>,
 }
 
 /// アウトライン項目（見出し）。
@@ -133,6 +135,7 @@ pub fn analyze(input: &str) -> Analysis {
                 analysis.tokens.push(SemToken {
                     range: range.clone(),
                     kind,
+                    detail: describe(node),
                 });
             }
 
@@ -247,6 +250,54 @@ fn level_number(level: MidashiLevel) -> u8 {
     }
 }
 
+/// 見出しレベルの表示名（大／中／小）。
+fn level_label(level: MidashiLevel) -> &'static str {
+    match level {
+        MidashiLevel::O => "大",
+        MidashiLevel::Naka => "中",
+        MidashiLevel::Ko => "小",
+    }
+}
+
+/// ホバー用の説明文を作る。値の分かるもの（外字の実文字・ルビ読み等）だけ返す。
+fn describe(node: &Node) -> Option<String> {
+    match node {
+        Node::Ruby { ruby, .. } => Some(format!("ルビ: {}", text_of(ruby))),
+        Node::Gaiji {
+            description,
+            unicode,
+            jis_code,
+            ..
+        } => {
+            let mut s = format!("外字: {description}");
+            if let Some(u) = unicode {
+                s.push_str(&format!(" → {u}"));
+            } else if let Some(j) = jis_code {
+                s.push_str(&format!("（{j}）"));
+            }
+            Some(s)
+        }
+        Node::Accent { unicode, name, .. } => Some(match unicode {
+            Some(u) => format!("アクセント: {u}（{name}）"),
+            None => format!("アクセント: {name}"),
+        }),
+        Node::Midashi { level, .. } => Some(format!("{}見出し", level_label(*level))),
+        Node::Img { filename, .. } => Some(format!("画像: {filename}")),
+        Node::BlockStart {
+            block_type: BlockType::Midashi,
+            params,
+        } => Some(format!(
+            "{}見出し（開始）",
+            params.level.map(level_label).unwrap_or("")
+        )),
+        Node::BlockEnd {
+            block_type: BlockType::Midashi,
+            ..
+        } => Some("見出し（終わり）".to_string()),
+        _ => None,
+    }
+}
+
 /// 子ノード列の表示テキストを連結する。
 fn text_of(children: &[Node]) -> String {
     children.iter().map(|n| n.to_text()).collect()
@@ -288,6 +339,31 @@ mod tests {
         assert_eq!(a.diagnostics[0].severity, Severity::Warning);
         assert_eq!(a.diagnostics[0].code, "unresolved-reference");
         assert_eq!(a.diagnostics[0].range.line, 0);
+    }
+
+    #[test]
+    fn ruby_token_carries_reading_detail() {
+        let a = analyze("東京《とうきょう》");
+        let ruby = a
+            .tokens
+            .iter()
+            .find(|t| t.kind == SemTokenKind::Ruby)
+            .expect("ルビトークン");
+        assert_eq!(ruby.detail.as_deref(), Some("ルビ: とうきょう"));
+    }
+
+    #[test]
+    fn gaiji_token_carries_char_detail() {
+        // U+25CB は ○ に解決される。
+        let a = analyze("※［＃「丸印」、U+25CB］");
+        let gaiji = a
+            .tokens
+            .iter()
+            .find(|t| t.kind == SemTokenKind::Gaiji)
+            .expect("外字トークン");
+        let detail = gaiji.detail.as_deref().unwrap_or("");
+        assert!(detail.starts_with("外字:"), "detail={detail}");
+        assert!(detail.contains('○'), "実文字を含む: {detail}");
     }
 
     #[test]

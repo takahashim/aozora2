@@ -8,8 +8,8 @@
 //
 // 位置は Rust 側が LSP 準拠の 0 起点、CodeMirror は行 1 起点なので toPos で変換する。
 
-import { EditorView, Decoration, ViewPlugin } from '@codemirror/view'
-import type { DecorationSet, ViewUpdate } from '@codemirror/view'
+import { EditorView, Decoration, ViewPlugin, hoverTooltip } from '@codemirror/view'
+import type { DecorationSet, ViewUpdate, Tooltip } from '@codemirror/view'
 import { StateField, StateEffect, RangeSetBuilder } from '@codemirror/state'
 import type { Extension, Text } from '@codemirror/state'
 import { setDiagnostics, lintGutter } from '@codemirror/lint'
@@ -101,6 +101,51 @@ function build(view: EditorView): DecorationSet {
   return buildTokenDecorations(view.state.doc, a.tokens)
 }
 
+// --- ホバー ---------------------------------------------------------------------
+const KIND_LABEL: Record<SemTokenKind, string> = {
+  ruby: 'ルビ',
+  heading: '見出し',
+  emphasis: '強調',
+  gaiji: '外字',
+  accent: 'アクセント',
+  image: '画像',
+  annotation: '注記',
+}
+
+/** 位置 pos を覆うトークンを探す（範囲は 0 起点→絶対位置に変換して判定）。 */
+export function tokenAtPos(view: EditorView, pos: number): SemToken | null {
+  const a = view.state.field(analysisField, false)
+  if (!a) return null
+  const doc = view.state.doc
+  for (const t of a.tokens) {
+    const from = toPos(doc, t.range.line, t.range.start)
+    const to = toPos(doc, t.range.line, t.range.end)
+    if (to > from && pos >= from && pos <= to) return t
+  }
+  return null
+}
+
+const hover = hoverTooltip((view, pos): Tooltip | null => {
+  const t = tokenAtPos(view, pos)
+  if (!t) return null
+  const doc = view.state.doc
+  const from = toPos(doc, t.range.line, t.range.start)
+  const to = toPos(doc, t.range.line, t.range.end)
+  const label = KIND_LABEL[t.kind] ?? t.kind
+  const text = t.detail ? `${label} — ${t.detail}` : label
+  return {
+    pos: from,
+    end: to,
+    above: true,
+    create() {
+      const dom = document.createElement('div')
+      dom.className = 'cm-aoz-hover'
+      dom.textContent = text
+      return { dom }
+    },
+  }
+})
+
 // --- 診断 -----------------------------------------------------------------------
 const SEVERITY: Record<DiagnosticSeverity, CmDiagnostic['severity']> = {
   error: 'error',
@@ -156,6 +201,12 @@ const lspTheme = EditorView.theme({
   '.cm-aoz-accent': { color: '#b8860b' },
   '.cm-aoz-image': { color: '#2a8a8a' },
   '.cm-aoz-annotation': { color: '#5a7a9e' },
+  '.cm-aoz-hover': {
+    padding: '4px 8px',
+    fontFamily: 'sans-serif',
+    fontSize: '0.85rem',
+    maxWidth: '32em',
+  },
 })
 
 /**
@@ -163,5 +214,5 @@ const lspTheme = EditorView.theme({
  * baseExtensions に展開して使う。delayMs は解析デバウンス（既定 200ms）。
  */
 export function aozoraLsp(delayMs = 200): Extension[] {
-  return [analysisField, highlightPlugin, lspTheme, lintGutter(), analysisRunner(delayMs)]
+  return [analysisField, highlightPlugin, hover, lspTheme, lintGutter(), analysisRunner(delayMs)]
 }

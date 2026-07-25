@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { Text } from '@codemirror/state'
-import { toPos, toCmDiagnostics, buildTokenDecorations } from './lsp'
+import { Text, EditorState } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+import {
+  toPos,
+  toCmDiagnostics,
+  buildTokenDecorations,
+  tokenAtPos,
+  analysisField,
+  setAnalysisEffect,
+} from './lsp'
 import type { SemToken, AozoraDiagnostic } from '@/commands/tauri'
 
 const doc = Text.of(['一行目', '東京《とうきょう》', '三行目'])
@@ -55,8 +63,8 @@ describe('toCmDiagnostics', () => {
 describe('buildTokenDecorations', () => {
   it('トークンごとに装飾を作り、空範囲は捨てる', () => {
     const tokens: SemToken[] = [
-      { range: { line: 1, start: 2, end: 9 }, kind: 'ruby' }, // 《とうきょう》
-      { range: { line: 0, start: 0, end: 0 }, kind: 'annotation' }, // 空→除外
+      { range: { line: 1, start: 2, end: 9 }, kind: 'ruby', detail: 'ルビ: とうきょう' }, // 《とうきょう》
+      { range: { line: 0, start: 0, end: 0 }, kind: 'annotation', detail: null }, // 空→除外
     ]
     const set = buildTokenDecorations(doc, tokens)
     expect(set.size).toBe(1)
@@ -64,9 +72,9 @@ describe('buildTokenDecorations', () => {
 
   it('from 順にソートして追加する（順不同入力でも壊れない）', () => {
     const tokens: SemToken[] = [
-      { range: { line: 2, start: 0, end: 2 }, kind: 'heading' },
-      { range: { line: 0, start: 0, end: 2 }, kind: 'emphasis' },
-      { range: { line: 1, start: 2, end: 9 }, kind: 'ruby' },
+      { range: { line: 2, start: 0, end: 2 }, kind: 'heading', detail: null },
+      { range: { line: 0, start: 0, end: 2 }, kind: 'emphasis', detail: null },
+      { range: { line: 1, start: 2, end: 9 }, kind: 'ruby', detail: null },
     ]
     const set = buildTokenDecorations(doc, tokens)
     expect(set.size).toBe(3)
@@ -77,5 +85,29 @@ describe('buildTokenDecorations', () => {
       cur.next()
     }
     expect(froms).toEqual([...froms].sort((a, b) => a - b))
+  })
+})
+
+describe('tokenAtPos', () => {
+  it('位置を覆うトークンを返し、外れると null', () => {
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: '東京《とうきょう》',
+        extensions: [analysisField],
+      }),
+    })
+    view.dispatch({
+      effects: setAnalysisEffect.of({
+        tokens: [{ range: { line: 0, start: 2, end: 9 }, kind: 'ruby', detail: 'ルビ: とうきょう' }],
+        symbols: [],
+        diagnostics: [],
+      }),
+    })
+    // 《…》の内側（絶対 2..9）
+    expect(tokenAtPos(view, 5)?.kind).toBe('ruby')
+    expect(tokenAtPos(view, 5)?.detail).toBe('ルビ: とうきょう')
+    // base「東京」の位置（0..2）はトークン外
+    expect(tokenAtPos(view, 1)).toBeNull()
+    view.destroy()
   })
 })
