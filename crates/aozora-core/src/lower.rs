@@ -28,18 +28,23 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
 
         match classify_line(&nodes) {
             LineKind::BlockOpen(kind) => {
-                // 参照実装 implicit_close: 新しいブロックを開くとき、最上位が同種
-                // （jisage は jisage/burasage、chitsuki は chitsuki）なら先に閉じて
-                // から開く（＝兄弟）。別種が最上位ならネスト。他のブロック種は閉じない。
-                let closes_top = stack.last().is_some_and(|(top, _)| match &kind {
-                    BlockKind::Jisage { .. } => {
-                        matches!(top, BlockKind::Jisage { .. } | BlockKind::Burasage { .. })
-                    }
-                    BlockKind::Chitsuki { .. } => matches!(top, BlockKind::Chitsuki { .. }),
-                    _ => false,
-                });
-                if closes_top {
-                    // 暗黙閉じ（次の開きと同じ行に出るので explicit_close=false）。
+                // 参照実装 close_conflicting_blocks の implicit_close を再現する。
+                //  - Jisage 開始: 最上位が Jisage/Burasage なら1つ閉じる。
+                //  - Chitsuki 開始: 最上位から Chitsuki/Burasage が続く限り閉じる。
+                //  - Burasage 開始: 最上位から Jisage/Burasage が続く限り閉じる。
+                // 閉じタグ直後の改行: 開始タグを即座に出すブロック（Jisage/Chitsuki 等）は
+                // `</div><新開始…>` と同じ出力行に続くので改行なし（explicit_close=false）。
+                // Burasage は開始行に可視タグを出さない per-line モデルなので、暗黙閉じの
+                // `</div>` はその開始行の唯一の出力＝行末 `\r\n` が付く（explicit_close=true）。
+                let (matches_top, close_nl): (fn(&BlockKind) -> bool, bool) = match &kind {
+                    BlockKind::Jisage { .. } => (is_jisage_or_burasage, false),
+                    BlockKind::Chitsuki { .. } => (is_chitsuki_or_burasage, false),
+                    BlockKind::Burasage { .. } => (is_jisage_or_burasage, true),
+                    _ => (never_matches, false),
+                };
+                // Jisage は1つだけ、Chitsuki/Burasage は続く限り閉じる。
+                let close_once = matches!(kind, BlockKind::Jisage { .. });
+                while stack.last().is_some_and(|(top, _)| matches_top(top)) {
                     let (k, children) = stack.pop().expect("top exists");
                     push_block(
                         &mut stack,
@@ -47,9 +52,12 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                         Block::Nested {
                             kind: k,
                             children,
-                            explicit_close: false,
+                            explicit_close: close_nl,
                         },
                     );
+                    if close_once {
+                        break;
+                    }
                 }
                 stack.push((kind, Vec::new()));
             }
@@ -133,6 +141,18 @@ fn strip_leading_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
         }
     }
     nodes
+}
+
+fn is_jisage_or_burasage(k: &BlockKind) -> bool {
+    matches!(k, BlockKind::Jisage { .. } | BlockKind::Burasage { .. })
+}
+
+fn is_chitsuki_or_burasage(k: &BlockKind) -> bool {
+    matches!(k, BlockKind::Chitsuki { .. } | BlockKind::Burasage { .. })
+}
+
+fn never_matches(_: &BlockKind) -> bool {
+    false
 }
 
 /// 現在開いている最上位ブロック（あれば）へ、無ければトップレベルへ block を積む。
