@@ -226,12 +226,18 @@ impl<'a> BlockRenderer<'a> {
                 base,
                 ruby,
                 direction,
-                ..
+                keep_gaiji_notes_in_base,
             } => {
-                // 外字を含まない親文字では notes 分割は起きない（両分岐とも同描画）。
-                // 外字入り親文字（UnEmbedGaiji の rb 外出し）は Gaiji 実装時に足す。
-                let mut base_html = String::new();
-                self.render_inlines(base, &mut base_html);
+                // 親文字に画像化できない外字があると、参照は rb に外字記号 ※ だけ残し
+                // 注記 <span class="notes">…</span> をルビの外（trailing）へ出す。
+                // ［＃注記付き］範囲ルビ等（keep_gaiji_notes_in_base）は通常描画のまま。
+                let (base_html, trailing_notes) = if *keep_gaiji_notes_in_base {
+                    let mut b = String::new();
+                    self.render_inlines(base, &mut b);
+                    (b, String::new())
+                } else {
+                    self.render_ruby_base(base)
+                };
                 let mut ruby_html = String::new();
                 self.render_inlines(ruby, &mut ruby_html);
                 let ruby_html = ruby_html.replace('\u{00a0}', "&nbsp;");
@@ -240,7 +246,7 @@ impl<'a> BlockRenderer<'a> {
                     RubyDirection::Left => "<ruby class=\"leftrb\">",
                 };
                 out.push_str(&format!(
-                    "{ropen}<rb>{base_html}</rb><rp>（</rp><rt>{ruby_html}</rt><rp>）</rp></ruby>"
+                    "{ropen}<rb>{base_html}</rb><rp>（</rp><rt>{ruby_html}</rt><rp>）</rp></ruby>{trailing_notes}"
                 ));
             }
             Inline::Gaiji {
@@ -462,6 +468,27 @@ impl<'a> BlockRenderer<'a> {
         } else {
             GAIJI_MARK
         }
+    }
+
+    /// ルビ親文字を描画し、画像化できない外字は rb に記号 ※ だけ残して注記を
+    /// trailing（ルビ外）へ振り分ける（参照 render_ruby_base 相当）。
+    /// 返り値は (rb の中身, ルビの後ろに続く注記列)。
+    fn render_ruby_base(&mut self, base: &[Inline]) -> (String, String) {
+        let mut rb = String::new();
+        let mut trailing = String::new();
+        let outer = std::mem::replace(&mut self.in_ruby_base, true);
+        for inline in base {
+            let mut html = String::new();
+            self.render_inline(inline, &mut html);
+            if matches!(inline, Inline::Gaiji { .. }) && html.starts_with("<span class=\"notes\">") {
+                rb.push_str(GAIJI_MARK);
+                trailing.push_str(&html);
+            } else {
+                rb.push_str(&html);
+            }
+        }
+        self.in_ruby_base = outer;
+        (rb, trailing)
     }
 
     /// 外字をHTMLに変換（node_renderer::render_gaiji と厳密一致）。
