@@ -308,12 +308,9 @@ pub enum Block {
         kind: BlockKind,
         /// 子ブロック列
         children: Vec<Block>,
-        /// `ここで…終わり` で明示的に閉じたか（互換メタデータ）。
-        /// 参照実装は1ソース行につき1つの `\r\n` を出す。明示閉じ（`ここで…終わり`）は
-        /// その行の出力として `</div>\r\n` を出すが、暗黙閉じ（次の jisage が開いて
-        /// implicit_close される）は次の開きと同じ行になり `</div>`（`\r\n` なし）で出る。
-        /// バックエンドはこのフラグで閉じタグ直後の改行有無を状態なしに決める。
-        explicit_close: bool,
+        /// 閉じタグの出力形（互換メタデータ）。参照実装は1ソース行につき1つの `\r\n`
+        /// を出すので、閉じの改行・`<br />` はどの契機で閉じたかで決まる（[`CloseKind`]）。
+        close: CloseKind,
     },
     /// 行単位のブロック包み（同じ行に本文がある字下げ／地付き等）。
     /// 参照実装 apply_jisage / 行スコープ地付き（is_block=false）は行全体を1行の
@@ -325,6 +322,20 @@ pub enum Block {
         /// 行の内容（インライン列）
         inline: Vec<Inline>,
     },
+}
+
+/// 入れ子ブロックの閉じタグの出力形（互換メタデータ）。参照実装 general_output の
+/// `@terprip` 判定を Lower 時に確定させたもの。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseKind {
+    /// `</div>`（改行なし）。次の開始タグや本文が同じ出力行に続く暗黙閉じ
+    /// （兄弟 jisage・行スコープ chitsuki の implicit_close、先頭 BlockEnd＋後続本文）。
+    NoBreak,
+    /// `</div>\r\n`。`ここで…終わり`（explicit）・burasage 開始の暗黙閉じ・EOF 閉じ。
+    Newline,
+    /// `</div><br />\r\n`。bare `…終わり`（`ここで` 無し）で複数行ブロックを閉じた行。
+    /// 参照は @terprip を維持するので行末 `<br />` が付く（memory bare-block-end）。
+    BareBreak,
 }
 
 /// 入れ子ブロックの種類。`ここから…` で開く複数行ブロックに対応する。

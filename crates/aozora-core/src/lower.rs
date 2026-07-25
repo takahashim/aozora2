@@ -9,7 +9,7 @@
 //! 旧 BlockManager 経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ
 //! 増やす。未対応のブロック種は暫定でトップレベルに落とす（TODO）。
 
-use crate::ast::{Block, BlockKind, Break};
+use crate::ast::{Block, BlockKind, Break, CloseKind};
 use crate::node::{BlockType, Node};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 use crate::parser::RawDoc;
@@ -36,11 +36,11 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 // `</div><新開始…>` と同じ出力行に続くので改行なし（explicit_close=false）。
                 // Burasage は開始行に可視タグを出さない per-line モデルなので、暗黙閉じの
                 // `</div>` はその開始行の唯一の出力＝行末 `\r\n` が付く（explicit_close=true）。
-                let (matches_top, close_nl): (fn(&BlockKind) -> bool, bool) = match &kind {
-                    BlockKind::Jisage { .. } => (is_jisage_or_burasage, false),
-                    BlockKind::Chitsuki { .. } => (is_chitsuki_or_burasage, false),
-                    BlockKind::Burasage { .. } => (is_jisage_or_burasage, true),
-                    _ => (never_matches, false),
+                let (matches_top, close): (fn(&BlockKind) -> bool, CloseKind) = match &kind {
+                    BlockKind::Jisage { .. } => (is_jisage_or_burasage, CloseKind::NoBreak),
+                    BlockKind::Chitsuki { .. } => (is_chitsuki_or_burasage, CloseKind::NoBreak),
+                    BlockKind::Burasage { .. } => (is_jisage_or_burasage, CloseKind::Newline),
+                    _ => (never_matches, CloseKind::NoBreak),
                 };
                 // Jisage は1つだけ、Chitsuki/Burasage は続く限り閉じる。
                 let close_once = matches!(kind, BlockKind::Jisage { .. });
@@ -52,7 +52,7 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                         Block::Nested {
                             kind: k,
                             children,
-                            explicit_close: close_nl,
+                            close,
                         },
                     );
                     if close_once {
@@ -61,13 +61,19 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 }
                 stack.push((kind, Vec::new()));
             }
-            LineKind::BlockClose => {
+            LineKind::BlockClose(explicit) => {
                 if let Some((kind, children)) = stack.pop() {
-                    // `ここで…終わり` による明示閉じ（`</div>\r\n`）。
+                    // `ここで…終わり`（explicit）は `</div>\r\n`。bare `…終わり` は
+                    // @terprip 維持で `</div><br />\r\n`（memory bare-block-end）。
+                    let close = if explicit {
+                        CloseKind::Newline
+                    } else {
+                        CloseKind::BareBreak
+                    };
                     let nested = Block::Nested {
                         kind,
                         children,
-                        explicit_close: true,
+                        close,
                     };
                     push_block(&mut stack, &mut top, nested);
                 }
@@ -83,7 +89,7 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                         Block::Nested {
                             kind,
                             children,
-                            explicit_close: false,
+                            close: CloseKind::NoBreak,
                         },
                     );
                 }
@@ -127,12 +133,12 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
     }
 
     // 閉じられていないブロックはそのまま閉じる（旧経路の末尾 pop 相当）。
-    // 末尾クローズは行を持たないので explicit_close=true（`</div>\r\n`）とする。
+    // 末尾クローズは行を持たないので `</div>\r\n`（Newline）とする。
     while let Some((kind, children)) = stack.pop() {
         let nested = Block::Nested {
             kind,
             children,
-            explicit_close: true,
+            close: CloseKind::Newline,
         };
         push_block(&mut stack, &mut top, nested);
     }
@@ -188,8 +194,9 @@ fn push_block(stack: &mut [(BlockKind, Vec<Block>)], top: &mut Vec<Block>, block
 enum LineKind {
     /// ブロック開始（`ここから…`）。単独行の BlockStart(is_block=true)。
     BlockOpen(BlockKind),
-    /// ブロック終了（`ここで…終わり`）。単独行の BlockEnd。
-    BlockClose,
+    /// ブロック終了。単独行の BlockEnd。bool は explicit_close（`ここで…終わり`=true、
+    /// bare `…終わり`=false）。
+    BlockClose(bool),
     /// 先頭 BlockEnd＋後続本文の行（`［＃ここで…終わり］text`）。bool は explicit_close。
     BlockCloseWithTail(bool),
     /// 行スコープの1行包み（同行に本文あり）。字下げ／地付き。
@@ -211,8 +218,8 @@ fn classify_line(nodes: &[Node]) -> LineKind {
             }
         }
     }
-    if let [Node::BlockEnd { .. }] = nodes {
-        return LineKind::BlockClose;
+    if let [Node::BlockEnd { explicit_close, .. }] = nodes {
+        return LineKind::BlockClose(*explicit_close);
     }
     // 先頭が BlockEnd で後続に本文がある行（`［＃ここで…終わり］　` 等）。参照は
     // ブロックを閉じ（`</div>` 改行なし）、続く本文をその行に出す（行末 br は
