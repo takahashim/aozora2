@@ -1,6 +1,6 @@
 # 中立AST 木化・BlockManager 撤去 実行計画
 
-策定: 2026-07-25 / 状態: **render() 切替完了（Phase B4 到達・オラクル 17361・想定外回帰0）**。次は旧経路撤去。
+策定: 2026-07-25 / 状態: **Phase B4 完了＋Phase C(bare終了br)＋Phase D(純度完成・第2バックエンド実証)**。オラクル 17363。
 
 ## 0. 目的（最上位。ぶれたらここへ戻る）
 
@@ -292,3 +292,16 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
     ストリーミング挙動（body 差分44）。1作品・高リスクのため**保留継続**（memory の
     当初判断どおり割に合わない）。
   → Phase C は tractable な項目を回収し実質完了。残 58012 は文書化済みの 1-doc edge。
+
+- 2026-07-25 **Phase D 着手（新バックエンド不要の範囲）。**
+  - **D-B（純度の総仕上げ）**: 行末 br の要否を描画時 `is_block_only_line`（HTML詮索）
+    から Lower 時計算へ移設（`ast::line_is_block_only`：末尾が Normal 見出し/
+    ChitsukiInline/div系 BlockInline なら抑制）。バックエンドは brk を見るだけになり
+    **「状態なし・HTML詮索ゼロの木歩き」テーゼが完成**。オラクル 17363・回帰0・byte 不変。
+  - **D-A（第2バックエンド実証）**: 既存 `strip`（プレーンテキスト）を中立AST経由で
+    再実装（`strip::convert_via_ast`、サブコマンド `strip --via-ast`）。HTML と同じ
+    tokenize→parse→lower を共有し、終端の木歩きだけ差し替え＝**中立ASTはバックエンド
+    非依存**と実証。プレーンテキスト walk は CloseKind/Break/div/br を一切見ない。
+    コーパス比較で差分の大半（413/415）はブロックコマンド行由来の余計な空行が消える
+    改善、1は accent 合成改善、1は外字 geta 軽微差。本文内容は保持。既定 strip は
+    無変更（トークン経路 convert は保持）。→ Phase D の実証目的を達成。
