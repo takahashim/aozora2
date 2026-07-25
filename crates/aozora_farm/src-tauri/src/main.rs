@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use aozora_core::analysis::{analyze as analyze_document, Analysis};
 use aozora_core::html::{convert, RenderOptions};
 use tauri::Manager;
 
@@ -27,6 +28,13 @@ fn convert_file_to_html(content: &str, filename: &str) -> Result<ConvertResult, 
 struct ConvertResult {
     html: String,
     filename: String,
+}
+
+/// エディタ用の静的解析（セマンティックトークン／アウトライン／診断）を返す。
+/// 位置は 0 起点（行・char）。フロント側で CodeMirror の位置に変換する。
+#[tauri::command]
+fn analyze(input: &str) -> Result<Analysis, String> {
+    Ok(analyze_document(input))
 }
 
 /// Get the path to bundled resources
@@ -56,6 +64,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             convert_to_html,
             convert_file_to_html,
+            analyze,
             get_resource_paths,
         ])
         .run(tauri::generate_context!())

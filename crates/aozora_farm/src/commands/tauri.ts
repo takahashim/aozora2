@@ -26,6 +26,58 @@ export async function convertToHtml(input: string): Promise<string> {
   return invoke<string>('convert_to_html', { input })
 }
 
+// --- 静的解析（LSP 的機能の土台）---------------------------------------
+// Rust: aozora_core::analysis の各型に対応。位置は 0 起点（行・char）で
+// end は含まない半開区間。CodeMirror へは line+1 して渡す。
+
+/** 行内の char 範囲（0 起点・end 含まない）。line も 0 起点。 */
+export interface AozoraRange {
+  line: number
+  start: number
+  end: number
+}
+
+export type SemTokenKind =
+  | 'ruby'
+  | 'heading'
+  | 'emphasis'
+  | 'gaiji'
+  | 'accent'
+  | 'image'
+  | 'annotation'
+
+export interface SemToken {
+  range: AozoraRange
+  kind: SemTokenKind
+}
+
+export interface OutlineSymbol {
+  range: AozoraRange
+  /** 1=大, 2=中, 3=小 */
+  level: number
+  text: string
+}
+
+export type DiagnosticSeverity = 'error' | 'warning' | 'info' | 'hint'
+
+export interface AozoraDiagnostic {
+  range: AozoraRange
+  severity: DiagnosticSeverity
+  code: string
+  message: string
+}
+
+export interface Analysis {
+  tokens: SemToken[]
+  symbols: OutlineSymbol[]
+  diagnostics: AozoraDiagnostic[]
+}
+
+/** バッファ全体を解析してトークン／アウトライン／診断を得る。 */
+export async function analyze(input: string): Promise<Analysis> {
+  return invoke<Analysis>('analyze', { input })
+}
+
 export async function openTextFile(): Promise<{ content: string; path: string } | null> {
   const selected = await open({
     multiple: false,

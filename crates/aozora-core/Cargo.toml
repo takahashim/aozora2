@@ -15,6 +15,11 @@ regex.workspace = true
 encoding_rs.workspace = true
 flate2.workspace = true
 zip.workspace = true
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+# analysis の結果型を JSON 直列化可能にする（aozora_farm など GUI 側で有効化）。
+serde = ["dep:serde"]
 
 [build-dependencies]
 serde_json.workspace = true

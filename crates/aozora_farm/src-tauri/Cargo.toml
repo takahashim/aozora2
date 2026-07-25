@@ -11,7 +11,7 @@ repository.workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-aozora-core = { workspace = true }
+aozora-core = { workspace = true, features = ["serde"] }
 tauri = { version = "2", features = ["protocol-asset", "devtools"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
