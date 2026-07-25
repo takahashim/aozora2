@@ -35,6 +35,31 @@ pub fn convert(input: &str, options: &RenderOptions) -> String {
     render_via_blocks(input, options)
 }
 
+/// GUI エディタ（LF 改行）向けの HTML 変換。
+///
+/// [`convert`] は参照実装 aozora2html と同じ **CRLF 行分割**前提でバイト一致を保つため、
+/// LF 改行のテキスト（CodeMirror など）をそのまま渡すと全体が 1 行と見なされ、ヘッダ抽出が
+/// 全文をタイトル化して本文が空になる。この関数は改行を CRLF に正規化してから [`convert`] を
+/// 呼ぶことでそれを吸収する。既存の CRLF や単独 CR も一旦 LF に均してから CRLF にする。
+///
+/// # Examples
+///
+/// ```
+/// use aozora_core::html::{convert_editor, RenderOptions};
+///
+/// // LF 改行でも本文が main_text に入る
+/// let html = convert_editor("タイトル\n\n吾輩《わがはい》は猫である", &RenderOptions::default());
+/// assert!(html.contains("<ruby>"));
+/// assert!(html.contains("class=\"main_text\">"));
+/// ```
+pub fn convert_editor(input: &str, options: &RenderOptions) -> String {
+    let normalized = input
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\n', "\r\n");
+    convert(&normalized, options)
+}
+
 /// 1行をHTMLに変換（インライン列のみ・Aozora AST新経路）。
 pub fn convert_line(line: &str, options: &RenderOptions) -> String {
     block_renderer::render_line_inline(line, options)
@@ -124,6 +149,25 @@ pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// GUI（LF 改行）: convert_editor は本文を main_text に入れ、CRLF 版と一致する。
+    /// 素の convert に LF を渡すと全体が 1 行になり本文が空・全文がタイトル化する退行の回帰テスト。
+    #[test]
+    fn test_convert_editor_normalizes_lf() {
+        let lf = "吾輩は猫である\n夏目漱石\n\n吾輩《わがはい》は猫である。";
+        let crlf = "吾輩は猫である\r\n夏目漱石\r\n\r\n吾輩《わがはい》は猫である。";
+        let opt = RenderOptions::default();
+
+        let editor = convert_editor(lf, &opt);
+        // 本文がちゃんと main_text に入る（空の main_text ではない）。
+        assert!(editor.contains("<ruby>"), "本文のルビが描画される");
+        assert!(
+            !editor.contains("<div class=\"main_text\"></div>"),
+            "main_text が空になっていない"
+        );
+        // 参照どおりの CRLF を convert したものとバイト一致する。
+        assert_eq!(editor, convert(crlf, &opt));
+    }
 
     /// quirk accent_name_typos: 参照実装の表は A^ の説明で字母 A を落としている。
     /// 既定（オン）では再現し、オフでは「…付きA」に訂正する。

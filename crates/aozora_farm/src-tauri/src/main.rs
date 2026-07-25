@@ -2,14 +2,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use aozora_core::analysis::{analyze as analyze_document, Analysis};
-use aozora_core::html::{convert, RenderOptions};
+use aozora_core::html::{convert_editor, RenderOptions};
 use tauri::Manager;
 
 /// Convert Aozora Bunko format text to HTML
+///
+/// エディタは LF 改行なので、CRLF 前提の convert ではなく convert_editor を使う
+/// （LF を CRLF に正規化してから変換する。素の convert だと全文がタイトル化して
+/// 本文が空になる）。
 #[tauri::command]
 fn convert_to_html(input: &str) -> Result<String, String> {
     let options = RenderOptions::default();
-    let html = convert(input, &options);
+    let html = convert_editor(input, &options);
     Ok(html)
 }
 
