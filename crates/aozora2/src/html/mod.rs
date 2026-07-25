@@ -47,6 +47,44 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
     renderer.render_line(line)
 }
 
+/// 旧経路（BlockManager）と新経路（中立AST）の**本文（main_text 内側）**を返す。
+/// 中立ASTバックエンドの移行（docs/plan-neutral-ast.md）の一致率計測用。
+/// 戻り値 `(old_body, new_body)`。両者が等しければ新経路がその作品の本文を
+/// byte 再現できている。
+pub fn compare_body(input: &str, options: &RenderOptions) -> (String, String) {
+    use aozora_core::document::extract_body_lines;
+    use aozora_core::lower::lower_to_blocks;
+    use aozora_core::parser::parse_document_raw;
+
+    // 旧: convert 出力から main_text の内側を切り出す。
+    let full = convert(input, options);
+    let open = "<div class=\"main_text\">";
+    let old_body = match full.find(open) {
+        Some(s) => {
+            let start = s + open.len();
+            let rest = &full[start..];
+            let end = rest
+                .find("</div>\r\n<div class=\"bibliographical_information\">")
+                .or_else(|| rest.find("</div>\r\n<div id=\"card\""))
+                .unwrap_or(rest.len());
+            rest[..end].to_string()
+        }
+        None => String::new(),
+    };
+
+    // 新: body 行 → RawDoc → Vec<Block> → 本文HTML。
+    let mut lines: Vec<&str> = input.split("\r\n").collect();
+    if lines.last() == Some(&"") {
+        lines.pop();
+    }
+    let body_lines = extract_body_lines(&lines);
+    let raw = parse_document_raw(&body_lines);
+    let blocks = lower_to_blocks(&raw);
+    let new_body = block_renderer::render_body_blocks(&blocks);
+
+    (old_body, new_body)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

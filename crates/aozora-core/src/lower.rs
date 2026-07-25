@@ -28,28 +28,28 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
 
         match classify_line(&nodes) {
             LineKind::BlockOpen(kind) => {
-                // 参照実装 apply_jisage → implicit_close(:jisage): 新しい jisage を
-                // 開くとき、最上位ブロックが jisage（または String＝ぶら下げ）なら
-                // 先に閉じてから開く（＝兄弟）。別種が最上位ならネスト。
-                if matches!(kind, BlockKind::Jisage { .. }) {
-                    if let Some((top_kind, _)) = stack.last() {
-                        if matches!(
-                            top_kind,
-                            BlockKind::Jisage { .. } | BlockKind::Burasage { .. }
-                        ) {
-                            // 暗黙閉じ（次の開きと同じ行に出るので explicit_close=false）。
-                            let (k, children) = stack.pop().expect("top exists");
-                            push_block(
-                                &mut stack,
-                                &mut top,
-                                Block::Nested {
-                                    kind: k,
-                                    children,
-                                    explicit_close: false,
-                                },
-                            );
-                        }
+                // 参照実装 implicit_close: 新しいブロックを開くとき、最上位が同種
+                // （jisage は jisage/burasage、chitsuki は chitsuki）なら先に閉じて
+                // から開く（＝兄弟）。別種が最上位ならネスト。他のブロック種は閉じない。
+                let closes_top = stack.last().is_some_and(|(top, _)| match &kind {
+                    BlockKind::Jisage { .. } => {
+                        matches!(top, BlockKind::Jisage { .. } | BlockKind::Burasage { .. })
                     }
+                    BlockKind::Chitsuki { .. } => matches!(top, BlockKind::Chitsuki { .. }),
+                    _ => false,
+                });
+                if closes_top {
+                    // 暗黙閉じ（次の開きと同じ行に出るので explicit_close=false）。
+                    let (k, children) = stack.pop().expect("top exists");
+                    push_block(
+                        &mut stack,
+                        &mut top,
+                        Block::Nested {
+                            kind: k,
+                            children,
+                            explicit_close: false,
+                        },
+                    );
                 }
                 stack.push((kind, Vec::new()));
             }
@@ -130,12 +130,16 @@ fn classify_line(nodes: &[Node]) -> LineKind {
 
 /// RawAST の BlockType＋params を中立ASTの BlockKind に写す（対応済みのものだけ）。
 fn block_kind_of(block_type: &BlockType, params: &crate::node::BlockParams) -> Option<BlockKind> {
+    let w = || params.width.unwrap_or(0);
     match block_type {
-        BlockType::Jisage => Some(BlockKind::Jisage {
-            width: params.width.unwrap_or(0),
-        }),
-        // TODO: Chitsuki/Jizume/Burasage/Midashi/Keigakomi/Yokogumi/Caption/
-        //       FontSize/Futoji/Shatai を段階的に足す。
+        BlockType::Jisage => Some(BlockKind::Jisage { width: w() }),
+        BlockType::Chitsuki => Some(BlockKind::Chitsuki { width: w() }),
+        BlockType::Jizume => Some(BlockKind::Jizume { width: w() }),
+        BlockType::Keigakomi => Some(BlockKind::Keigakomi),
+        BlockType::Yokogumi => Some(BlockKind::Yokogumi),
+        BlockType::Caption => Some(BlockKind::Caption),
+        // TODO: Burasage（per-line 包み）・Midashi（id カウンタ）・FontSize/Futoji/
+        //       Shatai を段階的に足す。
         _ => None,
     }
 }

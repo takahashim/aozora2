@@ -22,6 +22,8 @@ enum Commands {
     Strip(commands::strip::Args),
     /// HTMLに変換
     Html(commands::html::Args),
+    /// 本文の旧経路/新経路 byte 比較（中立AST移行の計測用）
+    BodyDiff(commands::body_diff::Args),
 }
 
 fn main() -> io::Result<()> {
@@ -29,5 +31,6 @@ fn main() -> io::Result<()> {
     match cli.command {
         Commands::Strip(args) => commands::strip::run(args),
         Commands::Html(args) => commands::html::run(args),
+        Commands::BodyDiff(args) => commands::body_diff::run(args),
     }
 }

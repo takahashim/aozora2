@@ -159,3 +159,35 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   block_renderer に足す＝旧 node_renderer のインライン描画の中立AST版）、(c) chitsuki/
   jizume/font/burasage の Nested。各段で比較テストを足し byte 一致を保つ。最終的に
   render() 全体を新経路へ切替え（全オラクル byte 一致確認後）BlockManager を撤去。
+- 2026-07-25 **本文一致率の計測ハーネス＋現状測定（重要）**。`aozora2 body-diff`
+  サブコマンドと `html::compare_body`（旧 convert の main_text 内側 vs 新
+  lower_to_blocks→render_body_blocks）を追加。コーパス3000件サンプルで測定:
+  - Jisage＋基本インライン（Text/Style/Tcy/罫囲み/横組み/キャプション/割書/Ruby）
+    のみ: **MATCH 34.2%**。
+  - chitsuki/jizume/keigakomi/yokogumi/caption ブロックを追加: **34.3%（+0.1%＝+1件）**。
+  → **機械的ブロックは被覆率をほぼ動かさない。ボトルネックは Gaiji（ほぼ全作品が
+    使う）と intricate な逐次挙動（burasage per-line 包み・Break/terprip・
+    Note 再帰・Img/Accent の register_alt_gaiji 副作用・フッタ表記について蓄積）。**
+- 2026-07-25 **重大な問題（測定に基づく結論）: render() 全体の切替は本セッションでは
+  安全に完了できない。** 理由:
+  - 新経路が旧経路と byte 一致するのは現状 34%。残り 66% を一致させるには、旧
+    node_renderer（~700行）+ renderer（~450行）+ tag_generator + block_manager の
+    **状態付き逐次ロジックを丸ごと中立AST版に再実装**する必要がある（Gaiji の
+    has_gaiji_images/has_jisx0213/unconverted_gaiji/gaiji_alt(quirks)/in_ruby_base、
+    Accent の has_accent＋名前quirk、Img の register_alt_gaiji 副作用、Note の再帰
+    描画、burasage の per-line 包み＋blank_type、Break の classify_output_line、
+    Midashi の id カウンタ、フッタ表記について、tail の after_text/bibliographical、
+    同行本文つきブロック開始、LineJisage 等）。
+  - これは複数セッション規模。**100% 一致に達する前に render() を切替えると 66% の
+    作品が悪化し、プロジェクトの神聖な不変条件「悪化0」を破る。** よって部分切替は
+    不可、全再実装が前提。
+  - 本セッションで確立したもの（安全に継続可能な土台）: (1) 新パイプライン
+    lower_to_blocks/render_body_blocks が参照の逐次挙動（implicit_close・
+    explicit_close の改行）を**クリーンな木＋メタデータで byte 再現できることを実証**、
+    (2) `body-diff` 計測ハーネスで被覆率を定量化・ギャップを特定できる、
+    (3) 「機能→block_renderer に厳密移植→比較テストで byte 一致」の反復パターン。
+  - 継続手順（次セッション以降）: `body-diff` で被覆率を見ながら、最大レバーの
+    **Gaiji** から着手（block_renderer を状態構造体化し node_renderer の gaiji 系
+    ヘルパを移植）。次に Note/Img/Accent、burasage per-line、Break、フッタ、tail。
+    被覆率が全件一致に達したら render() を新経路へ切替え、BlockManager と
+    出力HTML詮索を撤去。各段オラクル悪化0。

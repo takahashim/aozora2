@@ -39,18 +39,34 @@ fn render_block(block: &Block, out: &mut String) {
 fn render_nested(kind: &BlockKind, children: &[Block], explicit_close: bool, out: &mut String) {
     // 閉じタグ直後の改行は互換メタデータで決める（暗黙閉じは次の開きと同じ行）。
     let close_nl = if explicit_close { "</div>\r\n" } else { "</div>" };
-    match kind {
-        BlockKind::Jisage { width } => {
-            out.push_str(&format!(
-                "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">\r\n"
-            ));
+    // 開始タグ（旧 tag_generator の block 形と厳密一致）。None なら div で包まない。
+    let open = match kind {
+        BlockKind::Jisage { width } => Some(format!(
+            "<div class=\"jisage_{width}\" style=\"margin-left: {width}em\">\r\n"
+        )),
+        BlockKind::Chitsuki { width } => Some(format!(
+            "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">\r\n"
+        )),
+        BlockKind::Jizume { width } => Some(format!(
+            "<div class=\"jizume_{width}\" style=\"width: {width}em\">\r\n"
+        )),
+        BlockKind::Keigakomi => {
+            Some("<div class=\"keigakomi\" style=\"border: solid 1px\">\r\n".to_string())
+        }
+        BlockKind::Yokogumi => Some("<div class=\"yokogumi\">\r\n".to_string()),
+        BlockKind::Caption => Some("<div class=\"caption\">\r\n".to_string()),
+        // TODO: Burasage（per-line 包み）・Midashi・FontSize/Futoji/Shatai。
+        _ => None,
+    };
+    match open {
+        Some(open) => {
+            out.push_str(&open);
             for child in children {
                 render_block(child, out);
             }
             out.push_str(close_nl);
         }
-        // TODO: 他の BlockKind を段階的に足す。
-        _ => {
+        None => {
             for child in children {
                 render_block(child, out);
             }
@@ -191,6 +207,14 @@ mod tests {
     fn test_sequential_jisage_body_matches_old() {
         assert_body_matches(
             "題\r\n著\r\n\r\n［＃ここから２字下げ］\r\nA\r\n［＃ここで字下げ終わり］\r\n間\r\n［＃ここから４字下げ］\r\nB\r\n［＃ここで字下げ終わり］\r\n後\r\n底本：テスト\r\n",
+        );
+    }
+
+    /// chitsuki（地付き）・jizume（字詰め）ブロックが旧経路と byte 一致すること。
+    #[test]
+    fn test_chitsuki_jizume_body_matches_old() {
+        assert_body_matches(
+            "題\r\n著\r\n\r\n［＃ここから２字上げ］\r\n右寄\r\n［＃ここで字上げ終わり］\r\n［＃ここから20字詰め］\r\n詰\r\n［＃ここで字詰め終わり］\r\n底本：テスト\r\n",
         );
     }
 }
