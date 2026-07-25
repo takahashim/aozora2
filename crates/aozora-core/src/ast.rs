@@ -171,6 +171,19 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
                     }
                 }
             }
+            // 行の途中で開く地付き（is_block=false の Chitsuki）は行末まで包む
+            // （参照 close_inline_blocks が行末で閉じる）。行頭のものは classify_line
+            // が LineWrap で処理済みなので、ここに来るのは本文の後に続くケース。
+            if !params.is_block && *block_type == crate::node::BlockType::Chitsuki {
+                let end = find_matching_end(nodes, i, block_type).unwrap_or(nodes.len());
+                let inner = to_inlines(&nodes[i + 1..end.min(nodes.len())]);
+                out.push(Inline::ChitsukiInline {
+                    width: params.width.unwrap_or(0),
+                    children: inner,
+                });
+                i = if end < nodes.len() { end + 1 } else { nodes.len() };
+                continue;
+            }
         }
         if let Some(inl) = inline_from_node(&nodes[i]) {
             out.push(inl);
@@ -425,6 +438,11 @@ pub enum Inline {
     Note(String),
     /// 濁点片仮名（面区点 1-7-82〜85）
     DakutenKatakana { num: String },
+    /// 行の途中で開く地付き／字上げ（`TEXT［＃地付き］attribution`）。
+    /// 参照 close_inline_blocks は行末で閉じるので、マーカー以降を行末まで
+    /// `<div class="chitsuki_N" style="text-align:right; margin-right: Nem">…</div>`
+    /// で包む（後続に <br /> は付かない＝ブロックのみ行扱い）。
+    ChitsukiInline { width: u32, children: Vec<Inline> },
 }
 
 #[cfg(test)]

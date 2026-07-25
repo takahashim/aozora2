@@ -348,6 +348,13 @@ impl<'a> BlockRenderer<'a> {
             Inline::DakutenKatakana { num } => {
                 out.push_str(aozora_core::node::Node::dakuten_katakana_char(num))
             }
+            Inline::ChitsukiInline { width, children } => {
+                out.push_str(&format!(
+                    "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">"
+                ));
+                self.render_inlines(children, out);
+                out.push_str("</div>");
+            }
             Inline::Kaeriten(text) => {
                 out.push_str(&format!("<sub class=\"kaeriten\">{}</sub>", html_escape(text)))
             }
