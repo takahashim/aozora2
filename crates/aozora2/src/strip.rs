@@ -121,8 +121,26 @@ fn render_inlines_plain(inlines: &[aozora_core::ast::Inline], out: &mut String) 
             | Inline::ChitsukiInline { children, .. }
             | Inline::BlockInline { children, .. } => render_inlines_plain(children, out),
             Inline::AnnotationEnd { content, .. } => render_inlines_plain(content, out),
-            // 外字は Unicode 文字列へ。
-            Inline::Gaiji { description, .. } => out.push_str(&convert_gaiji(description)),
+            // 外字は Unicode 文字列へ。解決済みの unicode / 句点コード（jis_code）を
+            // 優先し（AST 解決後は description が空でも jis_code を持つ）、無ければ
+            // description からのフォールバック（変換不能なら 〓）。
+            Inline::Gaiji {
+                description,
+                unicode,
+                jis_code,
+                ..
+            } => {
+                if let Some(u) = unicode {
+                    out.push_str(u);
+                } else if let Some(u) = jis_code
+                    .as_deref()
+                    .and_then(aozora_core::jis_table::jis_to_unicode)
+                {
+                    out.push_str(&u);
+                } else {
+                    out.push_str(&convert_gaiji(description));
+                }
+            }
             // アクセント分解は合成文字へ（無ければ空）。
             Inline::Accent { unicode, .. } => {
                 if let Some(u) = unicode {
