@@ -14,11 +14,29 @@ use crate::node::{BlockType, Node};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 use crate::parser::RawDoc;
 
+/// Lower 時に検出できる構造上の診断（現状は EOF で閉じられなかったブロック）。
+/// エディタ支援用の付加情報で、変換出力には影響しない。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LowerDiagnostic {
+    /// ブロックを開いた本文行（0 起点）。
+    pub line: usize,
+    /// 閉じられなかったブロックの種類。
+    pub kind: BlockKind,
+}
+
 /// RawDoc（未解決・平坦マーカー）を Aozora AST（[`AozoraAst`]＝トップレベル [`Block`] 列）に畳む。
 pub fn lower_to_blocks(raw: &RawDoc) -> AozoraAst {
+    lower_to_blocks_with_diagnostics(raw).0
+}
+
+/// [`lower_to_blocks`] と同じ畳み込みを行い、加えて構造上の診断（EOF で閉じられなかった
+/// ブロック）を返す。**Block 出力は `lower_to_blocks` と完全一致**（診断は追加返却のみで
+/// 変換結果には一切影響しない＝オラクル不変）。エディタ支援 `analysis` が使う。
+pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDiagnostic>) {
     // 開いている Nested ブロックのビルダー（種類・たまった子ブロック列・開いた行番号）。
     let mut stack: Vec<(BlockKind, Vec<Block>, usize)> = Vec::new();
     let mut top: Vec<Block> = Vec::new();
+    let mut diags: Vec<LowerDiagnostic> = Vec::new();
 
     for raw_line in &raw.lines {
         let line_no = raw_line.line_no;
@@ -165,6 +183,12 @@ pub fn lower_to_blocks(raw: &RawDoc) -> AozoraAst {
     // 閉じられていないブロックはそのまま閉じる（旧経路の末尾 pop 相当）。
     // 末尾クローズは行を持たないので `</div>\r\n`（Newline）とする。
     while let Some((kind, children, open_line)) = stack.pop() {
+        // EOF まで対応する「終わり」が現れなかった＝閉じ忘れの可能性。診断に記録する
+        // （出力は従来どおり末尾クローズ。診断は追加返却のみで Block 出力は不変）。
+        diags.push(LowerDiagnostic {
+            line: open_line,
+            kind: kind.clone(),
+        });
         let nested = Block::Nested {
             kind,
             children,
@@ -174,7 +198,7 @@ pub fn lower_to_blocks(raw: &RawDoc) -> AozoraAst {
         push_block(&mut stack, &mut top, nested);
     }
 
-    top
+    (top, diags)
 }
 
 /// 行スコープ包みの先頭マーカー1個を取り除いた残りのノード列を返す。

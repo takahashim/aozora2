@@ -12,6 +12,8 @@
 //! 出力には一切影響しない。位置は LSP と同じく **0 起点**（行・char とも）で、`end` は
 //! 含まない半開区間。フロント（CodeMirror）側で行番号を +1 して用いる。
 
+use crate::ast::BlockKind;
+use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node};
 use crate::parser::{parse_document_raw, RawLine};
 
@@ -154,7 +156,48 @@ pub fn analyze(input: &str) -> Analysis {
         extract_symbols(raw, &mut analysis.symbols);
     }
 
+    // 構造診断: EOF まで閉じられなかったブロック（字下げ等の「終わり」忘れ）。
+    // lower を通すが Block 出力は捨てる（診断だけ利用）。convert には無影響。
+    let (_blocks, lower_diags) = lower_to_blocks_with_diagnostics(&doc);
+    for d in lower_diags {
+        let end = doc
+            .lines
+            .get(d.line)
+            .map(|l| l.source.chars().count())
+            .unwrap_or(0);
+        analysis.diagnostics.push(Diagnostic {
+            range: Range {
+                line: d.line,
+                start: 0,
+                end,
+            },
+            severity: Severity::Warning,
+            code: "unclosed-block",
+            message: format!(
+                "{}が閉じられていません（対応する「終わり」がありません）",
+                block_kind_label(&d.kind)
+            ),
+        });
+    }
+
     analysis
+}
+
+/// ブロック種別の表示名（診断メッセージ用）。
+fn block_kind_label(kind: &BlockKind) -> &'static str {
+    match kind {
+        BlockKind::Jisage { .. } => "字下げ",
+        BlockKind::Chitsuki { .. } => "地付き",
+        BlockKind::Jizume { .. } => "字詰め",
+        BlockKind::Burasage { .. } => "ぶら下げ",
+        BlockKind::Midashi { .. } => "見出し",
+        BlockKind::Keigakomi => "罫囲み",
+        BlockKind::Yokogumi => "横組み",
+        BlockKind::Caption => "キャプション",
+        BlockKind::FontSize { .. } => "文字サイズ変更",
+        BlockKind::Futoji => "太字",
+        BlockKind::Shatai => "斜体",
+    }
 }
 
 /// 行から見出しを抽出する。見出しには二形式ある:
@@ -364,6 +407,30 @@ mod tests {
         let detail = gaiji.detail.as_deref().unwrap_or("");
         assert!(detail.starts_with("外字:"), "detail={detail}");
         assert!(detail.contains('○'), "実文字を含む: {detail}");
+    }
+
+    #[test]
+    fn unclosed_block_becomes_diagnostic() {
+        // ［＃ここから字下げ］に対応する「終わり」が無い（ブロック命令は行頭）。
+        let a = analyze("［＃ここから２字下げ］\n本文だけ続く");
+        let unclosed: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "unclosed-block")
+            .collect();
+        assert_eq!(unclosed.len(), 1);
+        assert_eq!(unclosed[0].range.line, 0);
+        assert!(
+            unclosed[0].message.contains("字下げ"),
+            "{}",
+            unclosed[0].message
+        );
+    }
+
+    #[test]
+    fn properly_closed_block_has_no_unclosed_diagnostic() {
+        let a = analyze("［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］");
+        assert!(a.diagnostics.iter().all(|d| d.code != "unclosed-block"));
     }
 
     #[test]
