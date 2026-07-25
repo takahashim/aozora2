@@ -59,11 +59,12 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: npm run tauri -- build --bundles app dmg
 
-      # Windows: beforeBuildCommand (tsc && vite build) → src-tauri コンパイルまでを
-      # 検証する。インストーラ生成はスキップ（--no-bundle）。
-      - name: Build Tauri app (Windows, no bundle)
+      # Windows: NSIS インストーラ(.exe)を生成する。外字/CSS などの bundle.resources
+      # を同梱するので単体で使える（生 exe＝--no-bundle だとリソースが付かず実用不可）。
+      # NSIS は tauri が自動取得。icon.ico は本リポジトリに同梱済み。
+      - name: Build Tauri app (Windows, NSIS installer)
         if: matrix.os == 'windows-latest'
-        run: npm run tauri -- build --no-bundle
+        run: npm run tauri -- build --bundles nsis
 
       # 生成した Mac アプリ（.app / .dmg）をアーティファクトとして公開。
       # ワークスペースなので出力はリポジトリ直下 target/ に出る（保険で src-tauri
@@ -79,3 +80,14 @@ jobs:
             target/release/bundle/macos/*.app
             crates/aozora_farm/src-tauri/target/release/bundle/dmg/*.dmg
             crates/aozora_farm/src-tauri/target/release/bundle/macos/*.app
+
+      # 生成した Windows インストーラ(.exe)を公開。
+      - name: Upload Windows installer
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: aozora-farm-windows
+          if-no-files-found: error
+          path: |
+            target/release/bundle/nsis/*.exe
+            crates/aozora_farm/src-tauri/target/release/bundle/nsis/*.exe
