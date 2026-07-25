@@ -305,3 +305,14 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
     コーパス比較で差分の大半（413/415）はブロックコマンド行由来の余計な空行が消える
     改善、1は accent 合成改善、1は外字 geta 軽微差。本文内容は保持。既定 strip は
     無変更（トークン経路 convert は保持）。→ Phase D の実証目的を達成。
+
+- 2026-07-25 **★ 旧 BlockManager ストリーミングスタック撤去完了（プラン §0 の到達点）。**
+  convert_legacy（差分オラクル）を削除し、それが唯一保持していた旧4ファイル
+  （renderer/node_renderer/block_manager/tag_generator）と body-diff サブコマンド、
+  presentation の旧専用ヘルパ（is_block_only_line/classify_output_line/classify_line/
+  LineType/LineInfo/is_midashi_line）を一括削除（**計 2,384 行削除**）。UnconvertedGaiji は
+  presentation へ移設。**HTML 本番経路は render_via_blocks（中立AST）のみ**。回帰検出は
+  本物のオラクル（--oracle-dir oracle）が担う。オラクル 17363・回帰0・全テスト通過。
+  - 残: プレーンテキストの既定は依然トークン経路（strip::convert）。AST版（convert_via_ast）
+    は検証済みだが既定切替は出力変化（余計な空行除去＝改善＋accent 合成改善＋外字 geta
+    軽微差）の受容判断が要る。切替えれば HTML・プレーンテキスト双方が中立AST-only になる。
