@@ -54,12 +54,12 @@ CodeMirror は行 1 起点なので、フロントで `line+1` して変換す�
 | LSP 機能 | 土台データ | 実現度 | フェーズ |
 |----------|-----------|--------|----------|
 | セマンティックハイライト | `analysis.tokens`（span 付き） | **実装・CM接続済**（`editor/lsp.ts`） | 1 |
-| アウトライン／シンボル | `analysis.symbols` | 実装済（データ供給・パネル未実装） | 1 |
-| 診断: 未解決注記 | `Node::UnresolvedReference` | **実装・CM接続済**（linter＋lintGutter） | 1 |
-| 診断: 未閉じブロック | `lower` 末尾 `stack.pop()` の残り（`open_line`） | 設計済・未実装 | 2 |
-| 診断: 未知コマンド | `CommandKind::Unknown` を span 付きで | 設計済・未実装 | 2 |
-| 診断: 未解決外字 | `Node::Gaiji` の JIS/U+ が表引きで解決不能 | 設計済・未実装 | 2 |
-| ホバー | 位置 → token → 説明（注記の意味／外字の実文字・画像） | 設計済・未実装 | 2 |
+| アウトライン／シンボル | `analysis.symbols` | **実装・CM接続済**（見出しジャンプパネル `showPanel`） | 1 |
+| 診断: 未解決注記 | `Node::UnresolvedReference`＋`reference_resolves` 判定 | **実装・CM接続済**（偽陽性除去済み） | 1/2 |
+| 診断: 未閉じブロック | `lower_to_blocks_with_diagnostics`（出力不変） | **実装済** | 2 |
+| 診断: 未解決外字 | `Node::Gaiji`（unicode=None かつ jis_code=None） | **実装済** | 2 |
+| 診断: 未知コマンド | 区別できる signal 無し（誤記も編集注も `Note`） | **見送り** | — |
+| ホバー | token の `detail`（外字の実文字・ルビ読み・見出しレベル等） | **実装・CM接続済**（`hoverTooltip`） | 2 |
 | 補完 | `［＃` 直後に注記コマンド候補（`palette.ts` の台帳を流用） | 設計済・未実装 | 3 |
 | 折りたたみ | ブロック `BlockStart`/`BlockEnd`（or Block 木）の行範囲 | 設計済・未実装 | 3 |
 | go-to / peek | 対象参照（注・図版）※青空記法では用途限定 | 要検討 | 後 |
@@ -100,17 +100,20 @@ const toPos = (doc: Text, line: number, ch: number) => doc.line(line + 1).from +
   CM 側 `editor/lsp.ts` で **診断（linter＋lintGutter）とセマンティックハイライト（Decoration.mark）**
   を接続済み（`@codemirror/lint` 依存追加・解析は 200ms デバウンス・位置は `toPos` で 0起点→CM 変換）。
   残: **ホバー**（token に説明が要る→フェーズ2）・**アウトラインパネル**（`getOutline` でデータ供給済み、UI 未実装）。
-- **フェーズ2（診断の拡充）**:
-  - **未閉じブロック**: `lower` に `lower_to_blocks_with_diagnostics(&RawDoc) -> (Vec<Block>,
-    Vec<Diagnostic>)` を追加。既存 `lower_to_blocks` はこれを呼んで診断を捨てる薄い包みにし、
-    **Block 出力は 1 バイトも変えない**（オラクル不変を必ず確認）。末尾 `stack.pop()` に残る
-    ブロックの `open_line` を warning にする。
-  - **未知コマンド／未解決外字**: `tokenize_spanned` の `Token::Command`/`Token::Gaiji` を span
-    付きで分類（`parse_command` の `Unknown`、外字は JIS/U+ の表引き失敗）。誤検知を避けるため
-    「対象指定つき注記（〜に傍点 等）」は除外する規則を明記。
-  - **ホバー**: token 種別ごとの説明文＋外字補助コマンド。
-- **フェーズ3（編集支援）**: `［＃` 補完（`palette.ts` 台帳流用）、ブロック折りたたみ、
-  StreamLanguage を decorations へ完全移行。
+- **フェーズ2（完了）**:
+  - **未閉じブロック**（完了）: `lower_to_blocks_with_diagnostics` を追加。`lower_to_blocks` は
+    これを呼んで診断を捨てる薄い包みにし、**Block 出力は完全一致**（オラクル 17361 維持を確認）。
+    EOF に残るブロックの `open_line` を warning にする。
+  - **未解決外字**（完了）: `Node::Gaiji` が unicode/jis_code とも None なら文字にも画像にも
+    ならないので warning。クリーンな signal で誤検知しない。
+  - **未知コマンド**（見送り）: 誤記コマンドも正当な編集注もどちらも `Node::Note` になり、
+    区別する signal が無いため実装しない。
+  - **偽陽性修正**（完了）: フェーズ1の未解決注記診断は解決前の生ノードを見て正当な注記まで
+    誤検知していた。`reference_resolves` 述語で実際に解決できないものだけに絞った。
+  - **ホバー**（完了）: `SemToken.detail`（外字の実文字・ルビ読み・見出しレベル等）を
+    `hoverTooltip` で表示。
+- **フェーズ3（編集支援・未着手）**: `［＃` 補完（`palette.ts` 台帳流用）、ブロック折りたたみ、
+  StreamLanguage を decorations へ完全移行、アウトラインの常時表示サイドバー化。
 - **将来**: `aozora-lsp` バイナリ（tower-lsp）で同ロジックを標準 LSP として外部エディタへ。
 
 ## 6. 設計上の決定・注意
