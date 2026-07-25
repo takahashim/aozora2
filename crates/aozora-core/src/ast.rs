@@ -296,12 +296,13 @@ pub enum BlockKind {
     Chitsuki { width: u32 },
     /// 字詰め。幅 em。
     Jizume { width: u32 },
-    /// ぶら下げ（折り返し字下げ）。左マージンと字下げ（text-indent）em。
-    /// 参照実装の per-line モデルでは各子行を個別の div で包む。
+    /// ぶら下げ（折り返し字下げ）。参照実装の per-line モデルでは外側 div を作らず、
+    /// 各内容行を個別の `<div class="burasage" style="margin-left: {wrap_width}em;
+    /// text-indent: {text_indent}em;">` で包む（空行は素の `<br />`）。
     Burasage {
-        /// margin-left em（コンマなしで幅が空のとき None）
-        margin: Option<u32>,
-        /// text-indent em（負値）
+        /// margin-left em（折り返し字下げ幅。参照 wrap_width、既定 1）
+        wrap_width: u32,
+        /// text-indent em（字下げ幅 - wrap_width。通常は負値）
         text_indent: i32,
     },
     /// 見出し（後続の行を包む）。

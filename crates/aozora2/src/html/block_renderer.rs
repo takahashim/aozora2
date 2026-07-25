@@ -177,6 +177,16 @@ impl<'a> BlockRenderer<'a> {
         explicit_close: bool,
         out: &mut String,
     ) {
+        // ぶら下げ（折り返し字下げ）は per-line モデル。外側 div を作らず、各内容行を
+        // 個別に burasage div で包む（空行は素の `<br />`）。閉じは何も出さない。
+        if let BlockKind::Burasage {
+            wrap_width,
+            text_indent,
+        } = kind
+        {
+            self.render_burasage(*wrap_width, *text_indent, children, out);
+            return;
+        }
         // 閉じタグ直後の改行は互換メタデータで決める（暗黙閉じは次の開きと同じ行）。
         let close_nl = if explicit_close { "</div>\r\n" } else { "</div>" };
         // 開始タグ（旧 tag_generator の block 形と厳密一致）。複数行ブロックは開き
@@ -194,6 +204,35 @@ impl<'a> BlockRenderer<'a> {
                 for child in children {
                     self.render_block(child, out);
                 }
+            }
+        }
+    }
+
+    /// ぶら下げブロックを per-line で描画する（参照 generate_burasage_start）。
+    /// 内容行は個別に burasage div で包み（内側 `<br />` なし）、空行は素の `<br />`。
+    /// 行以外の子（行スコープ包み・入れ子ブロック・見出し等）は包まずそのまま描画する。
+    fn render_burasage(
+        &mut self,
+        wrap_width: u32,
+        text_indent: i32,
+        children: &[Block],
+        out: &mut String,
+    ) {
+        for child in children {
+            match child {
+                Block::Line { inline, .. } if inline.is_empty() => {
+                    // 空行は burasage で包まず素の `<br />`。
+                    out.push_str("<br />\r\n");
+                }
+                Block::Line { inline, .. } => {
+                    out.push_str(&format!(
+                        "<div class=\"burasage\" style=\"margin-left: {wrap_width}em; text-indent: {text_indent}em;\">"
+                    ));
+                    self.render_inlines(inline, out);
+                    out.push_str("</div>\r\n");
+                }
+                // 行スコープ字下げ・入れ子ブロック等は burasage で包まない。
+                other => self.render_block(other, out),
             }
         }
     }

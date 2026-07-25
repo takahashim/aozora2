@@ -202,7 +202,16 @@ fn block_kind_of(block_type: &BlockType, params: &crate::node::BlockParams) -> O
         }),
         BlockType::Futoji => Some(BlockKind::Futoji),
         BlockType::Shatai => Some(BlockKind::Shatai),
-        // TODO: Burasage（per-line 包み）・Midashi（id カウンタ）を段階的に足す。
+        BlockType::Burasage => {
+            // 参照 generate_burasage_start: wrap_width 既定 1、text_indent = width - wrap_width。
+            let wrap_width = params.wrap_width.unwrap_or(1);
+            let width = params.width.unwrap_or(0) as i32;
+            Some(BlockKind::Burasage {
+                wrap_width,
+                text_indent: width - wrap_width as i32,
+            })
+        }
+        // TODO: Midashi（id カウンタ）を段階的に足す。
         _ => None,
     }
 }
