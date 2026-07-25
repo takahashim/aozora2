@@ -10,6 +10,7 @@ import { aozoraKeymap } from './keymap'
 import { aozoraToolbar } from './toolbar'
 import { aozoraPalette } from './palette'
 import { aozoraLsp } from './lsp'
+import { aozoraCompletion } from './completion'
 
 export type ChangeCallback = (content: string) => void
 
@@ -71,6 +72,7 @@ const baseExtensions: Extension[] = [
   aozoraLanguage,
   aozoraEditorTheme,
   aozoraHighlighting,
+  aozoraCompletion,
   ...aozoraLsp(),
 ]
 
