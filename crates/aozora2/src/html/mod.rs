@@ -1,15 +1,26 @@
 //! HTML変換モジュール
 //!
 //! 青空文庫形式のテキストをHTMLに変換します。
+//!
+//! # 2つの経路（docs/plan-neutral-ast.md）
+//!
+//! - **本番＝中立AST新経路**: [`convert`]/[`convert_line`] → [`render_via_blocks`]
+//!   （`lower_to_blocks` → [`block_renderer::BlockRenderer`]）。本文は状態を持たない
+//!   木歩きで描画し、`@indent_stack`/`@terprip` 等の逐次判断は Lowerer が一度だけ
+//!   計算する。head/metadata/tail 枠は [`document_renderer`] を共有。
+//! - **旧 BlockManager 経路（差分オラクル専用）**: [`convert_legacy`] のみが入口。
+//!   `renderer`/`node_renderer`/`block_manager`/`tag_generator` は**この差分オラクル
+//!   （[`compare_body`]/[`compare_full`]）のためだけに残す**。本番からは参照しない。
+//!   参照実装引退時、または全 quirk を新経路へ移した後にまとめて撤去できる。
 
-mod block_manager;
+mod block_manager; // legacy: convert_legacy（差分オラクル）専用
 mod block_renderer;
 mod document_renderer;
-mod node_renderer;
+mod node_renderer; // legacy: convert_legacy（差分オラクル）専用
 mod options;
 mod presentation;
-mod renderer;
-mod tag_generator;
+mod renderer; // legacy: convert_legacy（差分オラクル）専用
+mod tag_generator; // legacy: convert_legacy（差分オラクル）専用
 
 pub use options::{Quirks, RenderOptions};
 pub use presentation::html_escape;
@@ -48,10 +59,9 @@ pub fn convert_legacy(input: &str, options: &RenderOptions) -> String {
     renderer.render(input)
 }
 
-/// 1行をHTMLに変換
+/// 1行をHTMLに変換（インライン列のみ・中立AST新経路）。
 pub fn convert_line(line: &str, options: &RenderOptions) -> String {
-    let mut renderer = HtmlRenderer::new(options.clone());
-    renderer.render_line(line)
+    block_renderer::render_line_inline(line, options)
 }
 
 /// 中立AST 新経路で**全文書**を組み立てる（docs/plan-neutral-ast.md B4）。

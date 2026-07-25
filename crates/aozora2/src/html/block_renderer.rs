@@ -826,6 +826,24 @@ pub fn render_body_blocks(blocks: &[Block], options: &RenderOptions) -> String {
     BlockRenderer::new(options).render_body(blocks)
 }
 
+/// 単一行のインラインHTML（行末 `<br />`/`\r\n` なし）を新経路で描画する。
+/// 旧 `HtmlRenderer::render_line` の中立AST版（インライン列のみ）。
+pub fn render_line_inline(line: &str, options: &RenderOptions) -> String {
+    use aozora_core::ast::to_inlines;
+    use aozora_core::parser::parse;
+    use aozora_core::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
+
+    let tokens = tokenize(line);
+    let mut nodes = parse(&tokens);
+    resolve_references(&mut nodes);
+    resolve_inline_ruby(&mut nodes);
+    let inlines = to_inlines(&nodes);
+    let mut br = BlockRenderer::new(options);
+    let mut out = String::new();
+    br.render_inlines(&inlines, &mut out);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
