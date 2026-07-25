@@ -21,6 +21,9 @@ pub struct Args {
     /// 入力をZIPファイルとして扱う
     #[arg(short, long)]
     pub zip: bool,
+    /// 本文だけでなく全文書（head/tail/footer 含む）を比較する
+    #[arg(long)]
+    pub full: bool,
 }
 
 pub fn run(args: Args) -> io::Result<()> {
@@ -51,7 +54,11 @@ pub fn run(args: Args) -> io::Result<()> {
     };
 
     let input = aozora_core::encoding::decode_to_utf8(&bytes);
-    let (old_body, new_body) = compare_body(&input, &RenderOptions::default());
+    let (old_body, new_body) = if args.full {
+        aozora2::html::compare_full(&input, &RenderOptions::default())
+    } else {
+        compare_body(&input, &RenderOptions::default())
+    };
 
     if old_body == new_body {
         println!("MATCH");

@@ -73,6 +73,26 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
                 }
                 // 対応する開きが無ければ捨てる（旧経路も未マッチ終了は無出力）。
             }
+            LineKind::BlockCloseWithTail(explicit) => {
+                // ブロックを閉じる（`</div>` 改行なし＝explicit_close=false）。閉じの
+                // `\r\n` は後続本文行が出す。開きが無ければ閉じタグは出ない。
+                if let Some((kind, children)) = stack.pop() {
+                    push_block(
+                        &mut stack,
+                        &mut top,
+                        Block::Nested {
+                            kind,
+                            children,
+                            explicit_close: false,
+                        },
+                    );
+                }
+                // 先頭 BlockEnd を除いた後続本文を同じ行に出す（explicit なら br 抑制）。
+                let rest: Vec<Node> = nodes.into_iter().skip(1).collect();
+                let inline = crate::ast::to_inlines(&rest);
+                let brk = if explicit { Break::None } else { Break::Br };
+                push_block(&mut stack, &mut top, Block::Line { inline, brk });
+            }
             LineKind::LineWrap(kind) => {
                 // ［＃N字下げ］text／行スコープ地付き: 行全体を div で1行に包む。
                 // 先頭の行スコープマーカー1個（LineJisage、または is_block=false の
@@ -170,6 +190,8 @@ enum LineKind {
     BlockOpen(BlockKind),
     /// ブロック終了（`ここで…終わり`）。単独行の BlockEnd。
     BlockClose,
+    /// 先頭 BlockEnd＋後続本文の行（`［＃ここで…終わり］text`）。bool は explicit_close。
+    BlockCloseWithTail(bool),
     /// 行スコープの1行包み（同行に本文あり）。字下げ／地付き。
     LineWrap(BlockKind),
     /// 内容行。
@@ -191,6 +213,14 @@ fn classify_line(nodes: &[Node]) -> LineKind {
     }
     if let [Node::BlockEnd { .. }] = nodes {
         return LineKind::BlockClose;
+    }
+    // 先頭が BlockEnd で後続に本文がある行（`［＃ここで…終わり］　` 等）。参照は
+    // ブロックを閉じ（`</div>` 改行なし）、続く本文をその行に出す（行末 br は
+    // BlockEnd が explicit_close なら抑制）。
+    if let Some((Node::BlockEnd { explicit_close, .. }, rest)) = nodes.split_first() {
+        if !rest.is_empty() {
+            return LineKind::BlockCloseWithTail(*explicit_close);
+        }
     }
     // 行単位字下げ ［＃N字下げ］。行にこのマーカーしか無ければ複数行ブロックを開く
     // （参照 apply_jisage の unshift 相当＝ここから字下げと同一）。本文が続けば行包み。

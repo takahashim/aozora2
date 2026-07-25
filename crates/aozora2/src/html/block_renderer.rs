@@ -23,6 +23,11 @@ use super::presentation::{
 /// 画像化できない外字を本文中で示す記号
 const GAIJI_MARK: &str = "※";
 
+/// くの字点（繰り返し記号）の構成文字（フッタ「表記について」の判定用）。
+const KUNOJI_KU: char = '／';
+const KUNOJI_NOJI: char = '＼';
+const KUNOJI_DAKUTEN: char = '″';
+
 /// 参照実装 kuten2png は alt 生成前に PAT_KUTEN = /「※」[は|の]/ を除去する。
 fn strip_kuten_prefix(description: &str) -> String {
     description.replace("「※」は", "").replace("「※」の", "")
@@ -134,6 +139,33 @@ impl<'a> BlockRenderer<'a> {
             alt_depth: 0,
             note_depth: 0,
             midashi_id_counter: 0,
+        }
+    }
+
+    /// tail セクション（after_text/bibliographical）処理に入る（参照 enter_tail）。
+    /// 以降、外字記号 ※ のプレフィックスを抑制する。
+    pub fn enter_tail(&mut self) {
+        self.in_tail = true;
+    }
+
+    /// くの字点をフッタ「表記について」用に数える（参照 scan_kunoji）。
+    /// 注記の中にも書かれうるので、パース後ではなく生のソース行を渡すこと。
+    pub fn scan_kunoji(&mut self, text: &str) {
+        if self.has_kunoji && self.has_dakuten_kunoji {
+            return;
+        }
+        let chars: Vec<char> = text.chars().collect();
+        for (i, c) in chars.iter().enumerate() {
+            if *c != KUNOJI_KU {
+                continue;
+            }
+            match chars.get(i + 1) {
+                Some(&KUNOJI_NOJI) => self.has_kunoji = true,
+                Some(&KUNOJI_DAKUTEN) if chars.get(i + 2) == Some(&KUNOJI_NOJI) => {
+                    self.has_dakuten_kunoji = true
+                }
+                _ => {}
+            }
         }
     }
 

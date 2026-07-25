@@ -37,6 +37,13 @@ pub use renderer::HtmlRenderer;
 /// assert!(html.contains("<ruby>"));
 /// ```
 pub fn convert(input: &str, options: &RenderOptions) -> String {
+    // 中立AST 新経路（docs/plan-neutral-ast.md B4）へ切替。旧 BlockManager 経路は
+    // convert_legacy として当面残す（差分検証用・撤去は後続段）。
+    render_via_blocks(input, options)
+}
+
+/// 旧 BlockManager 経路での全文書変換（切替前の参照実装・検証用）。
+pub fn convert_legacy(input: &str, options: &RenderOptions) -> String {
     let mut renderer = HtmlRenderer::new(options.clone());
     renderer.render(input)
 }
@@ -45,6 +52,92 @@ pub fn convert(input: &str, options: &RenderOptions) -> String {
 pub fn convert_line(line: &str, options: &RenderOptions) -> String {
     let mut renderer = HtmlRenderer::new(options.clone());
     renderer.render_line(line)
+}
+
+/// 中立AST 新経路で**全文書**を組み立てる（docs/plan-neutral-ast.md B4）。
+/// head/metadata/section 枠は DocumentRenderer を再利用し、本文と tail は
+/// `lower_to_blocks`→`BlockRenderer` で描画する（BlockManager 非依存）。
+/// フッタ「表記について」用の状態は BlockRenderer が描画の副作用で蓄積する。
+pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
+    use aozora_core::document::{
+        extract_after_text_lines, extract_bibliographical_lines, extract_body_lines,
+        extract_header_info,
+    };
+    use aozora_core::lower::lower_to_blocks;
+    use aozora_core::parser::parse_document_raw;
+    use block_renderer::BlockRenderer;
+    use document_renderer::DocumentRenderer;
+    use presentation::auto_link;
+
+    let mut lines: Vec<&str> = input.split("\r\n").collect();
+    if lines.last() == Some(&"") {
+        lines.pop();
+    }
+
+    let header_info = extract_header_info(&lines);
+    let doc = DocumentRenderer::new(options);
+    let mut br = BlockRenderer::new(options);
+
+    let mut output = String::new();
+    doc.render_html_head(&mut output, &header_info);
+    doc.render_metadata_section(&mut output, &header_info);
+
+    // 本文（main_text）。くの字点は生の行から数える（注記内も拾うため）。
+    doc.render_main_text_start(&mut output);
+    let body_lines = extract_body_lines(&lines);
+    for l in &body_lines {
+        br.scan_kunoji(l);
+    }
+    let body_raw = parse_document_raw(&body_lines);
+    let body_blocks = lower_to_blocks(&body_raw);
+    output.push_str(&br.render_body(&body_blocks));
+    doc.render_main_text_end(&mut output);
+
+    // tail セクション（after_text/bibliographical）は enter_tail 後に描画し、
+    // 各セクション出力へ自動リンクを適用する（参照 tail_output）。
+    br.enter_tail();
+
+    let after_text_lines = extract_after_text_lines(&lines);
+    if !after_text_lines.is_empty() {
+        doc.render_after_text_header(&mut output);
+        for l in &after_text_lines {
+            br.scan_kunoji(l);
+        }
+        let raw = parse_document_raw(&after_text_lines);
+        let blocks = lower_to_blocks(&raw);
+        output.push_str(&auto_link(&br.render_body(&blocks)));
+        doc.render_after_text_footer(&mut output);
+    }
+
+    let biblio_lines = extract_bibliographical_lines(&lines);
+    if !biblio_lines.is_empty() {
+        doc.render_bibliographical_header(&mut output);
+        for l in &biblio_lines {
+            br.scan_kunoji(l);
+        }
+        let raw = parse_document_raw(&biblio_lines);
+        let blocks = lower_to_blocks(&raw);
+        output.push_str(&auto_link(&br.render_body(&blocks)));
+        doc.render_bibliographical_footer(&mut output, input.ends_with('\n'));
+    }
+
+    doc.render_notation_notes(
+        &mut output,
+        br.has_notes,
+        br.has_jisx0213,
+        br.has_accent,
+        br.has_kunoji,
+        br.has_dakuten_kunoji,
+        &br.unconverted_gaiji,
+    );
+    doc.render_card_section(&mut output);
+    doc.render_html_foot(&mut output);
+    output
+}
+
+/// 旧 convert() と新 render_via_blocks() の**全文書**を返す（切替検証用）。
+pub fn compare_full(input: &str, options: &RenderOptions) -> (String, String) {
+    (convert_legacy(input, options), render_via_blocks(input, options))
 }
 
 /// 旧経路（BlockManager）と新経路（中立AST）の**本文（main_text 内側）**を返す。
@@ -57,7 +150,7 @@ pub fn compare_body(input: &str, options: &RenderOptions) -> (String, String) {
     use aozora_core::parser::parse_document_raw;
 
     // 旧: convert 出力から main_text の内側を切り出す。
-    let full = convert(input, options);
+    let full = convert_legacy(input, options);
     let open = "<div class=\"main_text\">";
     let old_body = match full.find(open) {
         Some(s) => {
