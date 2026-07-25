@@ -1,6 +1,4 @@
 import { EditorView } from '@codemirror/view'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { tags } from '@lezer/highlight'
 
 // エディタの基本テーマ
 export const aozoraEditorTheme = EditorView.theme({
@@ -41,16 +39,5 @@ export const aozoraEditorTheme = EditorView.theme({
   },
 })
 
-// シンタックスハイライトのスタイル
-const aozoraHighlightStyle = HighlightStyle.define([
-  // ルビ《》 - 落ち着いた緑
-  { tag: tags.string, color: '#6c9249' },
-  // 注記［＃...］ - 落ち着いた青
-  { tag: tags.keyword, color: '#5a7a9e' },
-  // ルビ開始記号 ｜ - グレー
-  { tag: tags.operator, color: '#8a8a8a' },
-  // 外字記号 ※ - オレンジ
-  { tag: tags.atom, color: '#b8860b' },
-])
-
-export const aozoraHighlighting = syntaxHighlighting(aozoraHighlightStyle)
+// 記法のハイライトは lsp.ts のセマンティックトークン（Decoration.mark）に一本化した。
+// 旧 StreamLanguage（aozora-lang.ts）＋ HighlightStyle は撤去。

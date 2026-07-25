@@ -3,8 +3,7 @@ import { EditorState, Extension, Compartment } from '@codemirror/state'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
 import { search, highlightSelectionMatches, openSearchPanel, closeSearchPanel, findNext, findPrevious, selectNextOccurrence } from '@codemirror/search'
 import { bracketMatching } from '@codemirror/language'
-import { aozoraLanguage } from './aozora-lang'
-import { aozoraEditorTheme, aozoraHighlighting } from './theme'
+import { aozoraEditorTheme } from './theme'
 import { getCodeMirrorPhrases, onLangChange } from '@/i18n'
 import { aozoraKeymap } from './keymap'
 import { aozoraToolbar } from './toolbar'
@@ -69,9 +68,7 @@ const baseExtensions: Extension[] = [
   ]),
   aozoraToolbar,
   aozoraPalette,
-  aozoraLanguage,
   aozoraEditorTheme,
-  aozoraHighlighting,
   aozoraCompletion,
   ...aozoraLsp(),
 ]
