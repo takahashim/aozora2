@@ -1,4 +1,4 @@
-//! 中立AST（[`Block`] 木）を本文HTMLに変換する新バックエンド。
+//! Aozora AST（[`Block`] 木）を本文HTMLに変換する新バックエンド。
 //!
 //! docs/plan-neutral-ast.md Phase B4。旧 `renderer.rs`＋`BlockManager` を置き換える
 //! ことを目指すが、まだ**最小核**（jisage の Nested と内容行、インラインは Text
@@ -89,7 +89,7 @@ fn font_size_class_style(size_type: FontSizeType, level: u32) -> (String, String
     }
 }
 
-/// 中立AST（[`Block`] 木）を本文HTMLに変換する新バックエンド（状態付き）。
+/// Aozora AST（[`Block`] 木）を本文HTMLに変換する新バックエンド（状態付き）。
 /// 最終的に旧 `renderer.rs`＋`BlockManager`＋`node_renderer` を置き換える先。
 /// 木を歩くだけで BlockManager を持たないが、フッタ「表記について」用の使用フラグ・
 /// 外字一覧は描画の副作用として蓄積する（参照実装と同じ）。
@@ -823,7 +823,7 @@ impl<'a> BlockRenderer<'a> {
 }
 
 /// 単一行のインラインHTML（行末 `<br />`/`\r\n` なし）を新経路で描画する。
-/// 旧 `HtmlRenderer::render_line` の中立AST版（インライン列のみ）。
+/// 旧 `HtmlRenderer::render_line` のAozora AST版（インライン列のみ）。
 pub fn render_line_inline(line: &str, options: &RenderOptions) -> String {
     use crate::ast::to_inlines;
     use crate::parser::parse;

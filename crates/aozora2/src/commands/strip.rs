@@ -60,7 +60,7 @@ pub fn run(args: Args) -> io::Result<()> {
         }
     };
 
-    // 変換（中立AST経由）
+    // 変換（Aozora AST経由）
     let output = strip::convert(&bytes);
 
     // 出力

@@ -1,4 +1,4 @@
-//! Lowerer: RawAST（平坦マーカー）→ 中立AST（block ⊃ line ⊃ inline の木）
+//! Lowerer: RawAST（平坦マーカー）→ Aozora AST（block ⊃ line ⊃ inline の木）
 //!
 //! architecture.md §4.1/§4.3・docs/plan-neutral-ast.md（Phase B2〜）。
 //! 参照実装 `@indent_stack`/`implicit_close`/`@terprip` の逐次モデルを Lower 時に
@@ -9,13 +9,13 @@
 //! 旧 BlockManager 経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ
 //! 増やす。未対応のブロック種は暫定でトップレベルに落とす（TODO）。
 
-use crate::ast::{Block, BlockKind, Break, CloseKind};
+use crate::ast::{AozoraAst, Block, BlockKind, Break, CloseKind};
 use crate::node::{BlockType, Node};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 use crate::parser::RawDoc;
 
-/// RawDoc（未解決・平坦マーカー）を中立ASTのブロック列に畳む。
-pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
+/// RawDoc（未解決・平坦マーカー）を Aozora AST（[`AozoraAst`]＝トップレベル [`Block`] 列）に畳む。
+pub fn lower_to_blocks(raw: &RawDoc) -> AozoraAst {
     // 開いている Nested ブロックのビルダー（種類・たまった子ブロック列・開いた行番号）。
     let mut stack: Vec<(BlockKind, Vec<Block>, usize)> = Vec::new();
     let mut top: Vec<Block> = Vec::new();
@@ -287,7 +287,7 @@ fn classify_line(nodes: &[Node]) -> LineKind {
     LineKind::Content
 }
 
-/// RawAST の BlockType＋params を中立ASTの BlockKind に写す（対応済みのものだけ）。
+/// RawAST の BlockType＋params をAozora ASTの BlockKind に写す（対応済みのものだけ）。
 pub(crate) fn block_kind_of(
     block_type: &BlockType,
     params: &crate::node::BlockParams,
@@ -332,7 +332,7 @@ mod position_tests {
     use crate::ast::Block;
     use crate::parser::parse_document_raw;
 
-    /// 中立ASTの各ブロックが由来の本文行番号（位置情報）を持つ。
+    /// Aozora ASTの各ブロックが由来の本文行番号（位置情報）を持つ。
     #[test]
     fn blocks_carry_source_line_numbers() {
         // 本文（extract 後を模した行列）。0 起点で数える。

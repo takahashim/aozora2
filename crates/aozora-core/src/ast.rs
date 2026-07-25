@@ -1,12 +1,13 @@
-//! 中立AST（block ⊃ line ⊃ inline の木）
+//! Aozora AST（block ⊃ line ⊃ inline の木）
 //!
-//! architecture.md §4.1 の目標である、バックエンドが消費するクリーンな木。
-//! RawAST（[`crate::node::Node`] の平坦マーカー列）を Lowerer が畳んで作る
-//! （前方参照解決済み・ブロックは部分木・行末の改行は互換メタデータ [`Break`]）。
+//! 青空文書の意味構造を表す正規モデル。バックエンド（HTML／プレーンテキスト）が
+//! 消費するクリーンな木で、HTML でもテキストでも描ける性質（backend-neutral。
+//! 旧称「中立AST」）を持つ。RawAST（[`crate::node::Node`] の平坦マーカー列）を
+//! Lowerer（[`crate::lower::lower_to_blocks`]）が畳んで作る（前方参照解決済み・
+//! ブロックは部分木・行末の改行は互換メタデータ [`Break`]/[`CloseKind`]）。
 //!
-//! まだパイプラインに接続されていない（Phase B1: 型定義、B2 途中: インライン変換
-//! `to_inlines` まで）。ブロック畳み込み（Lowerer 本体）と新バックエンドは後続の
-//! Phase で接続する。実行計画: docs/plan-neutral-ast.md。
+//! 本番の HTML／プレーンテキスト変換はこの木のみを経由する。仕様は
+//! docs/spec-ast.md、移行の経緯は docs/plan-neutral-ast.md。
 //!
 //! RawAST の [`crate::node::Node`] とは別型にすることで、バックエンドが
 //! ソース文字列や `BlockStart`/`BlockEnd` マーカーを見られないようにする
@@ -14,7 +15,13 @@
 
 use crate::node::{FontSizeType, MidashiLevel, MidashiStyle, RubyDirection, StyleType};
 
-/// RawAST の [`crate::node::Node`] のインライン変種を中立AST [`Inline`] に写す。
+/// 文書全体の Aozora AST ＝トップレベル [`Block`] の列。
+///
+/// `lower_to_blocks` の返り値の別名。「文書 1 本＝ブロックの木の列」を表す型名として
+/// 用いる（backend-neutral な正規モデル。旧称「中立AST」）。
+pub type AozoraAst = Vec<Block>;
+
+/// RawAST の [`crate::node::Node`] のインライン変種をAozora AST [`Inline`] に写す。
 /// ブロック構造マーカー（`BlockStart`/`BlockEnd` の is_block=true・`LineJisage`・
 /// `UnresolvedReference`）は None を返す（ブロック畳み込みが別途消費する）。
 /// 割り注（apply_warichu）は状態を持たないインライン出力なので、`BlockStart`/
@@ -148,7 +155,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
     Some(out)
 }
 
-/// 解決済みノード列を中立ASTのインライン列に変換する。
+/// 解決済みノード列をAozora ASTのインライン列に変換する。
 ///
 /// 同一行に開閉が揃う見出しコマンド範囲 `［＃中見出し］…［＃中見出し終わり］`
 /// （`BlockStart{Midashi, is_block=false}` … `BlockEnd{Midashi}`）はインライン
@@ -444,7 +451,7 @@ pub enum Break {
 ///
 /// RawAST の [`crate::node::Node`] のうちインラインに相当する変種を、前方参照
 /// 解決済み・子を `Vec<Inline>` にした形で写す。`BlockStart`/`BlockEnd`/
-/// `LineJisage`/`UnresolvedReference` 等のマーカー系は中立ASTには現れない。
+/// `LineJisage`/`UnresolvedReference` 等のマーカー系はAozora ASTには現れない。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Inline {
     /// プレーンテキスト
@@ -504,7 +511,7 @@ pub enum Inline {
     /// キャプション（インライン）
     Caption { children: Vec<Inline> },
     /// 割り注（warichu）。参照 apply_warichu は状態を持たず開閉を素の文字列で
-    /// 出すため、中立ASTでは開き `（`／閉じ `）` を持つマーカーとして表す。
+    /// 出すため、Aozora ASTでは開き `（`／閉じ `）` を持つマーカーとして表す。
     Warichu {
         /// 開きか閉じか（true=開き `<span class="warichu">（`, false=閉じ `）</span>`）
         open: bool,

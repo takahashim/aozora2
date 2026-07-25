@@ -153,12 +153,12 @@ CI はコーパスとコードを守る従者であり、権威ではない。�
   → [記法定義データ] を解釈するパーサ
   → RawAST（忠実・前方参照未解決・ブロックは平坦マーカー。位置つきが望ましい）
   → Lowerer（前方参照解決・ブロック部分木化・行束ね・break 計算）
-  → 中立AST（block / line / inline の木）
+  → Aozora AST（block / line / inline の木）
   → 各バックエンド（HTML / EPUB / plain text …）
   ＋ Quirks（参照実装の癖を隔離・明示ラベル）
 ```
 
-### 4.1 中立AST（block / line / inline）
+### 4.1 Aozora AST（block / line / inline）
 
 青空文庫記法の論理構造は **ブロック ⊃ 行 ⊃ インライン** の 3 層。
 
@@ -184,8 +184,8 @@ enum Inline { Text, Ruby { base, ruby }, Style, Gaiji, Accent, Img, Tcy, /* … 
 「設計から外れたコードが**書けない**」ことをコンパイラに強制させる。
 コメントや規約による抑止はドリフトに敗ける前提。
 
-- 中立AST の型に Raw 概念を含めない → レンダラに死にアームが存在し得ない。
-- バックエンドには中立AST だけを渡し、ソース文字列を渡さない
+- Aozora AST の型に Raw 概念を含めない → レンダラに死にアームが存在し得ない。
+- バックエンドにはAozora AST だけを渡し、ソース文字列を渡さない
   → 生の行を再パースするハックが書けない。
 - crate 分割で依存方向を固定（Rust の crate グラフは非循環なので層違反は
   ビルドエラー）。将来: 記法定義データ＋型 / core / 各バックエンド。
@@ -205,7 +205,7 @@ byte 互換のためだけに再現する「参照実装のバグ・実装都合
 逐次状態を表現できずエッジになる（`is_block_only_line` 等の限界）。したがって
 **互換のストリーミングモデルは Lowerer が所有する**——`@indent_stack`/
 `implicit_close`/閉じ照合と、`@terprip`/`@noprint`/tail の break・close 判断を
-Lower 時に一度だけ計算し、中立AST の Line 単位の互換メタデータ（`Line.brk` を
+Lower 時に一度だけ計算し、Aozora AST の Line 単位の互換メタデータ（`Line.brk` を
 拡張）として木に載せる。バックエンドはこのメタデータを消費するだけの**状態を
 持たない木歩き**にする。terprip の `<br/>` 残余（bare/ここで差）はその 1 例。
 
@@ -279,7 +279,7 @@ Lowerer の 1 箇所に隔離され参照引退時にまとめて落とせる、
   参照は木ではなく逐次状態機械であり、その逐次判断をレンダ時に出力HTML詮索で
   後追いする現行方式が div/br 均衡・ぶら下げ等のエッジの真因。architecture は
   変更せず §4 を実行する（Lowerer に `@indent_stack`/`@terprip`/`@noprint` を移植し
-  中立AST の break・close メタデータへ畳む）。並行実装＋全件 byte 一致で切替、
+  Aozora AST の break・close メタデータへ畳む）。並行実装＋全件 byte 一致で切替、
   BlockManager と出力HTML詮索を撤去する。実行計画 docs/plan-neutral-ast.md。
 
 ---
@@ -327,8 +327,8 @@ docs/workflow.md に従う。
 | 荷重原則 | 真実は「偽になったとき何かが壊れる場所」にだけ置く |
 | 誘因整合の原則 | 守衛は、外すことが外した本人の損になるときだけ生き残る |
 | RawAST | パーサが記法を忠実に変換した木（前方参照未解決・ブロックは平坦マーカー） |
-| Lowerer | RawAST → 中立AST への変換処理 |
-| 中立AST | バックエンドが消費するクリーンな木（block / line / inline） |
+| Lowerer | RawAST → Aozora AST への変換処理 |
+| Aozora AST | バックエンドが消費するクリーンな木（block / line / inline） |
 | Quirks | 参照実装のバグ・実装都合を byte 互換のためだけに再現する挙動の隔離フラグ群 |
 | オラクル | 参照実装 aozora2html の全件出力アーカイブ（互換性の判定基準・データ） |
 | 注記一覧 | 青空文庫が定める記法の公式ドキュメント。完全ではなく、コーパス・実装と共進化する |

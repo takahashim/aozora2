@@ -23,7 +23,7 @@ pub use ruby_parser::extract_ruby_base;
 /// これが RawAST の正の器（旧 `RawAst(Vec<Node>)` は撤去）。ブロックの開始/終了は
 /// この段階では各行の中の平坦なマーカーノード（`BlockStart`/`BlockEnd`/`LineJisage`）
 /// として存在し、前方参照も未解決。行をまたぐ対応付けと解決は後段（Lowerer＝
-/// `crate::lower::lower_to_blocks`）が行い、[`crate::ast::Block`] の中立AST木にする。
+/// `crate::lower::lower_to_blocks`）が行い、[`crate::ast::Block`] のAozora AST木にする。
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawLine {
     /// もとのソース行（くの字点走査などで参照する）
@@ -33,7 +33,7 @@ pub struct RawLine {
     /// 本文（extract_body_lines 後）における 0 起点の行番号（位置情報）。
     pub line_no: usize,
     /// 各生ノードの char 位置範囲（[`Span`]、行内の char オフセット）。`nodes[i]` に
-    /// `spans[i]` が対応。ソース忠実な位置情報の置き場（中立AST は派生的に line 番号を持つ）。
+    /// `spans[i]` が対応。ソース忠実な位置情報の置き場（Aozora AST は派生的に line 番号を持つ）。
     pub spans: Vec<Span>,
 }
 

@@ -1,6 +1,6 @@
-# 中立AST 木化・BlockManager 撤去 実行計画
+# Aozora AST 木化・BlockManager 撤去 実行計画
 
-策定: 2026-07-25 / 状態: **Phase B4/C/D 完了・旧スタック撤去済み・HTML/プレーンテキスト共に中立AST-only**。オラクル 17361（外字注記バグ修正で -2）。
+策定: 2026-07-25 / 状態: **Phase B4/C/D 完了・旧スタック撤去済み・HTML/プレーンテキスト共にAozora AST-only**。オラクル 17361（外字注記バグ修正で -2）。
 
 ## 0. 目的（最上位。ぶれたらここへ戻る）
 
@@ -29,7 +29,7 @@ architecture.md §0 の目標＝**100年後に別の誰かが正しいプロセ�
 
 ## 2. 判断：architecture は変更せず実行する（1点だけ明文化を追加）
 
-- §4 の目標（block⊃line⊃inline の中立AST木 ＋ BlockManager撤去）はそのまま正しい。
+- §4 の目標（block⊃line⊃inline のAozora AST木 ＋ BlockManager撤去）はそのまま正しい。
 - **追加で明文化する1点**：互換のストリーミングモデル（`@indent_stack`/`@terprip`/
   `@noprint`/tail の移植）は **Lowerer が所有**し、Line 単位の互換メタデータ
   （`Line.brk` を拡張）として木に載せる。バックエンドは状態を持たない木歩きにする。
@@ -41,7 +41,7 @@ architecture.md §0 の目標＝**100年後に別の誰かが正しいプロセ�
 - byte-exact 17406/17509 = 99.41%（error 56, equivalent 1, different 46）。
 - `RawAst(Vec<Node>)` / `Ast(Vec<Node>)` はどちらも平坦 `Vec<Node>`（継ぎ目は
   root 型のみ）。RawAST の中身（前方参照未解決・平坦マーカー）は定義どおりで実体は
-  ある。未達は (a) raw専用ノード型の分離、(b) 中立AST の木化（Lowerer は今は
+  ある。未達は (a) raw専用ノード型の分離、(b) Aozora AST の木化（Lowerer は今は
   前方参照解決のみ）、(c) BlockManager 撤去、(d) 位置情報（任意）。
 - 関連ファイル: `crates/aozora-core/src/parser/mod.rs`（parse_raw/lower/RawAst/Ast）、
   `crates/aozora-core/src/node/mod.rs`（flat Node）、
@@ -55,11 +55,11 @@ architecture.md §0 の目標＝**100年後に別の誰かが正しいプロセ�
   §6 段2b/2c の「保留」を「着手（契機＝div均衡/burasage の残差）」へ更新。
 - 本計画ファイルを追加。コードは触らない。
 
-### Phase B — 中立AST 木と Lowerer の構築（大・本丸）
+### Phase B — Aozora AST 木と Lowerer の構築（大・本丸）
 既存の平坦 `Vec<Node>`（RawAST）は残したまま**並行して**新パイプラインを作り、
 全オラクルで byte 一致したら切替（旧 BlockManager 経路を B4 完了まで残す）。
 
-- **B1**: 中立AST 型を新規定義（RawAST の `Node` と分離＝型の壁）。型トリックなし。
+- **B1**: Aozora AST 型を新規定義（RawAST の `Node` と分離＝型の壁）。型トリックなし。
   ```rust
   enum Block { Line { inline: Vec<Inline>, brk: Break }, Nested { kind: BlockKind, children: Vec<Block> } }
   enum Inline { Text, Ruby{..}, Style{..}, Gaiji{..}, Img{..}, Tcy{..}, Note{..}, ... }
@@ -80,7 +80,7 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   （4850/43866）。Phase B の副産物として byte-exact が伸びる見込み。
 
 ### Phase D — 100年目標の本命（実証）
-- 第2バックエンド（plain text か EPUB）を中立AST から実装＝HTML 非依存の実証。
+- 第2バックエンド（plain text か EPUB）をAozora AST から実装＝HTML 非依存の実証。
 - 残：RawAST 専用ノード型の分離・位置情報（低優先・任意）。
 
 ## 5. リスクと安全策
@@ -102,7 +102,7 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   ミングモデルは Lowerer が所有」、§5 に決定記録（2026-07-25）、§6 段2b/2c を
   「着手・実行中」へ更新。本計画ファイル追加。
 - 2026-07-25 **Phase B1 完了**（挙動不変）。`crates/aozora-core/src/ast.rs` に
-  中立AST型（Block/BlockKind/Break/Inline）を新規定義。RawAST の Node と別型
+  Aozora AST型（Block/BlockKind/Break/Inline）を新規定義。RawAST の Node と別型
   （型の壁）。pub 未使用型なのでオラクル不変・全テスト通過。
 - 2026-07-25 **Phase B2 着手時のメモ（次セッションの起点）**: Lowerer の第一歩
   として `to_inlines`（解決済み Node → Inline）から作る想定だったが、正確な移植に
@@ -110,11 +110,11 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   確定しながら進める。急がず、各判断をテストに固定する。
   - **is_block 分岐**: 罫囲み/横組み/キャプションは `ここから…`（ブロック形＝
     BlockKind/Nested）と `［＃罫囲み］…終わり`（インライン形＝Inline）がある。
-    現行は `BlockParams.is_block` で区別。中立ASTではインライン形を Inline、
+    現行は `BlockParams.is_block` で区別。Aozora ASTではインライン形を Inline、
     ブロック形を Nested に振り分ける。
   - **割り注（warichu）**: 現行は BlockStart{Warichu}/BlockEnd{Warichu} マーカー
     だが apply_warichu は状態を持たないインライン出力（開き `（`／閉じ `）`）。
-    中立ASTでは Inline::Warichu{open, suppress_paren} マーカーにする（ast.rs 定義済み）。
+    Aozora ASTでは Inline::Warichu{open, suppress_paren} マーカーにする（ast.rs 定義済み）。
     Node::Warichu{upper,lower}（二部構成）は別物。構築箇所の有無を要確認。
   - **Midashi/AnnotationEnd**: Node::Midashi（同行/窓見出し＝インライン見出し）と
     Node::AnnotationEnd（左注記範囲終了）を Inline に写す変種が未定義。B2 で
@@ -156,7 +156,7 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   使用（オラクル 17406 不変）。
   次の一歩: 記法を1種類ずつ拡張。優先: (a) 内容行の Break（terprip：見出し・
   `ここで…終わり` 行の `<br/>` 抑制）、(b) インライン（Ruby/Gaiji/Style… を
-  block_renderer に足す＝旧 node_renderer のインライン描画の中立AST版）、(c) chitsuki/
+  block_renderer に足す＝旧 node_renderer のインライン描画のAozora AST版）、(c) chitsuki/
   jizume/font/burasage の Nested。各段で比較テストを足し byte 一致を保つ。最終的に
   render() 全体を新経路へ切替え（全オラクル byte 一致確認後）BlockManager を撤去。
 - 2026-07-25 **本文一致率の計測ハーネス＋現状測定（重要）**。`aozora2 body-diff`
@@ -172,7 +172,7 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   安全に完了できない。** 理由:
   - 新経路が旧経路と byte 一致するのは現状 34%。残り 66% を一致させるには、旧
     node_renderer（~700行）+ renderer（~450行）+ tag_generator + block_manager の
-    **状態付き逐次ロジックを丸ごと中立AST版に再実装**する必要がある（Gaiji の
+    **状態付き逐次ロジックを丸ごとAozora AST版に再実装**する必要がある（Gaiji の
     has_gaiji_images/has_jisx0213/unconverted_gaiji/gaiji_alt(quirks)/in_ruby_base、
     Accent の has_accent＋名前quirk、Img の register_alt_gaiji 副作用、Note の再帰
     描画、burasage の per-line 包み＋blank_type、Break の classify_output_line、
@@ -256,7 +256,7 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   明示承認が要る**。承認まではフリップせず additive（新経路を並行構築・旧経路 live 維持）。
 
 - 2026-07-25 **★ render() 切替 完了・オラクル検証済み（Phase B4 到達）。** convert() を
-  `render_via_blocks`（中立AST新経路）へ切替。head/metadata/tail 枠は DocumentRenderer
+  `render_via_blocks`（Aozora AST新経路）へ切替。head/metadata/tail 枠は DocumentRenderer
   を再利用、本文＋tail は lower_to_blocks→BlockRenderer（BlockManager 非依存）。footer
   状態（has_notes/gaiji_images/accent/jisx0213/kunoji/dakuten_kunoji/unconverted_gaiji）は
   BlockRenderer が描画副作用で蓄積、scan_kunoji/enter_tail も移植。BlockCloseWithTail
@@ -274,7 +274,7 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
 
 - 2026-07-25 **撤去 Phase（convert_legacy 保持方針）: 本番経路を全て新経路へ寄せ、旧
   BlockManager スタックを差分オラクル専用に隔離。** convert_line を
-  `block_renderer::render_line_inline`（中立AST・インライン列）へ移行。これで本番HTML
+  `block_renderer::render_line_inline`（Aozora AST・インライン列）へ移行。これで本番HTML
   （convert / convert_line / html サブコマンド）は完全に新経路。旧
   renderer/node_renderer/block_manager/tag_generator は **convert_legacy（差分オラクル
   compare_body/compare_full）の唯一の入口からのみ到達**（mod.rs に2経路と legacy
@@ -298,9 +298,9 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
     から Lower 時計算へ移設（`ast::line_is_block_only`：末尾が Normal 見出し/
     ChitsukiInline/div系 BlockInline なら抑制）。バックエンドは brk を見るだけになり
     **「状態なし・HTML詮索ゼロの木歩き」テーゼが完成**。オラクル 17363・回帰0・byte 不変。
-  - **D-A（第2バックエンド実証）**: 既存 `strip`（プレーンテキスト）を中立AST経由で
+  - **D-A（第2バックエンド実証）**: 既存 `strip`（プレーンテキスト）をAozora AST経由で
     再実装（`strip::convert_via_ast`、サブコマンド `strip --via-ast`）。HTML と同じ
-    tokenize→parse→lower を共有し、終端の木歩きだけ差し替え＝**中立ASTはバックエンド
+    tokenize→parse→lower を共有し、終端の木歩きだけ差し替え＝**Aozora ASTはバックエンド
     非依存**と実証。プレーンテキスト walk は CloseKind/Break/div/br を一切見ない。
     コーパス比較で差分の大半（413/415）はブロックコマンド行由来の余計な空行が消える
     改善、1は accent 合成改善、1は外字 geta 軽微差。本文内容は保持。既定 strip は
@@ -311,13 +311,13 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   （renderer/node_renderer/block_manager/tag_generator）と body-diff サブコマンド、
   presentation の旧専用ヘルパ（is_block_only_line/classify_output_line/classify_line/
   LineType/LineInfo/is_midashi_line）を一括削除（**計 2,384 行削除**）。UnconvertedGaiji は
-  presentation へ移設。**HTML 本番経路は render_via_blocks（中立AST）のみ**。回帰検出は
+  presentation へ移設。**HTML 本番経路は render_via_blocks（Aozora AST）のみ**。回帰検出は
   本物のオラクル（--oracle-dir oracle）が担う。オラクル 17363・回帰0・全テスト通過。
   - 残: プレーンテキストの既定は依然トークン経路（strip::convert）。AST版（convert_via_ast）
     は検証済みだが既定切替は出力変化（余計な空行除去＝改善＋accent 合成改善＋外字 geta
-    軽微差）の受容判断が要る。切替えれば HTML・プレーンテキスト双方が中立AST-only になる。
+    軽微差）の受容判断が要る。切替えれば HTML・プレーンテキスト双方がAozora AST-only になる。
 
-- 2026-07-25 **外字注記の参照バグ修正（compat→correctness）＋プレーンテキストも中立AST-only化。**
+- 2026-07-25 **外字注記の参照バグ修正（compat→correctness）＋プレーンテキストもAozora AST-only化。**
   - **外字注記バグ**: `「対象」に「※［＃句点コード］…」の注記` を参照実装は基底を落とし
     外字画像だけ出す。これを正しく base=対象・ruby=（外字＋後続）の Ruby に修正
     （RefSpec::EmbeddedGaiji に annotation_ruby を追加。置換形 `「5」はローマ数字…` は
@@ -327,36 +327,36 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   - **文字コード**: jis2ucs.json（11,233エントリ・第1〜4水準）は既存。plain 描画が
     解決済み Gaiji の空 description を使い geta 化していたのを jis_code 優先に修正
     （2-94-2 → 鳲 等）。
-  - **strip を中立AST-only化**: strip::convert/convert_line の既定を中立AST経由に統一し、
+  - **strip をAozora AST-only化**: strip::convert/convert_line の既定をAozora AST経由に統一し、
     旧トークン経路（extract/Tokenizer）と --via-ast を撤去。**HTML・プレーンテキスト双方が
-    本番で中立ASTのみから生成される**（第2バックエンドが実証から本番へ）。
+    本番でAozora ASTのみから生成される**（第2バックエンドが実証から本番へ）。
 
 - 2026-07-25 **仕様整理: レガシー撤去＋位置情報付与（出力 byte 不変・オラクル 17361）。**
   - **RawAST の正規化**: 旧 `RawAst(Vec<Node>)`/`Ast(Vec<Node>)`/`parse_raw`/`lower`（薄い
     未使用ラッパ）を撤去し、`parse_raw_nodes`＋`parse` に一本化。**RawAST の器は
     RawDoc/RawLine に確定**。neutral AST の器は `ast::Block`/`Inline`。この2層で
-    「RawAST（マーカー含む Vec<Node>）／中立AST（マーカー無し・型安全な木）」が明確に。
+    「RawAST（マーカー含む Vec<Node>）／Aozora AST（マーカー無し・型安全な木）」が明確に。
   - **位置情報**: `RawLine.line_no`（本文0起点）を追加し、`lower_to_blocks` が各 Block
     （Line/Nested/LineWrap）へ由来行 `line` を伝播（Nested は開いた行）。バックエンドは
     無視するので出力不変。将来の char 単位 span はこの上に載せられる。
   - **残る任意項目**: `Node` enum は依然 raw マーカー（BlockStart/BlockEnd/LineJisage/
     UnresolvedReference）と解決済みノードを兼ねる中間表現。マーカーは lower で消費され
-    中立AST に漏れない（型で保証）ため、Node の完全分割は低優先・任意。`CloseKind`/
+    Aozora AST に漏れない（型で保証）ため、Node の完全分割は低優先・任意。`CloseKind`/
     `Break` を中立コアに置くかは設計論点として保留（実用上は機能）。
-  → **RawAST・中立AST の仕様は実質固まった**（2層・型の壁・位置情報あり・レガシー無し）。
+  → **RawAST・Aozora AST の仕様は実質固まった**（2層・型の壁・位置情報あり・レガシー無し）。
 
 - 2026-07-25 **位置情報を char 単位 span まで拡張（出力 byte 不変）。**
   `token::Span`（行内 char オフセット [start,end)）を追加。tokenizer を next_token 抽出＋
   `tokenize_spanned`、parser に `parse_raw_nodes_spanned` を追加し、`RawLine.spans` に各
   生ノードの由来トークン span を格納（`nodes[i]↔spans[i]`）。**位置情報は源泉忠実な
-  RawAST に置く**設計（char span＝RawLine.spans／中立AST は派生の行番号＝Block.line）。
-  `line.chars()[span.start..span.end]` で原文断片を取得可。中立AST Inline への per-inline
+  RawAST に置く**設計（char span＝RawLine.spans／Aozora AST は派生の行番号＝Block.line）。
+  `line.chars()[span.start..span.end]` で原文断片を取得可。Aozora AST Inline への per-inline
   span は変換パーサ（後方参照・ルビ抽出・範囲畳み込み）を跨ぐ Node への span 付与が要る
   ため大規模——現状は RawAST span＋中立 line 番号で source-map 可能。
 
 - 2026-07-25 **main 整合＋aozora_farm（Tauri GUI）取り込み（オラクル 17361・回帰0）。**
   main は html/strip を aozora-core へ移す再構成＋parser 分割（＝機能追加なしの整理）を
-  していた一方、私の branch は同 base から中立AST化した機能的スーパーセット。aozora_farm
+  していた一方、私の branch は同 base からAozora AST化した機能的スーパーセット。aozora_farm
   が `aozora_core::html::convert` を使うため、**私の html/strip を aozora-core へ移設**
   （main の構造に整合）し、aozora2 は後方互換で再エクスポート。`crates/aozora_farm` を
   取り込み workspace に登録、GUI は GTK 依存のため default-members から除外。API 一致

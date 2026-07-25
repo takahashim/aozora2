@@ -1,6 +1,6 @@
 # 青空文庫エディタの LSP 的機能 設計
 
-中立AST に付与した**位置情報**（`token::Span` の char オフセット＋行番号）を土台に、
+Aozora AST に付与した**位置情報**（`token::Span` の char オフセット＋行番号）を土台に、
 aozora_farm のエディタ（CodeMirror 6）へ LSP 的な支援機能を導入するための設計。
 
 ## 1. 方針とアーキテクチャ

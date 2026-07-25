@@ -6,12 +6,12 @@ use crate::document;
 use crate::encoding;
 use crate::gaiji::convert_gaiji;
 
-/// 青空文庫形式のバイト列をプレーンテキストに変換（中立AST経由）。
+/// 青空文庫形式のバイト列をプレーンテキストに変換（Aozora AST経由）。
 ///
 /// エンコーディング自動判定（UTF-8 / Shift_JIS）、本文抽出（前付け・後付け除去）を
 /// 行う。HTML バックエンド（`html::render_via_blocks`）と**同じ tokenize→parse→lower**
 /// を共有し、終端の木歩きだけをプレーンテキスト用に差し替える（`CloseKind`/`Break`/
-/// div/br 等の HTML 固有メタデータは一切見ない＝中立ASTがバックエンド非依存である
+/// div/br 等の HTML 固有メタデータは一切見ない＝Aozora ASTがバックエンド非依存である
 /// 実証）。ブロック開始/終了だけの行は木に畳まれて消えるので、余計な空行も出ない。
 ///
 /// # Examples
@@ -130,7 +130,7 @@ fn render_inlines_plain(inlines: &[crate::ast::Inline], out: &mut String) {
     }
 }
 
-/// 青空文庫形式の1行（またはインライン断片）をプレーンテキストに変換（中立AST経由）。
+/// 青空文庫形式の1行（またはインライン断片）をプレーンテキストに変換（Aozora AST経由）。
 ///
 /// 前付け・後付けの除去を行わず、入力全体をインライン列として変換する。
 ///
@@ -205,7 +205,7 @@ mod tests {
         assert_eq!(plain, "本文です\n");
     }
 
-    /// 第2バックエンド（中立AST経由）: ルビ除去・傍点の対象文字は残る。
+    /// 第2バックエンド（Aozora AST経由）: ルビ除去・傍点の対象文字は残る。
     #[test]
     fn test_ast_basic() {
         let input = "T\n著\n\n吾輩《わがはい》は猫である［＃「である」に傍点］\n底本：青空文庫";
@@ -218,7 +218,7 @@ mod tests {
     fn test_ast_drops_block_command_blank_lines() {
         let input =
             "T\n著\n\n本文1\n［＃ここから２字下げ］\n字下げ本文\n［＃ここで字下げ終わり］\n本文2\n底本：青空文庫";
-        // 中立AST版: ブロックマーカー行は消え、本文だけが連続する。
+        // Aozora AST版: ブロックマーカー行は消え、本文だけが連続する。
         assert_eq!(convert(input.as_bytes()), "本文1\n字下げ本文\n本文2\n");
     }
 }

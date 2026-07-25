@@ -4,7 +4,7 @@
 //!
 //! # 経路（docs/plan-neutral-ast.md）
 //!
-//! 本番は**中立AST新経路のみ**: [`convert`]/[`convert_line`] → [`render_via_blocks`]
+//! 本番は**Aozora AST新経路のみ**: [`convert`]/[`convert_line`] → [`render_via_blocks`]
 //! （`lower_to_blocks` → [`block_renderer::BlockRenderer`]）。本文は状態を持たない
 //! 木歩きで描画し、`@indent_stack`/`@terprip` 等の逐次判断は Lowerer が一度だけ
 //! 計算する。head/metadata/tail 枠は [`document_renderer`] を共有。
@@ -19,7 +19,7 @@ mod presentation;
 pub use options::{Quirks, RenderOptions};
 pub use presentation::html_escape;
 
-/// 青空文庫形式のテキストをHTMLに変換（中立AST新経路）
+/// 青空文庫形式のテキストをHTMLに変換（Aozora AST新経路）
 ///
 /// # Examples
 ///
@@ -35,12 +35,12 @@ pub fn convert(input: &str, options: &RenderOptions) -> String {
     render_via_blocks(input, options)
 }
 
-/// 1行をHTMLに変換（インライン列のみ・中立AST新経路）。
+/// 1行をHTMLに変換（インライン列のみ・Aozora AST新経路）。
 pub fn convert_line(line: &str, options: &RenderOptions) -> String {
     block_renderer::render_line_inline(line, options)
 }
 
-/// 中立AST 新経路で**全文書**を組み立てる（docs/plan-neutral-ast.md B4）。
+/// Aozora AST 新経路で**全文書**を組み立てる（docs/plan-neutral-ast.md B4）。
 /// head/metadata/section 枠は DocumentRenderer を再利用し、本文と tail は
 /// `lower_to_blocks`→`BlockRenderer` で描画する（BlockManager 非依存）。
 /// フッタ「表記について」用の状態は BlockRenderer が描画の副作用で蓄積する。
