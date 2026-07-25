@@ -4,15 +4,154 @@
 //! RawAST（[`crate::node::Node`] の平坦マーカー列）を Lowerer が畳んで作る
 //! （前方参照解決済み・ブロックは部分木・行末の改行は互換メタデータ [`Break`]）。
 //!
-//! この型はまだパイプラインに接続されていない（Phase B1: 型の定義のみ）。
-//! Lowerer（`lower_to_blocks`）と新バックエンドは後続の Phase で接続する。
-//! 実行計画: docs/plan-neutral-ast.md。
+//! まだパイプラインに接続されていない（Phase B1: 型定義、B2 途中: インライン変換
+//! `to_inlines` まで）。ブロック畳み込み（Lowerer 本体）と新バックエンドは後続の
+//! Phase で接続する。実行計画: docs/plan-neutral-ast.md。
 //!
 //! RawAST の [`crate::node::Node`] とは別型にすることで、バックエンドが
 //! ソース文字列や `BlockStart`/`BlockEnd` マーカーを見られないようにする
 //! （architecture.md §4.2 型の壁）。
 
 use crate::node::{FontSizeType, MidashiLevel, MidashiStyle, RubyDirection, StyleType};
+
+/// RawAST の [`crate::node::Node`] のインライン変種を中立AST [`Inline`] に写す。
+/// ブロック構造マーカー（`BlockStart`/`BlockEnd` の is_block=true・`LineJisage`・
+/// `UnresolvedReference`）は None を返す（ブロック畳み込みが別途消費する）。
+/// 割り注（apply_warichu）は状態を持たないインライン出力なので、`BlockStart`/
+/// `BlockEnd` の Warichu だけは [`Inline::Warichu`] マーカーとして写す。
+///
+/// 純インライン内容（ブロックマーカーを含まない行）にはこれで十分。罫囲み等の
+/// インライン形ブロック（is_block=false の開閉対）の入れ子は後続のブロック
+/// 畳み込みで対にする（Phase B2 続き）。
+pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
+    use crate::node::{BlockType, Node};
+    let out = match node {
+        Node::Text(s) => Inline::Text(s.clone()),
+        Node::Ruby {
+            children,
+            ruby,
+            direction,
+            keep_gaiji_notes_in_base,
+        } => Inline::Ruby {
+            base: to_inlines(children),
+            ruby: to_inlines(ruby),
+            direction: *direction,
+            keep_gaiji_notes_in_base: *keep_gaiji_notes_in_base,
+        },
+        Node::Style {
+            children,
+            style_type,
+        } => Inline::Style {
+            children: to_inlines(children),
+            style_type: *style_type,
+        },
+        Node::Midashi {
+            children,
+            level,
+            style,
+        } => Inline::Midashi {
+            children: to_inlines(children),
+            level: *level,
+            style: *style,
+        },
+        Node::Gaiji {
+            description,
+            unicode,
+            jis_code,
+            had_igeta,
+        } => Inline::Gaiji {
+            description: description.clone(),
+            unicode: unicode.clone(),
+            jis_code: jis_code.clone(),
+            had_igeta: *had_igeta,
+        },
+        Node::Accent {
+            code,
+            name,
+            unicode,
+        } => Inline::Accent {
+            code: code.clone(),
+            name: name.clone(),
+            unicode: unicode.clone(),
+        },
+        Node::Img {
+            filename,
+            alt,
+            is_photo,
+            width,
+            height,
+        } => Inline::Img {
+            filename: filename.clone(),
+            alt: alt.clone(),
+            is_photo: *is_photo,
+            width: *width,
+            height: *height,
+        },
+        Node::Tcy { children } => Inline::Tcy {
+            children: to_inlines(children),
+        },
+        Node::Keigakomi { children } => Inline::Keigakomi {
+            children: to_inlines(children),
+        },
+        Node::Yokogumi { children } => Inline::Yokogumi {
+            children: to_inlines(children),
+        },
+        Node::Caption { children } => Inline::Caption {
+            children: to_inlines(children),
+        },
+        Node::FontSize {
+            children,
+            size_type,
+            level,
+        } => Inline::FontSize {
+            children: to_inlines(children),
+            size_type: *size_type,
+            level: *level,
+        },
+        Node::Kaeriten(s) => Inline::Kaeriten(s.clone()),
+        Node::Okurigana(s) => Inline::Okurigana(s.clone()),
+        Node::Note(s) => Inline::Note(s.clone()),
+        Node::DakutenKatakana { num } => Inline::DakutenKatakana { num: num.clone() },
+        Node::AnnotationEnd {
+            prefix,
+            content,
+            suffix,
+        } => Inline::AnnotationEnd {
+            prefix: prefix.clone(),
+            content: to_inlines(content),
+            suffix: suffix.clone(),
+        },
+        // 割り注は apply_warichu の状態なし出力。開閉をマーカーとして写す。
+        Node::BlockStart {
+            block_type: BlockType::Warichu,
+            params,
+        } => Inline::Warichu {
+            open: true,
+            suppress_paren: params.has_open_paren,
+        },
+        Node::BlockEnd {
+            block_type: BlockType::Warichu,
+            params,
+            ..
+        } => Inline::Warichu {
+            open: false,
+            suppress_paren: params.has_close_paren,
+        },
+        // Node::Warichu{upper,lower} は構築箇所ゼロのデッドコード。念のため無視。
+        Node::Warichu { .. } => return None,
+        // ブロック構造マーカー・未解決参照はインラインではない（畳み込みが消費）。
+        Node::BlockStart { .. }
+        | Node::BlockEnd { .. }
+        | Node::LineJisage { .. }
+        | Node::UnresolvedReference { .. } => return None,
+    };
+    Some(out)
+}
+
+/// 解決済みノード列を中立ASTのインライン列に変換する（ブロックマーカーは除外）。
+pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
+    nodes.iter().filter_map(inline_from_node).collect()
+}
 
 /// ブロック（部分木の節、または内容の1行）。
 ///
@@ -112,6 +251,18 @@ pub enum Inline {
         children: Vec<Inline>,
         style_type: StyleType,
     },
+    /// 見出し（同行・窓見出し＝インライン見出し。`ここから…見出し` は BlockKind 側）
+    Midashi {
+        children: Vec<Inline>,
+        level: MidashiLevel,
+        style: MidashiStyle,
+    },
+    /// 左注記範囲の終了マーカー（外字を含みうる。`crate::node::Node::AnnotationEnd`）
+    AnnotationEnd {
+        prefix: String,
+        content: Vec<Inline>,
+        suffix: String,
+    },
     /// 外字
     Gaiji {
         description: String,
@@ -165,4 +316,50 @@ pub enum Inline {
     Note(String),
     /// 濁点片仮名（面区点 1-7-82〜85）
     DakutenKatakana { num: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse;
+    use crate::tokenizer::tokenize;
+
+    /// 解決済みノード列 → Inline 列（純インライン内容）。ブロックマーカーを含まない
+    /// 一般的な行はこれで写せることを固定する。
+    #[test]
+    fn test_to_inlines_pure_inline() {
+        let nodes = parse(&tokenize("東京《とうきょう》の本文※［＃「丸印」、U+25CB］"));
+        let inlines = to_inlines(&nodes);
+        // ルビ・テキスト・外字がインラインとして写ること。
+        assert!(inlines
+            .iter()
+            .any(|i| matches!(i, Inline::Ruby { .. })));
+        assert!(inlines.iter().any(|i| matches!(i, Inline::Text(_))));
+        assert!(inlines.iter().any(|i| matches!(i, Inline::Gaiji { .. })));
+    }
+
+    /// 割り注（apply_warichu）はブロックマーカーだが開閉を Inline::Warichu に写す。
+    #[test]
+    fn test_to_inlines_warichu_marker() {
+        let nodes = parse(&tokenize("本文［＃割り注］注記［＃割り注終わり］"));
+        let inlines = to_inlines(&nodes);
+        let opens = inlines
+            .iter()
+            .filter(|i| matches!(i, Inline::Warichu { open: true, .. }))
+            .count();
+        let closes = inlines
+            .iter()
+            .filter(|i| matches!(i, Inline::Warichu { open: false, .. }))
+            .count();
+        assert_eq!(opens, 1, "割り注開きが Inline::Warichu にならない: {inlines:?}");
+        assert_eq!(closes, 1, "割り注終わりが Inline::Warichu にならない: {inlines:?}");
+    }
+
+    /// ブロック構造マーカー（ここから字下げ）はインラインに現れない。
+    #[test]
+    fn test_to_inlines_skips_block_markers() {
+        let nodes = parse(&tokenize("［＃ここから２字下げ］"));
+        let inlines = to_inlines(&nodes);
+        assert!(inlines.is_empty(), "ブロックマーカーがインライン化された: {inlines:?}");
+    }
 }

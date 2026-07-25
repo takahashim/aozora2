@@ -123,3 +123,14 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
     UnresolvedReference は to_inlines には現れない（ブロック畳み込みが消費）。
   次の一歩: `to_inlines` を上記分岐込みで実装＋テスト（挙動不変・未接続）。その後
   ブロック畳み込み（indent_stack モデル移植）→ Break 計算 → 新バックエンド。
+- 2026-07-25 **Phase B2 途中: インライン変換完了**（挙動不変・未接続）。
+  `ast.rs` に `inline_from_node`/`to_inlines`（解決済み Node → Inline）を実装。
+  確定した分岐: 割り注は BlockStart/BlockEnd{Warichu} を `Inline::Warichu{open,
+  suppress_paren}` マーカーに写す。`Node::Warichu{upper,lower}` は**構築箇所ゼロの
+  デッドコード**と確認（無視）。Midashi/AnnotationEnd を `Inline` に追加。ブロック
+  構造マーカー（is_block=true の BlockStart/BlockEnd・LineJisage・
+  UnresolvedReference）は None（畳み込みが消費）。テスト3本（純インライン・割り注
+  マーカー・ブロックマーカー除外）。**残: 罫囲み等インライン形ブロック（is_block=false
+  の開閉対）の入れ子化はブロック畳み込み側で対にする。**
+  次の一歩: ブロック畳み込み `lower_to_blocks(RawDoc)→Vec<Block>`（indent_stack /
+  implicit_close の移植、インライン形ブロックの対化、行と Nested の構築）。
