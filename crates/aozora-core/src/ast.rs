@@ -155,28 +155,20 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
 /// 見出しに畳む（参照実装は block stack への push/pop で同行に h4 を開閉する）。
 /// それ以外のブロックマーカーは除外する（畳み込みが別途消費するか、未対応）。
 pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
-    use crate::node::{BlockType, Node};
+    use crate::node::Node;
     let mut out = Vec::new();
     let mut i = 0;
     while i < nodes.len() {
-        // 同行の見出しコマンド範囲を Inline::Midashi に畳む。
-        if let Node::BlockStart {
-            block_type: BlockType::Midashi,
-            params,
-        } = &nodes[i]
-        {
-            if !params.is_block {
-                if let Some(end) = find_matching_end(nodes, i, &BlockType::Midashi) {
+        // 同行に開閉が揃うインライン範囲コマンド（見出し・装飾・大小文字）を畳む。
+        if let Node::BlockStart { block_type, params } = &nodes[i] {
+            if !params.is_block && is_inline_range_type(block_type) {
+                if let Some(end) = find_matching_end(nodes, i, block_type) {
                     let inner = to_inlines(&nodes[i + 1..end]);
-                    out.push(Inline::Midashi {
-                        children: inner,
-                        level: params.level.unwrap_or(crate::node::MidashiLevel::O),
-                        style: params
-                            .midashi_style
-                            .unwrap_or(crate::node::MidashiStyle::Normal),
-                    });
-                    i = end + 1;
-                    continue;
+                    if let Some(wrapped) = wrap_inline_range(block_type, params, inner) {
+                        out.push(wrapped);
+                        i = end + 1;
+                        continue;
+                    }
                 }
             }
         }
@@ -186,6 +178,48 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
         i += 1;
     }
     out
+}
+
+/// 同行に畳めるインライン範囲コマンドの種類か（見出し・装飾・大小文字）。
+fn is_inline_range_type(block_type: &crate::node::BlockType) -> bool {
+    use crate::node::BlockType;
+    matches!(
+        block_type,
+        BlockType::Midashi | BlockType::Style | BlockType::FontDai | BlockType::FontSho
+    )
+}
+
+/// インライン範囲コマンドの開閉対を対応する [`Inline`] に包む。
+fn wrap_inline_range(
+    block_type: &crate::node::BlockType,
+    params: &crate::node::BlockParams,
+    inner: Vec<Inline>,
+) -> Option<Inline> {
+    use crate::node::{BlockType, FontSizeType};
+    match block_type {
+        BlockType::Midashi => Some(Inline::Midashi {
+            children: inner,
+            level: params.level.unwrap_or(crate::node::MidashiLevel::O),
+            style: params
+                .midashi_style
+                .unwrap_or(crate::node::MidashiStyle::Normal),
+        }),
+        BlockType::Style => params.style_type.map(|style_type| Inline::Style {
+            children: inner,
+            style_type,
+        }),
+        BlockType::FontDai => Some(Inline::FontSize {
+            children: inner,
+            size_type: FontSizeType::Dai,
+            level: params.font_size.unwrap_or(1),
+        }),
+        BlockType::FontSho => Some(Inline::FontSize {
+            children: inner,
+            size_type: FontSizeType::Sho,
+            level: params.font_size.unwrap_or(1),
+        }),
+        _ => None,
+    }
 }
 
 /// `start` の `BlockStart` に対応する同種の `BlockEnd` の添字を返す（入れ子対応）。
