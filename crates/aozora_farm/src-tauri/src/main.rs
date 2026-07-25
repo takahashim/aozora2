@@ -62,10 +62,7 @@ struct ResourcePaths {
 }
 
 fn main() {
-    tauri::Builder::default()
-        // OS 標準メニュー（macOS の Edit メニュー＝コピー/切り取り/貼り付け/全選択/取り消し）。
-        // これが無いと macOS では Cmd+C/V/X の標準ショートカットが webview に届かない。
-        .menu(|handle| tauri::menu::Menu::default(handle))
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
@@ -73,7 +70,15 @@ fn main() {
             convert_file_to_html,
             analyze,
             get_resource_paths,
-        ])
+        ]);
+
+    // メニューは macOS のみ。macOS は Edit メニュー（コピー/切り取り/貼り付け/全選択/取り消し）
+    // が無いと Cmd+C/V/X が webview に届かない。Windows/Linux は WebView が Ctrl+C/V/X を
+    // 直接処理するのでメニュー不要（付けると不要なメニューバーが出て不自然）。
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(|handle| tauri::menu::Menu::default(handle));
+
+    builder
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
