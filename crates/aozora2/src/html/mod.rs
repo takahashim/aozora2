@@ -486,6 +486,21 @@ mod tests {
         );
     }
 
+    /// 注記形 `「対象」に「※［＃句点コード］…」の注記` は、対象を基底・外字入り注記を
+    /// ルビにした Ruby にする（参照実装は基底を落とす既知バグ。我々は正しく修正）。
+    #[test]
+    fn test_embedded_gaiji_annotation_becomes_ruby() {
+        let html = convert(
+            "タイトル\r\n\r\nすはどり［＃「すはどり」に「※［＃「尸＋鳥」、第4水準2-94-2］」の注記］。",
+            &RenderOptions::default(),
+        );
+        // 基底に対象、ルビに外字画像を持つ ruby になる（裸の gaiji ではない）。
+        assert!(
+            html.contains("<rb>すはどり</rb>") && html.contains("<rt><img src=\"../../../gaiji/2-94/2-94-02.png\""),
+            "実際: {html}"
+        );
+    }
+
     /// 対象が前方に見つからなければ、もとの文字列のまま注記にする
     #[test]
     fn test_unresolved_reference_keeps_the_original_text() {

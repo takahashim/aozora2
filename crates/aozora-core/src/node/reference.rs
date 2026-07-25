@@ -38,10 +38,17 @@ pub enum RefSpec {
         /// 各文字に添える注記
         annotation: String,
     },
-    /// 句点コード指定による外字画像。対象の文字は画像に置き換わる。
+    /// 句点コード指定による外字。2形態ある:
+    /// - **置換** `「5」はローマ数字、1-13-25`: 対象「5」を外字画像に置き換える
+    ///   （`annotation_ruby: None`）。
+    /// - **注記** `「すはどり」に「※［＃…］鳩」の注記`: 対象を基底、外字を含む注記を
+    ///   ルビにする（`annotation_ruby: Some(ルビノード列)`）。参照実装は注記形でも
+    ///   基底を落として外字だけ出すバグがあるが、ここでは正しくルビにする。
     EmbeddedGaiji {
-        /// 面-区-点コード（例 `1-13-25`）
+        /// 面-区-点コード（例 `1-13-25`）。置換形で使う。
         jis_code: String,
+        /// 注記形のときのルビ内容（外字＋後続テキスト）。置換形は None。
+        annotation_ruby: Option<Vec<Node>>,
     },
 }
 
@@ -49,13 +56,25 @@ impl RefSpec {
     /// 対象の子ノード列にこの指定を適用して最終的なノードを作る
     pub fn resolve(&self, children: Vec<Node>) -> Node {
         match self {
-            // 対象の文字は画像に置き換わるので children は使わない。
-            // 参照実装は説明文を取り出す gsub! が nil を返すため alt が空になる。
-            RefSpec::EmbeddedGaiji { jis_code } => Node::Gaiji {
-                description: String::new(),
-                unicode: None,
-                jis_code: Some(jis_code.clone()),
-                had_igeta: false,
+            // 置換形（annotation_ruby=None）: 対象を外字画像に置き換える（正しい）。
+            // 注記形（Some）: 対象を基底・外字入り注記をルビにした Ruby を作る
+            // （参照実装は基底を落とすバグだが、ここでは正しくルビにする）。
+            RefSpec::EmbeddedGaiji {
+                jis_code,
+                annotation_ruby,
+            } => match annotation_ruby {
+                Some(ruby) => Node::Ruby {
+                    children,
+                    ruby: ruby.clone(),
+                    direction: RubyDirection::Right,
+                    keep_gaiji_notes_in_base: true,
+                },
+                None => Node::Gaiji {
+                    description: String::new(),
+                    unicode: None,
+                    jis_code: Some(jis_code.clone()),
+                    had_igeta: false,
+                },
             },
             RefSpec::Style(style_type) => Node::Style {
                 children,

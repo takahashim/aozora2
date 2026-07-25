@@ -287,14 +287,24 @@ fn parse_command_to_node(content: &str) -> Node {
             target,
             connector: _,
             spec,
-        } => Node::UnresolvedReference {
-            target,
-            // KutenGaiji は句点コードが取れたときだけ作られるので必ず Some
-            spec: RefSpec::EmbeddedGaiji {
-                jis_code: utils::parse_kuten_gaiji(&spec).unwrap_or_default(),
-            },
-            raw: content.to_string(),
-        },
+        } => {
+            // 注記形 `「対象」に「<注記>」の注記` は、<注記>（外字＋後続テキスト）を
+            // パースしてルビにする。置換形 `「5」はローマ数字、1-13-25` は None。
+            let annotation_ruby = spec
+                .strip_suffix("の注記")
+                .and_then(|s| s.strip_prefix('「'))
+                .and_then(|s| s.strip_suffix('」'))
+                .map(|inner| parse(&tokenize(inner)));
+            Node::UnresolvedReference {
+                target,
+                // KutenGaiji は句点コードが取れたときだけ作られるので必ず Some
+                spec: RefSpec::EmbeddedGaiji {
+                    jis_code: utils::parse_kuten_gaiji(&spec).unwrap_or_default(),
+                    annotation_ruby,
+                },
+                raw: content.to_string(),
+            }
+        }
 
         CommandResult::Midashi {
             target,
