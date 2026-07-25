@@ -2,17 +2,17 @@
 //!
 //! 青空文庫形式のテキストからルビ・注記を除去してプレーンテキストに変換します。
 
-use aozora_core::accent::convert_accent;
 use aozora_core::document;
 use aozora_core::encoding;
 use aozora_core::gaiji::convert_gaiji;
-use aozora_core::token::Token;
-use aozora_core::tokenizer::Tokenizer;
 
-/// 青空文庫形式のバイト列をプレーンテキストに変換
+/// 青空文庫形式のバイト列をプレーンテキストに変換（中立AST経由）。
 ///
-/// エンコーディング自動判定（UTF-8 / Shift_JIS）、
-/// 本文抽出（前付け・後付け除去）を行う。
+/// エンコーディング自動判定（UTF-8 / Shift_JIS）、本文抽出（前付け・後付け除去）を
+/// 行う。HTML バックエンド（`html::render_via_blocks`）と**同じ tokenize→parse→lower**
+/// を共有し、終端の木歩きだけをプレーンテキスト用に差し替える（`CloseKind`/`Break`/
+/// div/br 等の HTML 固有メタデータは一切見ない＝中立ASTがバックエンド非依存である
+/// 実証）。ブロック開始/終了だけの行は木に畳まれて消えるので、余計な空行も出ない。
 ///
 /// # Examples
 ///
@@ -22,36 +22,6 @@ use aozora_core::tokenizer::Tokenizer;
 /// assert_eq!(plain, "本文です\n");
 /// ```
 pub fn convert(input: &[u8]) -> String {
-    let text = encoding::decode_to_utf8(input);
-    let lines: Vec<&str> = text.lines().collect();
-    let body_lines = document::extract_body_lines(&lines);
-
-    let converted: Vec<String> = body_lines.iter().map(|line| convert_line(line)).collect();
-
-    // 冒頭と末尾の空行を削除
-    let start = converted.iter().position(|s| !s.is_empty()).unwrap_or(0);
-    let end = converted
-        .iter()
-        .rposition(|s| !s.is_empty())
-        .map(|i| i + 1)
-        .unwrap_or(0);
-
-    if start >= end {
-        String::new()
-    } else {
-        converted[start..end].join("\n") + "\n"
-    }
-}
-
-/// 中立AST（[`aozora_core::ast::Block`] 木）を経由したプレーンテキスト変換
-/// （docs/plan-neutral-ast.md Phase D＝第2バックエンドの実証）。
-///
-/// HTML バックエンド（`render_via_blocks`）と**同じ tokenize→parse→lower**を共有し、
-/// 終端の木歩きだけをプレーンテキスト用に差し替える。木を状態なしに歩くだけで
-/// `CloseKind`/`Break`/div/br 等の HTML 固有メタデータは一切見ない＝中立ASTが
-/// バックエンド非依存であることの実証。ブロック開始/終了だけの行は木に畳まれて
-/// 消えるので、旧 strip の余計な空行が生じない（＝出力が綺麗になる）。
-pub fn convert_via_ast(input: &[u8]) -> String {
     use aozora_core::lower::lower_to_blocks;
     use aozora_core::parser::parse_document_raw;
 
@@ -160,9 +130,9 @@ fn render_inlines_plain(inlines: &[aozora_core::ast::Inline], out: &mut String) 
     }
 }
 
-/// 青空文庫形式の文字列をプレーンテキストに変換（本文抽出なし）
+/// 青空文庫形式の1行（またはインライン断片）をプレーンテキストに変換（中立AST経由）。
 ///
-/// 前付け・後付けの除去を行わず、入力全体を変換する。
+/// 前付け・後付けの除去を行わず、入力全体をインライン列として変換する。
 ///
 /// # Examples
 ///
@@ -172,37 +142,18 @@ fn render_inlines_plain(inlines: &[aozora_core::ast::Inline], out: &mut String) 
 /// assert_eq!(plain, "吾輩は猫である");
 /// ```
 pub fn convert_line(input: &str) -> String {
-    let mut tokenizer = Tokenizer::new(input);
-    let tokens = tokenizer.tokenize();
-    extract(&tokens)
-}
+    use aozora_core::ast::to_inlines;
+    use aozora_core::parser::parse;
+    use aozora_core::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
+    use aozora_core::tokenizer::tokenize;
 
-/// トークン列をプレーンテキストに変換
-fn extract(tokens: &[Token]) -> String {
-    tokens.iter().map(extract_token).collect()
-}
-
-/// 単一トークンからテキストを抽出
-fn extract_token(token: &Token) -> String {
-    match token {
-        // テキスト: そのまま出力
-        Token::Text(s) => s.clone(),
-
-        // 暗黙ルビ: 削除（親文字は直前のTextに含まれる）
-        Token::Ruby { .. } => String::new(),
-
-        // 明示ルビ: 親文字部分のみ抽出
-        Token::PrefixedRuby { base_children, .. } => extract(base_children),
-
-        // コマンド: 削除
-        Token::Command { .. } => String::new(),
-
-        // 外字: Unicode文字列に変換
-        Token::Gaiji { description, .. } => convert_gaiji(description),
-
-        // アクセント: 内容を抽出してアクセント変換
-        Token::Accent { children } => convert_accent(&extract(children)),
-    }
+    let mut nodes = parse(&tokenize(input));
+    resolve_references(&mut nodes);
+    resolve_inline_ruby(&mut nodes);
+    let inlines = to_inlines(&nodes);
+    let mut out = String::new();
+    render_inlines_plain(&inlines, &mut out);
+    out
 }
 
 #[cfg(test)]
@@ -256,20 +207,20 @@ mod tests {
 
     /// 第2バックエンド（中立AST経由）: ルビ除去・傍点の対象文字は残る。
     #[test]
-    fn test_via_ast_basic() {
+    fn test_ast_basic() {
         let input = "T\n著\n\n吾輩《わがはい》は猫である［＃「である」に傍点］\n底本：青空文庫";
-        assert_eq!(convert_via_ast(input.as_bytes()), "吾輩は猫である\n");
+        assert_eq!(convert(input.as_bytes()), "吾輩は猫である\n");
     }
 
     /// 第2バックエンド: ブロック開始/終了だけの行は木に畳まれ、余計な空行が出ない。
     /// （旧トークン経路はコマンド行が空行として残る。）
     #[test]
-    fn test_via_ast_drops_block_command_blank_lines() {
+    fn test_ast_drops_block_command_blank_lines() {
         let input =
             "T\n著\n\n本文1\n［＃ここから２字下げ］\n字下げ本文\n［＃ここで字下げ終わり］\n本文2\n底本：青空文庫";
         // 中立AST版: ブロックマーカー行は消え、本文だけが連続する。
         assert_eq!(
-            convert_via_ast(input.as_bytes()),
+            convert(input.as_bytes()),
             "本文1\n字下げ本文\n本文2\n"
         );
     }

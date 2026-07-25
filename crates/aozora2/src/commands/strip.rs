@@ -24,10 +24,6 @@ pub struct Args {
     /// 入力をZIPファイルとして扱う
     #[arg(short, long)]
     pub zip: bool,
-
-    /// 中立AST経由（第2バックエンド）で変換する
-    #[arg(long)]
-    pub via_ast: bool,
 }
 
 /// strip サブコマンドを実行
@@ -64,12 +60,8 @@ pub fn run(args: Args) -> io::Result<()> {
         }
     };
 
-    // 変換
-    let output = if args.via_ast {
-        strip::convert_via_ast(&bytes)
-    } else {
-        strip::convert(&bytes)
-    };
+    // 変換（中立AST経由）
+    let output = strip::convert(&bytes);
 
     // 出力
     match &args.output {
