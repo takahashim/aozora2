@@ -103,13 +103,13 @@ const highlightPlugin = ViewPlugin.fromClass(
       this.decorations = build(view)
     }
     update(u: ViewUpdate) {
-      const prev = u.startState.field(analysisField, false)
-      const curr = u.state.field(analysisField, false)
-      if (curr !== prev) {
-        // 新しい解析が届いた → 作り直す。
+      const analysisChanged =
+        u.state.field(analysisField, false) !== u.startState.field(analysisField, false)
+      if (analysisChanged || u.viewportChanged) {
+        // 新しい解析が届いた／スクロールで表示範囲が変わった → 表示範囲ぶんだけ作り直す。
         this.decorations = build(u.view)
       } else if (u.docChanged) {
-        // 解析待ちの間は編集に追従して位置だけ動かす（ちらつき防止）。
+        // 編集中（表示範囲そのまま）は既存装飾を編集に追従させる（ちらつき防止・軽い）。
         this.decorations = this.decorations.map(u.changes)
       }
     }
@@ -117,10 +117,19 @@ const highlightPlugin = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations }
 )
 
+// 大きな文書でも一定コストになるよう、装飾は**表示範囲（ビューポート）内のトークンだけ**
+// 作る。CodeMirror は描画中の範囲ぶんの装飾があれば十分で、全文書ぶんを毎回作ると
+// 数万トークン規模で重くなる。
 function build(view: EditorView): DecorationSet {
   const a = view.state.field(analysisField, false)
-  if (!a) return Decoration.none
-  return buildTokenDecorations(view.state.doc, a.tokens)
+  if (!a || a.tokens.length === 0) return Decoration.none
+  const doc = view.state.doc
+  const { from, to } = view.viewport
+  const startLine = doc.lineAt(from).number - 1 // 0 起点
+  const endLine = doc.lineAt(to).number - 1
+  // line 番号での粗い絞り込み（安価な数値比較）→ 残ったものだけ位置変換＆装飾。
+  const visible = a.tokens.filter((t) => t.range.line >= startLine && t.range.line <= endLine)
+  return buildTokenDecorations(doc, visible)
 }
 
 // --- ホバー ---------------------------------------------------------------------
@@ -214,7 +223,9 @@ function analysisRunner(delayMs: number): Extension {
   return EditorView.updateListener.of((u) => {
     if (u.docChanged) {
       if (timer) clearTimeout(timer)
-      timer = setTimeout(() => run(u.view), delayMs)
+      // 大きな文書ほど解析頻度を下げる（base + 長さ比例、上限 1500ms）。
+      const delay = Math.min(delayMs + Math.floor(u.state.doc.length / 1000), 1500)
+      timer = setTimeout(() => run(u.view), delay)
     }
   })
 }

@@ -154,6 +154,8 @@ function debouncedConvert(content: string): void {
   if (debounceTimer) {
     clearTimeout(debounceTimer)
   }
+  // 大きな文書ほどプレビュー変換の頻度を下げる（base 500ms + 長さ比例、上限 2000ms）。
+  const delay = Math.min(500 + Math.floor(content.length / 1000), 2000)
   debounceTimer = window.setTimeout(async () => {
     setStatus(t('status.converting'), '')
     await updatePreview(content)
@@ -162,7 +164,7 @@ function debouncedConvert(content: string): void {
     } else {
       setStatus(t('status.ready'), '')
     }
-  }, 500)
+  }, delay)
 }
 
 // Set status message
