@@ -10,6 +10,11 @@ use crate::jis_table::jis_to_unicode;
 static ACCENT_TABLE: Lazy<HashMap<&'static str, &'static str>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/accent_table.rs")));
 
+/// アクセント文字の説明文。参照実装 aozora2html の accent_table.yml 由来で、
+/// 規則から組み立てられない表記（ドイツ語エスツェット など）も含む。
+static ACCENT_NAME_TABLE: Lazy<HashMap<&'static str, &'static str>> =
+    Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/accent_name_table.rs")));
+
 /// アクセント分解記法を変換
 ///
 /// `cafe'` → `café` のように、基底文字+アクセント記号を
@@ -60,6 +65,32 @@ pub fn convert_accent(input: &str) -> String {
 /// 文字がアクセント記号かどうか
 pub fn is_accent_mark(c: char) -> bool {
     ACCENT_MARKS.contains(&c)
+}
+
+/// 文字列にアクセント表に載っている組み合わせが含まれるか
+///
+/// 参照実装 aozora2html の AccentParser は、アクセント表に載っている
+/// 「基底文字＋記号」の並びを見つけたときだけアクセントとして扱い、
+/// ひとつも見つからなければ `〔` `〕` をそのまま出力する。
+/// 記号文字が含まれるだけでは足りない（英文中のカンマなどで誤判定するため）。
+pub fn contains_accent_sequence(s: &str) -> bool {
+    let chars: Vec<char> = s.chars().collect();
+    for i in 0..chars.len() {
+        if i + 2 < chars.len()
+            && is_accent_mark(chars[i + 2])
+            && ACCENT_TABLE
+                .contains_key(format!("{}{}{}", chars[i], chars[i + 1], chars[i + 2]).as_str())
+        {
+            return true;
+        }
+        if i + 1 < chars.len()
+            && is_accent_mark(chars[i + 1])
+            && ACCENT_TABLE.contains_key(format!("{}{}", chars[i], chars[i + 1]).as_str())
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// アクセントテーブルを検索してUnicode文字を返す
@@ -153,6 +184,11 @@ fn lookup_accent_with_code(key: &str) -> Option<(String, String)> {
 
 /// アクセント記号のパターンから説明文字列を生成
 fn accent_name(key: &str) -> String {
+    // 参照実装の表にあればそれを使う
+    if let Some(name) = ACCENT_NAME_TABLE.get(key) {
+        return name.to_string();
+    }
+
     let chars: Vec<char> = key.chars().collect();
     if chars.len() == 2 {
         let base = chars[0];
@@ -171,13 +207,25 @@ fn accent_name(key: &str) -> String {
         if base.is_lowercase() {
             format!("{}付き{}小文字", mark_name, base.to_uppercase())
         } else {
-            format!("{mark_name}付き{base}")
+            format!("{}付き{}", mark_name, base)
         }
     } else if chars.len() == 3 {
-        // リガチャ
-        let upper = key.starts_with(|c: char| c.is_uppercase());
-        let case = if upper { "大文字" } else { "小文字" };
-        format!("リガチャ{case}")
+        // リガチャ。参照実装 aozora2html の accent_table.yml に合わせる。
+        // AE の大文字だけ「大文字」が付かない。
+        match key {
+            "AE&" => "リガチャAE".to_string(),
+            "OE&" => "リガチャOE大文字".to_string(),
+            "ae&" => "リガチャAE小文字".to_string(),
+            "oe&" => "リガチャOE小文字".to_string(),
+            _ => {
+                let case = if key.starts_with(|c: char| c.is_uppercase()) {
+                    "大文字"
+                } else {
+                    "小文字"
+                };
+                format!("リガチャ{}{}", key[..2].to_uppercase(), case)
+            }
+        }
     } else {
         key.to_string()
     }
@@ -186,6 +234,34 @@ fn accent_name(key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// アクセント表にある組み合わせがなければアクセント記法とみなさない。
+    /// 英文中のカンマなどを記号と誤認しないため。
+    #[test]
+    fn test_contains_accent_sequence() {
+        assert!(contains_accent_sequence("E'difice"));
+        assert!(contains_accent_sequence("ae&"));
+        assert!(!contains_accent_sequence("参考"));
+        assert!(!contains_accent_sequence(
+            "欄外 Emil Brunner, Erlebnis, Erkenntnis und Glaube, 1923."
+        ));
+    }
+
+    /// 説明文は参照実装 aozora2html の accent_table.yml をそのまま使う。
+    /// 規則から組み立てられない表記が混じっているため。
+    #[test]
+    fn test_accent_names_come_from_the_reference_table() {
+        assert_eq!(accent_name("AE&"), "リガチャAE");
+        assert_eq!(accent_name("OE&"), "リガチャOE大文字");
+        assert_eq!(accent_name("ae&"), "リガチャAE小文字");
+        assert_eq!(accent_name("oe&"), "リガチャOE小文字");
+        // エスツェット。規則どおりなら「アクセント付きS小文字」になってしまう
+        assert_eq!(accent_name("s&"), "ドイツ語エスツェット");
+        // 参照実装の表記ゆれ（A^ だけ字母 A が落ちている）もデータどおり再現する。
+        // 訂正は quirk accent_name_typos オフ時にレンダラ側で行う。
+        assert_eq!(accent_name("A^"), "サーカムフレックスアクセント付き");
+        assert_eq!(accent_name("!@"), "逆感嘆符");
+    }
 
     #[test]
     fn test_simple_accent() {

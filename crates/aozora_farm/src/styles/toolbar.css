@@ -1,0 +1,89 @@
+/* Aozora Toolbar */
+.aozora-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 2px;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  margin: 0 8px;
+}
+
+.toolbar-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.toolbar-btn:hover {
+  background: var(--bg-panel);
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+
+.toolbar-btn:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.toolbar-icon {
+  font-weight: 600;
+  font-size: 0.9rem;
+  min-width: 1em;
+  text-align: center;
+}
+
+.toolbar-label {
+  font-size: 0.75rem;
+}
+
+/* Compact mode for narrow screens */
+@media (max-width: 900px) {
+  .toolbar-label {
+    display: none;
+  }
+
+  .toolbar-btn {
+    padding: 6px 8px;
+  }
+
+  .toolbar-separator {
+    margin: 0 4px;
+  }
+}
+
+@media (max-width: 600px) {
+  .aozora-toolbar {
+    padding: 4px 8px;
+  }
+
+  .toolbar-btn {
+    padding: 4px 6px;
+  }
+
+  .toolbar-icon {
+    font-size: 0.85rem;
+  }
+}

@@ -1,5 +1,31 @@
 //! 青空文庫形式のトークン型定義
 
+/// ソース行内の**文字（char）単位**の範囲 `[start, end)`（半開区間・0 起点）。
+/// 位置情報として RawAST（`RawLine.spans`）が保持する。byte ではなく char 数なので、
+/// 全角文字も1として数える（`line.chars().nth(start)` 等でそのまま使える）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    /// 開始 char オフセット（0 起点・含む）
+    pub start: usize,
+    /// 終了 char オフセット（含まない）
+    pub end: usize,
+}
+
+impl Span {
+    /// 範囲を作る。
+    pub fn new(start: usize, end: usize) -> Self {
+        Self { start, end }
+    }
+    /// 範囲の char 数。
+    pub fn len(&self) -> usize {
+        self.end.saturating_sub(self.start)
+    }
+    /// 空範囲か。
+    pub fn is_empty(&self) -> bool {
+        self.start >= self.end
+    }
+}
+
 /// 青空文庫形式のトークン
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
@@ -27,11 +53,16 @@ pub enum Token {
         content: String,
     },
 
-    /// 外字 ※［＃...］
+    /// 外字 ※［＃...］（＃は任意。参照 dispatch_gaiji は ※［ だけで外字扱い）
     Gaiji {
-        /// 外字説明（デリミタ除く）
+        /// 外字説明（デリミタ・先頭＃を除く）
         /// 例: "「二の字点」、1-2-22" や "「丸印」、U+25CB"
         description: String,
+        /// 元の記法に ＃（IGETA）があったか。
+        /// 参照実装は `※［...］`（＃無し）を認めるが、その場合 EmbedGaiji の
+        /// alt 名は空（gsub! が nil を返す挙動）、UnEmbedGaiji の注記も ＃無しの
+        /// `［...］` で出る。この差を描画時に再現するためのフラグ。
+        had_igeta: bool,
     },
 
     /// アクセント分解 〔...〕
@@ -87,6 +118,7 @@ mod tests {
     fn test_token_gaiji() {
         let token = Token::Gaiji {
             description: "「丸印」、U+25CB".to_string(),
+            had_igeta: true,
         };
         assert!(matches!(token, Token::Gaiji { .. }));
     }

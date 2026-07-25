@@ -86,15 +86,17 @@ impl HeaderInfo {
 /// - 2行目以降: 著者、副題、原題など（行数によって解釈が変わる）
 pub fn extract_header_info(lines: &[&str]) -> HeaderInfo {
     let mut info = HeaderInfo::default();
-    let mut header_lines = Vec::new();
 
-    // 最初の空行までをヘッダーとして収集
+    // 最初の空行までをヘッダーとして収集し、参照実装 parse_header と同様に
+    // ｜（ルビ親文字区切り）とルビ 《...》 を除去してから各項目に割り当てる。
+    let mut stripped: Vec<String> = Vec::new();
     for line in lines {
         if line.is_empty() {
             break;
         }
-        header_lines.push(*line);
+        stripped.push(strip_header_ruby(line));
     }
+    let header_lines: Vec<&str> = stripped.iter().map(|s| s.as_str()).collect();
 
     match header_lines.len() {
         0 => {}
@@ -161,6 +163,38 @@ pub fn extract_header_info(lines: &[&str]) -> HeaderInfo {
     info
 }
 
+/// ヘッダ行から ｜（ルビ親文字区切り）とルビ 《...》 を除去する。
+///
+/// 参照実装 parse_header の `string.gsub!(RUBY_PREFIX, ''); string.gsub!(PAT_RUBY, '')`
+/// に対応。PAT_RUBY = /《.*?》/（非貪欲）なので、対応する 》 が無い 《 は残す。
+fn strip_header_ruby(line: &str) -> String {
+    let mut out = String::new();
+    let mut chars = line.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '｜' => {} // ｜ は全て除去
+            '《' => {
+                // 次の 》 までをルビとして捨てる。見つからなければ 《 以降を残す。
+                let mut buf = String::new();
+                let mut closed = false;
+                for nc in chars.by_ref() {
+                    if nc == '》' {
+                        closed = true;
+                        break;
+                    }
+                    buf.push(nc);
+                }
+                if !closed {
+                    out.push('《');
+                    out.push_str(&buf);
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// 人物名を処理してHeaderInfoに設定、種別を返す
 fn process_person(s: &str, info: &mut HeaderInfo) -> PersonType {
     let person_type = detect_person_type(s);
@@ -193,34 +227,37 @@ fn detect_person_type(s: &str) -> PersonType {
 /// - JIS第1水準記号（全角スペース、句読点等）
 /// - JIS第6〜7水準（ギリシア文字、キリル文字等）
 fn is_original_title(s: &str) -> bool {
+    // 参照実装 header_element_type と同じく Shift_JIS のバイト範囲で判定する。
+    // ASCII（00-7f）、JIS 1-1〜3-25（8140-8258、記号・ラテン・仮名など）、
+    // JIS 6-1〜7-81（839f-8491、ギリシア文字・キリル文字）だけなら原題とみなす。
     s.chars().all(|c| {
-        // ASCII
-        if c.is_ascii() {
-            return true;
+        let mut buf = [0u8; 8];
+        let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
+        if had_err {
+            return false;
         }
-        // 全角スペース、記号類（JIS第1水準）
-        // U+3000-U+303F CJK Symbols and Punctuation
-        // U+FF00-U+FFEF Halfwidth and Fullwidth Forms
-        if ('\u{3000}'..='\u{303F}').contains(&c) || ('\u{FF00}'..='\u{FFEF}').contains(&c) {
-            return true;
+        match encoded.as_ref() {
+            [b] => *b <= 0x7f,
+            [hi, lo] => {
+                let code = ((*hi as u16) << 8) | *lo as u16;
+                (0x8140..=0x8258).contains(&code) || (0x839f..=0x8491).contains(&code)
+            }
+            _ => false,
         }
-        // ギリシア文字（JIS第6水準相当）
-        if ('\u{0370}'..='\u{03FF}').contains(&c) {
-            return true;
-        }
-        // キリル文字（JIS第7水準相当）
-        if ('\u{0400}'..='\u{04FF}').contains(&c) {
-            return true;
-        }
-        false
     })
+}
+
+/// 注記セクションの区切りに使われる罫線（`-` だけからなる行）かどうか
+fn is_rule_line(line: &str) -> bool {
+    !line.is_empty() && line.chars().all(|c| c == '-')
 }
 
 /// 文書から本文行を抽出
 ///
 /// # 文書構造
 /// - 前付け: 最初の空行まで（タイトル、著者名など）
-/// - 注記: 空行後、`---`で囲まれたセクション（【テキスト中に現れる記号について】など）
+/// - 注記: 空行の直後が罫線で始まる場合、罫線で囲まれたセクション
+///   （【テキスト中に現れる記号について】など）
 /// - 本文: 注記後から「底本：」まで
 /// - 後付け: 「底本：」以降（底本情報、入力者情報など）
 ///
@@ -250,23 +287,26 @@ pub fn extract_body_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
                 }
             }
             SectionType::AfterHeader => {
-                // 空行後、---で始まれば注記セクション、そうでなければ本文
-                if line.starts_with("---") {
+                // ヘッダー終端の空行の「次の1行」だけで注記セクションかどうかが決まる。
+                // 罫線（-だけの行）なら注記セクション、それ以外はその行から本文。
+                // 本文が空行以外で始まる場合、参照実装は本文の先頭に <br /> を1つ出すので、
+                // 空行を1行足して同じ出力にする。
+                if is_rule_line(line) {
                     section = SectionType::Chuuki;
-                } else if line.is_empty() {
-                    // 連続する空行はスキップ
                 } else {
-                    // 本文開始
                     if line.starts_with("底本：") {
                         break;
+                    }
+                    if !line.is_empty() {
+                        result.push("");
                     }
                     result.push(*line);
                     section = SectionType::Body;
                 }
             }
             SectionType::Chuuki => {
-                // ---で注記セクション終了
-                if line.starts_with("---") {
+                // 罫線で注記セクション終了
+                if is_rule_line(line) {
                     section = SectionType::Body;
                 }
             }
@@ -297,9 +337,6 @@ pub fn extract_after_text_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
             continue; // ［＃本文終わり］自体は含めない
         }
         if in_after_text {
-            if line.starts_with("底本：") {
-                break;
-            }
             result.push(*line);
         }
     }
@@ -310,11 +347,18 @@ pub fn extract_after_text_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
 /// 文書から底本情報（bibliographical information）を抽出
 ///
 /// 「底本：」で始まる行から最後までを抽出します。
+///
+/// `［＃本文終わり］` が先にある場合は空を返す。参照実装では
+/// `［＃本文終わり］` の時点で後付けのセクションに移り、そのあとの
+/// 「底本：」は新しいセクションを開かずそのまま後付けに入るため。
 pub fn extract_bibliographical_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
     let mut result = Vec::new();
     let mut in_biblio = false;
 
     for line in lines {
+        if *line == "［＃本文終わり］" {
+            return Vec::new();
+        }
         if line.starts_with("底本：") {
             in_biblio = true;
         }
@@ -330,6 +374,8 @@ pub fn extract_bibliographical_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
 mod tests {
     use super::*;
 
+    /// 注記セクションがなく本文が直接始まる場合、参照実装 aozora2html は
+    /// 本文の先頭に <br /> を 1 つ出す。ここでは空行 1 行として表現する。
     #[test]
     fn test_basic_structure() {
         let lines = vec![
@@ -342,7 +388,7 @@ mod tests {
             "底本：青空文庫",
         ];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文1行目", "本文2行目", ""]);
+        assert_eq!(body, vec!["", "本文1行目", "本文2行目", ""]);
     }
 
     #[test]
@@ -369,14 +415,14 @@ mod tests {
     fn test_no_header() {
         let lines = vec!["", "本文1行目", "本文2行目", "", "底本：青空文庫"];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文1行目", "本文2行目", ""]);
+        assert_eq!(body, vec!["", "本文1行目", "本文2行目", ""]);
     }
 
     #[test]
     fn test_no_footer() {
         let lines = vec!["タイトル", "", "本文1行目", "本文2行目"];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文1行目", "本文2行目"]);
+        assert_eq!(body, vec!["", "本文1行目", "本文2行目"]);
     }
 
     #[test]
@@ -386,15 +432,19 @@ mod tests {
         assert!(body.is_empty());
     }
 
+    /// ヘッダー終端の次が空行なら、その空行自体が本文の先頭の <br /> になる
     #[test]
     fn test_multiple_blank_lines() {
         let lines = vec!["タイトル", "", "", "本文", "", "底本：青空文庫"];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文", ""]);
+        assert_eq!(body, vec!["", "本文", ""]);
     }
 
+    /// 注記セクションかどうかはヘッダー終端の「次の 1 行」だけで決まる。
+    /// 空行が挟まると、続く罫線は注記の開始ではなく本文として扱われる
+    /// （参照実装 aozora2html の judge_chuuki と同じ）。
     #[test]
-    fn test_chuuki_with_multiple_blanks() {
+    fn test_chuuki_is_decided_by_the_line_right_after_the_header() {
         let lines = vec![
             "タイトル",
             "",
@@ -406,7 +456,47 @@ mod tests {
             "底本：青空文庫",
         ];
         let body = extract_body_lines(&lines);
-        assert_eq!(body, vec!["本文"]);
+        assert_eq!(body, vec!["", "---", "注記内容", "---", "本文"]);
+    }
+
+    /// ［＃本文終わり］があると、そのあとの「底本：」は独立した節を作らず
+    /// 後付けに入る（参照実装では本文終わりの時点で :tail に移るため）
+    #[test]
+    fn test_after_text_absorbs_the_bibliography() {
+        let lines = vec![
+            "タイトル",
+            "",
+            "本文",
+            "［＃本文終わり］",
+            "底本：青空文庫",
+            "入力：誰か",
+        ];
+        assert_eq!(
+            extract_after_text_lines(&lines),
+            vec!["底本：青空文庫", "入力：誰か"]
+        );
+        assert!(extract_bibliographical_lines(&lines).is_empty());
+    }
+
+    /// ［＃本文終わり］がなければ従来どおり底本情報の節になる
+    #[test]
+    fn test_bibliography_without_an_end_of_text_marker() {
+        let lines = vec!["タイトル", "", "本文", "底本：青空文庫"];
+        assert!(extract_after_text_lines(&lines).is_empty());
+        assert_eq!(
+            extract_bibliographical_lines(&lines),
+            vec!["底本：青空文庫"]
+        );
+    }
+
+    /// 罫線は `-` だけからなる行に限る
+    #[test]
+    fn test_rule_line_must_be_all_dashes() {
+        assert!(is_rule_line("-"));
+        assert!(is_rule_line("-------"));
+        assert!(!is_rule_line(""));
+        assert!(!is_rule_line("--- 注記"));
+        assert!(!is_rule_line("―――"));
     }
 
     // ヘッダー情報抽出テスト
@@ -424,6 +514,25 @@ mod tests {
         let lines = vec!["タイトル", "著者名", ""];
         let info = extract_header_info(&lines);
         assert_eq!(info.title, Some("タイトル".to_string()));
+        assert_eq!(info.author, Some("著者名".to_string()));
+    }
+
+    #[test]
+    fn test_strip_header_ruby() {
+        // ｜ と 《...》 を除去。対応する 》 が無い 《 は残す。
+        assert_eq!(strip_header_ruby("田舎｜教師《きょうし》"), "田舎教師");
+        assert_eq!(strip_header_ruby("漢字《かんじ》の本《ほん》"), "漢字の本");
+        assert_eq!(strip_header_ruby("｜｜あ"), "あ");
+        assert_eq!(strip_header_ruby("《未閉じ"), "《未閉じ");
+        assert_eq!(strip_header_ruby("普通のタイトル"), "普通のタイトル");
+    }
+
+    #[test]
+    fn test_extract_header_strips_ruby() {
+        // ヘッダのタイトル・著者からルビと ｜ を除去する（参照実装 parse_header）。
+        let lines = vec!["田舎｜教師《きょうし》", "著者｜名《めい》", ""];
+        let info = extract_header_info(&lines);
+        assert_eq!(info.title, Some("田舎教師".to_string()));
         assert_eq!(info.author, Some("著者名".to_string()));
     }
 
@@ -528,6 +637,16 @@ mod tests {
     fn test_is_original_title_greek() {
         // ギリシア文字は原題として判定
         assert!(is_original_title("Αβγ"));
+    }
+
+    #[test]
+    fn test_is_original_title_dashes_and_symbols() {
+        // 全角ダッシュ（U+2015, Shift_JIS 815D）を含むラテン語の原題
+        assert!(is_original_title("―― Ibi omnis effusus labor ! ――"));
+        // キリル文字も原題
+        assert!(is_original_title("Война"));
+        // 漢字が混じれば原題ではない
+        assert!(!is_original_title("―― 副題 ――"));
     }
 
     #[test]

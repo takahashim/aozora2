@@ -29,8 +29,10 @@ pub enum BlockType {
     Tcy,
     /// キャプション
     Caption,
-    /// 割り注
+    /// 割書（<span class="warigaki">）。参照 WARIGAKI_COMMAND='割書'。
     Warigaki,
+    /// 割り注
+    Warichu,
     /// ぶら下げ（折り返し字下げ）
     Burasage,
     /// 装飾（傍点、傍線など）
@@ -42,56 +44,6 @@ pub enum BlockType {
 }
 
 impl BlockType {
-    /// レイアウトブロック（字下げ、地付き、ぶら下げ）かどうか
-    ///
-    /// レイアウトブロックは互いに関連があり、新しいブロック開始時に
-    /// 既存のレイアウトブロックを閉じる必要がある場合があります。
-    pub fn is_layout_block(&self) -> bool {
-        matches!(
-            self,
-            BlockType::Jisage | BlockType::Chitsuki | BlockType::Burasage
-        )
-    }
-
-    /// 新しいブロック開始時にこのブロックを閉じるべきかどうか
-    ///
-    /// # Arguments
-    /// * `new_block` - 新しく開始するブロックのタイプ
-    ///
-    /// # Returns
-    /// このブロックを閉じるべきならtrue
-    pub fn should_close_for(&self, new_block: &BlockType) -> bool {
-        // レイアウトブロック以外は閉じない
-        if !new_block.is_layout_block() {
-            return false;
-        }
-
-        // 同じタイプは常に閉じる
-        if self == new_block {
-            return true;
-        }
-
-        match (self, new_block) {
-            // Burasageは他のレイアウトブロック開始時に閉じる
-            (BlockType::Burasage, _) => true,
-            // JisageはBurasage開始時に閉じる
-            (BlockType::Jisage, BlockType::Burasage) => true,
-            _ => false,
-        }
-    }
-
-    /// このブロック終了コマンドで閉じられるべきブロックタイプ
-    ///
-    /// 例: Jisage終了はBurasageも閉じる
-    pub fn closes_block(&self, other: &BlockType) -> bool {
-        if self == other {
-            return true;
-        }
-
-        // Jisage終了はBurasageも閉じる
-        matches!((self, other), (BlockType::Jisage, BlockType::Burasage))
-    }
-
     /// コマンド名からブロックタイプを取得
     pub fn from_command(command: &str) -> Option<Self> {
         // 折り返しがある場合はBurasage（コマンドパーサーで先に処理されるが念のため）
@@ -108,7 +60,9 @@ impl BlockType {
             Some(BlockType::Jizume)
         } else if command.contains("罫囲み") {
             Some(BlockType::Keigakomi)
-        } else if command.contains("見出し") {
+        // 参照実装は終了時に「開始コマンドが終了コマンド名を含むか」で照合するため、
+        // 「中見出終わり」のように送り仮名を欠く表記も見出しとして扱う
+        } else if command.contains("見出") {
             Some(BlockType::Midashi)
         } else if command.contains("横組み") {
             Some(BlockType::Yokogumi)
@@ -124,8 +78,11 @@ impl BlockType {
             Some(BlockType::Tcy)
         } else if command.contains("キャプション") {
             Some(BlockType::Caption)
-        } else if command.contains("割り注") {
+        // 「割り注」より先に「割書」を判定（部分文字列の取り違え防止）。
+        } else if command.contains("割書") {
             Some(BlockType::Warigaki)
+        } else if command.contains("割り注") {
+            Some(BlockType::Warichu)
         } else {
             None
         }

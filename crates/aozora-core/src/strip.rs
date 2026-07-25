@@ -2,17 +2,17 @@
 //!
 //! 青空文庫形式のテキストからルビ・注記を除去してプレーンテキストに変換します。
 
-use crate::accent::convert_accent;
 use crate::document;
 use crate::encoding;
 use crate::gaiji::convert_gaiji;
-use crate::token::Token;
-use crate::tokenizer::Tokenizer;
 
-/// 青空文庫形式のバイト列をプレーンテキストに変換
+/// 青空文庫形式のバイト列をプレーンテキストに変換（中立AST経由）。
 ///
-/// エンコーディング自動判定（UTF-8 / Shift_JIS）、
-/// 本文抽出（前付け・後付け除去）を行う。
+/// エンコーディング自動判定（UTF-8 / Shift_JIS）、本文抽出（前付け・後付け除去）を
+/// 行う。HTML バックエンド（`html::render_via_blocks`）と**同じ tokenize→parse→lower**
+/// を共有し、終端の木歩きだけをプレーンテキスト用に差し替える（`CloseKind`/`Break`/
+/// div/br 等の HTML 固有メタデータは一切見ない＝中立ASTがバックエンド非依存である
+/// 実証）。ブロック開始/終了だけの行は木に畳まれて消えるので、余計な空行も出ない。
 ///
 /// # Examples
 ///
@@ -22,30 +22,117 @@ use crate::tokenizer::Tokenizer;
 /// assert_eq!(plain, "本文です\n");
 /// ```
 pub fn convert(input: &[u8]) -> String {
+    use crate::lower::lower_to_blocks;
+    use crate::parser::parse_document_raw;
+
     let text = encoding::decode_to_utf8(input);
     let lines: Vec<&str> = text.lines().collect();
     let body_lines = document::extract_body_lines(&lines);
+    let raw = parse_document_raw(&body_lines);
+    let blocks = lower_to_blocks(&raw);
 
-    let converted: Vec<String> = body_lines.iter().map(|line| convert_line(line)).collect();
-
+    let mut out_lines: Vec<String> = Vec::new();
+    for b in &blocks {
+        render_block_plain(b, &mut out_lines);
+    }
     // 冒頭と末尾の空行を削除
-    let start = converted.iter().position(|s| !s.is_empty()).unwrap_or(0);
-    let end = converted
+    let start = out_lines.iter().position(|s| !s.is_empty()).unwrap_or(0);
+    let end = out_lines
         .iter()
         .rposition(|s| !s.is_empty())
         .map(|i| i + 1)
         .unwrap_or(0);
-
     if start >= end {
         String::new()
     } else {
-        converted[start..end].join("\n") + "\n"
+        out_lines[start..end].join("\n") + "\n"
     }
 }
 
-/// 青空文庫形式の文字列をプレーンテキストに変換（本文抽出なし）
+/// ブロックを1行1文字列でプレーンテキスト化して push する。
+fn render_block_plain(block: &crate::ast::Block, out: &mut Vec<String>) {
+    use crate::ast::Block;
+    match block {
+        Block::Line { inline, .. } => {
+            let mut s = String::new();
+            render_inlines_plain(inline, &mut s);
+            out.push(s);
+        }
+        Block::LineWrap { inline, .. } => {
+            let mut s = String::new();
+            render_inlines_plain(inline, &mut s);
+            out.push(s);
+        }
+        Block::Nested { children, .. } => {
+            for c in children {
+                render_block_plain(c, out);
+            }
+        }
+    }
+}
+
+/// インライン列をプレーンテキスト化する（読める文字だけ残す）。
+fn render_inlines_plain(inlines: &[crate::ast::Inline], out: &mut String) {
+    use crate::ast::Inline;
+    for i in inlines {
+        match i {
+            Inline::Text(s) => out.push_str(s),
+            // ルビは親文字だけ残す。
+            Inline::Ruby { base, .. } => render_inlines_plain(base, out),
+            // 装飾・範囲系は中身のテキストを残す。
+            Inline::Style { children, .. }
+            | Inline::Midashi { children, .. }
+            | Inline::Tcy { children }
+            | Inline::Keigakomi { children }
+            | Inline::Yokogumi { children }
+            | Inline::Caption { children }
+            | Inline::Warigaki { children }
+            | Inline::FontSize { children, .. }
+            | Inline::ChitsukiInline { children, .. }
+            | Inline::BlockInline { children, .. } => render_inlines_plain(children, out),
+            Inline::AnnotationEnd { content, .. } => render_inlines_plain(content, out),
+            // 外字は Unicode 文字列へ。解決済みの unicode / 句点コード（jis_code）を
+            // 優先し（AST 解決後は description が空でも jis_code を持つ）、無ければ
+            // description からのフォールバック（変換不能なら 〓）。
+            Inline::Gaiji {
+                description,
+                unicode,
+                jis_code,
+                ..
+            } => {
+                if let Some(u) = unicode {
+                    out.push_str(u);
+                } else if let Some(u) = jis_code
+                    .as_deref()
+                    .and_then(crate::jis_table::jis_to_unicode)
+                {
+                    out.push_str(&u);
+                } else {
+                    out.push_str(&convert_gaiji(description));
+                }
+            }
+            // アクセント分解は合成文字へ（無ければ空）。
+            Inline::Accent { unicode, .. } => {
+                if let Some(u) = unicode {
+                    out.push_str(u);
+                }
+            }
+            Inline::DakutenKatakana { num } => {
+                out.push_str(crate::node::Node::dakuten_katakana_char(num))
+            }
+            // 注記・返り点・送り仮名・画像・割り注マーカーはコマンド由来なので落とす。
+            Inline::Note(_)
+            | Inline::Kaeriten(_)
+            | Inline::Okurigana(_)
+            | Inline::Img { .. }
+            | Inline::Warichu { .. } => {}
+        }
+    }
+}
+
+/// 青空文庫形式の1行（またはインライン断片）をプレーンテキストに変換（中立AST経由）。
 ///
-/// 前付け・後付けの除去を行わず、入力全体を変換する。
+/// 前付け・後付けの除去を行わず、入力全体をインライン列として変換する。
 ///
 /// # Examples
 ///
@@ -55,37 +142,18 @@ pub fn convert(input: &[u8]) -> String {
 /// assert_eq!(plain, "吾輩は猫である");
 /// ```
 pub fn convert_line(input: &str) -> String {
-    let mut tokenizer = Tokenizer::new(input);
-    let tokens = tokenizer.tokenize();
-    extract(&tokens)
-}
+    use crate::ast::to_inlines;
+    use crate::parser::parse;
+    use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
+    use crate::tokenizer::tokenize;
 
-/// トークン列をプレーンテキストに変換
-fn extract(tokens: &[Token]) -> String {
-    tokens.iter().map(extract_token).collect()
-}
-
-/// 単一トークンからテキストを抽出
-fn extract_token(token: &Token) -> String {
-    match token {
-        // テキスト: そのまま出力
-        Token::Text(s) => s.clone(),
-
-        // 暗黙ルビ: 削除（親文字は直前のTextに含まれる）
-        Token::Ruby { .. } => String::new(),
-
-        // 明示ルビ: 親文字部分のみ抽出
-        Token::PrefixedRuby { base_children, .. } => extract(base_children),
-
-        // コマンド: 削除
-        Token::Command { .. } => String::new(),
-
-        // 外字: Unicode文字列に変換
-        Token::Gaiji { description } => convert_gaiji(description),
-
-        // アクセント: 内容を抽出してアクセント変換
-        Token::Accent { children } => convert_accent(&extract(children)),
-    }
+    let mut nodes = parse(&tokenize(input));
+    resolve_references(&mut nodes);
+    resolve_inline_ruby(&mut nodes);
+    let inlines = to_inlines(&nodes);
+    let mut out = String::new();
+    render_inlines_plain(&inlines, &mut out);
+    out
 }
 
 #[cfg(test)]
@@ -135,5 +203,25 @@ mod tests {
         let input = "タイトル\n著者\n\n本文です\n底本：青空文庫";
         let plain = convert(input.as_bytes());
         assert_eq!(plain, "本文です\n");
+    }
+
+    /// 第2バックエンド（中立AST経由）: ルビ除去・傍点の対象文字は残る。
+    #[test]
+    fn test_ast_basic() {
+        let input = "T\n著\n\n吾輩《わがはい》は猫である［＃「である」に傍点］\n底本：青空文庫";
+        assert_eq!(convert(input.as_bytes()), "吾輩は猫である\n");
+    }
+
+    /// 第2バックエンド: ブロック開始/終了だけの行は木に畳まれ、余計な空行が出ない。
+    /// （旧トークン経路はコマンド行が空行として残る。）
+    #[test]
+    fn test_ast_drops_block_command_blank_lines() {
+        let input =
+            "T\n著\n\n本文1\n［＃ここから２字下げ］\n字下げ本文\n［＃ここで字下げ終わり］\n本文2\n底本：青空文庫";
+        // 中立AST版: ブロックマーカー行は消え、本文だけが連続する。
+        assert_eq!(
+            convert(input.as_bytes()),
+            "本文1\n字下げ本文\n本文2\n"
+        );
     }
 }

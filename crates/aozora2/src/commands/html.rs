@@ -10,7 +10,7 @@ use aozora_core::zip::{is_zip_file, read_first_txt_from_zip};
 use clap::Args as ClapArgs;
 use encoding_rs::SHIFT_JIS;
 
-use aozora_core::html::{self, RenderOptions};
+use aozora2::html::{self, RenderOptions};
 
 /// html サブコマンドの引数
 #[derive(ClapArgs, Debug)]

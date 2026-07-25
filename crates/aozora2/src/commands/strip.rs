@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use aozora_core::zip::{is_zip_file, read_first_txt_from_zip};
 use clap::Args as ClapArgs;
 
-use aozora_core::strip;
+use aozora2::strip;
 
 /// strip サブコマンドの引数
 #[derive(ClapArgs, Debug)]
@@ -60,7 +60,7 @@ pub fn run(args: Args) -> io::Result<()> {
         }
     };
 
-    // 変換
+    // 変換（中立AST経由）
     let output = strip::convert(&bytes);
 
     // 出力

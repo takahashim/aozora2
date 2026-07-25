@@ -4,37 +4,14 @@
 
 use crate::node::{MidashiLevel, MidashiStyle, StyleType};
 
-/// 行のHTML出力タイプ
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LineType {
-    /// 空行
-    Empty,
-    /// ブロック要素（div, h3-h5など）- brタグ不要、ぶら下げラップ不要
-    Block,
-    /// インラインコンテンツ - brタグ必要、ぶら下げラップ可能
-    Inline,
-}
-
-/// HTMLの行タイプを判定
-pub fn classify_line(html: &str) -> LineType {
-    if html.is_empty() {
-        return LineType::Empty;
-    }
-
-    // ブロック要素の開始/終了で終わる場合
-    if html.starts_with("<div class=\"")
-        || html.starts_with("<h3")
-        || html.starts_with("<h4")
-        || html.starts_with("<h5")
-        || html.ends_with("</div>")
-        || html.ends_with("</h3>")
-        || html.ends_with("</h4>")
-        || html.ends_with("</h5>")
-    {
-        return LineType::Block;
-    }
-
-    LineType::Inline
+/// 未変換外字情報（フッタ「表記について」用）。
+#[derive(Debug, Clone)]
+pub struct UnconvertedGaiji {
+    /// 外字名（説明の最後の「、」より前の部分）
+    pub gaiji_name: String,
+    /// ページ-行数（説明の最後の「、」より後の部分）。
+    /// 同じ外字が複数回現れた場合は出現箇所を順に並べる。
+    pub page_lines: Vec<String>,
 }
 
 /// StyleType のCSSクラス名を取得
@@ -130,74 +107,6 @@ pub fn jis_code_to_path(jis_code: &str) -> (String, String) {
     }
 }
 
-/// 行がブロック要素だけかどうかを判定（<br />を追加しない）
-/// Ruby版aozora2htmlと同じロジック
-pub fn is_block_only_line(html: &str) -> bool {
-    // すでに<br />で終わっている
-    if html.ends_with("<br />") {
-        return true;
-    }
-
-    // </p>で終わる
-    if html.ends_with("</p>") {
-        return true;
-    }
-
-    // </h1>, </h2>, etc.で終わる（ただし同行見出しと窓見出しは除く）
-    if html.ends_with("</h1>")
-        || html.ends_with("</h2>")
-        || html.ends_with("</h3>")
-        || html.ends_with("</h4>")
-        || html.ends_with("</h5>")
-        || html.ends_with("</h6>")
-    {
-        // 同行見出しと窓見出しの場合は<br />を追加する
-        if !html.contains("dogyo-") && !html.contains("mado-") {
-            return true;
-        }
-    }
-
-    // </div>で終わる
-    if html.ends_with("</div>") {
-        return true;
-    }
-
-    // <div...>で終わる（開始タグ）
-    if html.ends_with(">") {
-        if let Some(last_lt) = html.rfind('<') {
-            let last_tag = &html[last_lt..];
-            if last_tag.starts_with("<div") && !last_tag.starts_with("</div") {
-                return true;
-            }
-            // 見出しの開始アンカー
-            if last_tag.starts_with("<a class=\"midashi_anchor\"") {
-                return true;
-            }
-        }
-    }
-
-    // 見出し開始タグで終わる
-    if html.ends_with("\">")
-        && (html.contains("<h3") || html.contains("<h4") || html.contains("<h5"))
-    {
-        return true;
-    }
-
-    // 全体が単一のタグ: ^<[^>]*>$
-    if html.starts_with('<') && html.ends_with('>') && html.len() > 2 {
-        // 自己終了タグはブロック要素ではない
-        if html.ends_with(" />") || html.ends_with("/>") {
-            return false;
-        }
-        let inner = &html[1..html.len() - 1];
-        if !inner.contains('>') {
-            return true;
-        }
-    }
-
-    false
-}
-
 /// 後付け（bibliographical_information）内のテキストを自動リンク化
 ///
 /// 以下の固定文字列のみをリンク化する：
@@ -253,34 +162,6 @@ mod tests {
     }
 
     #[test]
-    fn test_classify_line_empty() {
-        assert_eq!(classify_line(""), LineType::Empty);
-    }
-
-    #[test]
-    fn test_classify_line_block() {
-        assert_eq!(classify_line("<div class=\"test\">"), LineType::Block);
-        assert_eq!(classify_line("</div>"), LineType::Block);
-        assert_eq!(classify_line("<h3 class=\"midashi\">"), LineType::Block);
-        assert_eq!(classify_line("</h3>"), LineType::Block);
-        assert_eq!(classify_line("<h4>title</h4>"), LineType::Block);
-        assert_eq!(classify_line("<h5>title</h5>"), LineType::Block);
-    }
-
-    #[test]
-    fn test_classify_line_inline() {
-        assert_eq!(classify_line("plain text"), LineType::Inline);
-        assert_eq!(
-            classify_line("<ruby>漢字<rt>かんじ</rt></ruby>"),
-            LineType::Inline
-        );
-        assert_eq!(
-            classify_line("<span class=\"test\">text</span>"),
-            LineType::Inline
-        );
-    }
-
-    #[test]
     fn test_html_escape() {
         assert_eq!(html_escape("<test>"), "&lt;test&gt;");
         assert_eq!(html_escape("a & b"), "a &amp; b");
@@ -293,10 +174,72 @@ mod tests {
         assert_eq!(file, "1-02-22");
     }
 
+    /// style_css_class / style_html_tag が参照実装 aozora2html の
+    /// command_table.yml と一致することを、スナップショット
+    /// data/command_table.tsv に照合して縛る。参照実装が表を更新したら
+    /// スナップショットを取り直し、この照合で drift を検出する（誘因整合）。
+    ///
+    /// 表に載るのは基底の記法語のみ。左/下/上バリアントは参照実装の
+    /// 方向フィルタ（傍点系→末尾 _after、傍線系→under を over に置換）で
+    /// 導出されるので、ここでも同じ規則で期待値を作って照合する。
     #[test]
-    fn test_is_block_only_line() {
-        assert!(is_block_only_line("</div>"));
-        assert!(is_block_only_line("<div class=\"test\">"));
-        assert!(!is_block_only_line("text"));
+    fn test_style_css_and_tag_match_reference_command_table() {
+        use std::collections::HashSet;
+
+        let tsv = include_str!("../../data/command_table.tsv");
+        let mut reached: HashSet<StyleType> = HashSet::new();
+
+        for line in tsv.lines() {
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+            let mut cols = line.split('\t');
+            let word = cols.next().expect("記法語列");
+            let class = cols.next().expect("CSSクラス列");
+            let tag = cols.next().expect("HTML要素列");
+
+            // 基底: 記法語 → StyleType → css/tag が表と一致
+            let base = StyleType::from_command(word)
+                .unwrap_or_else(|| panic!("記法語 {word:?} が from_command で解決できない"));
+            assert_eq!(
+                style_css_class(base),
+                class,
+                "{word:?} のCSSクラスが参照表とずれている"
+            );
+            assert_eq!(
+                style_html_tag(base),
+                tag,
+                "{word:?} のHTML要素が参照表とずれている"
+            );
+            reached.insert(base);
+
+            // 左/上バリアント: 参照の方向フィルタで期待値を導出して照合
+            let after = base.to_after_variant();
+            if after != base {
+                let expected = if class.starts_with("underline") {
+                    // 傍線系: under → over（sub と同じく先頭1回）
+                    class.replacen("under", "over", 1)
+                } else {
+                    // 傍点系: 末尾に _after
+                    format!("{class}_after")
+                };
+                assert_eq!(
+                    style_css_class(after),
+                    expected,
+                    "{word:?} の左/上バリアントCSSクラスが方向フィルタ規則とずれている"
+                );
+                assert_eq!(style_html_tag(after), "em");
+                reached.insert(after);
+            }
+        }
+
+        // 表＋フィルタで全 StyleType を網羅していること
+        // （新バリアントを追加したら表かフィルタのどちらかに必ず現れる）
+        for st in StyleType::all() {
+            assert!(
+                reached.contains(st),
+                "{st:?} が参照表・方向フィルタのどちらからも導出されていない"
+            );
+        }
     }
 }

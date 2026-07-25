@@ -10,5 +10,5 @@ keywords = ["aozora", "bunko", "japanese", "text", "converter"]
 categories = ["command-line-utilities", "text-processing"]
 
 [dependencies]
-aozora-core.workspace = true
+aozora2.workspace = true
 clap.workspace = true

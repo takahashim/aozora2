@@ -5,9 +5,9 @@
 
 use crate::document::HeaderInfo;
 
+use super::presentation::UnconvertedGaiji;
 use super::options::RenderOptions;
 use super::presentation::html_escape;
-use super::rendering_state::UnconvertedGaiji;
 
 /// 青空文庫パブリッシャー名
 const AOZORA_BUNKO: &str = "青空文庫";
@@ -21,6 +21,16 @@ impl<'a> DocumentRenderer<'a> {
     /// 新しいドキュメントレンダラーを作成
     pub fn new(options: &'a RenderOptions) -> Self {
         Self { options }
+    }
+
+    /// ヘッダのタイトル・著者等をエスケープする。参照実装は生のまま出すので、
+    /// Quirk `raw_header_metadata` がオンのときはエスケープしない。
+    fn header_text(&self, s: &str) -> String {
+        if self.options.quirks.raw_header_metadata {
+            s.to_string()
+        } else {
+            html_escape(s)
+        }
     }
 
     /// HTMLヘッダーを出力
@@ -47,11 +57,11 @@ impl<'a> DocumentRenderer<'a> {
 
         // タイトル
         let html_title = if let Some(title) = &self.options.title {
-            html_escape(title)
+            self.header_text(title)
         } else {
             header_info.html_title()
         };
-        output.push_str(&format!("\t<title>{html_title}</title>\r\n"));
+        output.push_str(&format!("\t<title>{}</title>\r\n", html_title));
 
         // jQuery
         output.push_str(
@@ -66,14 +76,15 @@ impl<'a> DocumentRenderer<'a> {
         let dc_creator = header_info.author.as_deref().unwrap_or("");
         output.push_str(&format!(
             "\t<meta name=\"DC.Title\" content=\"{}\" />\r\n",
-            html_escape(dc_title)
+            self.header_text(dc_title)
         ));
         output.push_str(&format!(
             "\t<meta name=\"DC.Creator\" content=\"{}\" />\r\n",
-            html_escape(dc_creator)
+            self.header_text(dc_creator)
         ));
         output.push_str(&format!(
-            "\t<meta name=\"DC.Publisher\" content=\"{AOZORA_BUNKO}\" />\r\n"
+            "\t<meta name=\"DC.Publisher\" content=\"{}\" />\r\n",
+            AOZORA_BUNKO
         ));
 
         output.push_str("</head>\r\n");
@@ -87,56 +98,56 @@ impl<'a> DocumentRenderer<'a> {
         if let Some(title) = &header_info.title {
             output.push_str(&format!(
                 "<h1 class=\"title\">{}</h1>\r\n",
-                html_escape(title)
+                self.header_text(title)
             ));
         }
 
         if let Some(original_title) = &header_info.original_title {
             output.push_str(&format!(
                 "<h2 class=\"original_title\">{}</h2>\r\n",
-                html_escape(original_title)
+                self.header_text(original_title)
             ));
         }
 
         if let Some(subtitle) = &header_info.subtitle {
             output.push_str(&format!(
                 "<h2 class=\"subtitle\">{}</h2>\r\n",
-                html_escape(subtitle)
+                self.header_text(subtitle)
             ));
         }
 
         if let Some(original_subtitle) = &header_info.original_subtitle {
             output.push_str(&format!(
                 "<h2 class=\"original_subtitle\">{}</h2>\r\n",
-                html_escape(original_subtitle)
+                self.header_text(original_subtitle)
             ));
         }
 
         if let Some(author) = &header_info.author {
             output.push_str(&format!(
                 "<h2 class=\"author\">{}</h2>\r\n",
-                html_escape(author)
+                self.header_text(author)
             ));
         }
 
         if let Some(editor) = &header_info.editor {
             output.push_str(&format!(
                 "<h2 class=\"editor\">{}</h2>\r\n",
-                html_escape(editor)
+                self.header_text(editor)
             ));
         }
 
         if let Some(translator) = &header_info.translator {
             output.push_str(&format!(
                 "<h2 class=\"translator\">{}</h2>\r\n",
-                html_escape(translator)
+                self.header_text(translator)
             ));
         }
 
         if let Some(henyaku) = &header_info.henyaku {
             output.push_str(&format!(
                 "<h2 class=\"editor-translator\">{}</h2>\r\n",
-                html_escape(henyaku)
+                self.header_text(henyaku)
             ));
         }
 
@@ -171,8 +182,18 @@ impl<'a> DocumentRenderer<'a> {
     }
 
     /// 底本情報セクションフッターを出力
-    pub fn render_bibliographical_footer(&self, output: &mut String) {
-        output.push_str("<br />\r\n");
+    ///
+    /// 参照実装では、入力末尾の改行が作る空行も 1 行として `<br />` になり、
+    /// そのあとに hyoki が `<br />` を 1 つ出す。入力が改行で終わっていなければ
+    /// 空行がないぶん `<br />` は 1 つ少なくなる。
+    pub fn render_bibliographical_footer(
+        &self,
+        output: &mut String,
+        input_ends_with_newline: bool,
+    ) {
+        if input_ends_with_newline {
+            output.push_str("<br />\r\n");
+        }
         output.push_str("<br />\r\n");
         output.push_str("</div>\r\n");
     }
@@ -184,6 +205,8 @@ impl<'a> DocumentRenderer<'a> {
         has_notes: bool,
         has_jisx0213: bool,
         has_accent: bool,
+        has_kunoji: bool,
+        has_dakuten_kunoji: bool,
         unconverted_gaiji: &[UnconvertedGaiji],
     ) {
         output.push_str("<div class=\"notation_notes\">\r\n");
@@ -200,6 +223,19 @@ impl<'a> DocumentRenderer<'a> {
         // 注記を使用した場合
         if has_notes {
             output.push_str("\t<li>［＃…］は、入力者による注を表す記号です。</li>\r\n");
+        }
+
+        // くの字点を使用した場合
+        if has_kunoji {
+            if has_dakuten_kunoji {
+                output.push_str(
+                    "\t<li>「くの字点」は「／＼」で、「濁点付きくの字点」は「／″＼」で表しました。</li>\r\n",
+                );
+            } else {
+                output.push_str("\t<li>「くの字点」は「／＼」で表しました。</li>\r\n");
+            }
+        } else if has_dakuten_kunoji {
+            output.push_str("\t<li>「濁点付きくの字点」は「／″＼」で表しました。</li>\r\n");
         }
 
         // JIS X 0213文字を画像化した場合
@@ -229,16 +265,18 @@ impl<'a> DocumentRenderer<'a> {
                 output.push_str("\t\t\t<tr>\r\n");
 
                 let gaiji_name = html_escape(&gaiji.gaiji_name);
-                let page_line = html_escape(&gaiji.page_line);
+                let page_line = html_escape(&gaiji.page_lines.join("、"));
 
                 output.push_str(&format!(
-                    "\t\t\t\t<td>\r\n\t\t\t\t{gaiji_name}\r\n\t\t\t\t</td>\r\n"
+                    "\t\t\t\t<td>\r\n\t\t\t\t{}\r\n\t\t\t\t</td>\r\n",
+                    gaiji_name
                 ));
                 output.push_str("\t\t\t\t<td>&nbsp;&nbsp;</td>\r\n");
-                output.push_str(&format!("\t\t\t\t<td>\r\n{page_line}\t\t\t\t</td>\r\n"));
+                output.push_str(&format!("\t\t\t\t<td>\r\n{}\t\t\t\t</td>\r\n", page_line));
                 // コメント出力
                 output.push_str(&format!(
-                    "\t\t\t\t<!--\r\n\t\t\t\t<td>\r\n\t\t\t\t　　<img src=\"../../../gaiji/others/xxxx.png\" alt=\"{gaiji_name}\" width=32 height=32 />\r\n\t\t\t\t</td>\r\n\t\t\t\t-->\r\n"
+                    "\t\t\t\t<!--\r\n\t\t\t\t<td>\r\n\t\t\t\t　　<img src=\"../../../gaiji/others/xxxx.png\" alt=\"{}\" width=32 height=32 />\r\n\t\t\t\t</td>\r\n\t\t\t\t-->\r\n",
+                    gaiji_name
                 ));
                 output.push_str("\t\t\t</tr>\r\n");
             }

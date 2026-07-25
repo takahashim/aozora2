@@ -1,6 +1,18 @@
 //! 外字（JIS外文字）の変換
 
 use crate::jis_table::{jis_to_unicode, normalize_jis_code};
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+/// 参照実装 kuten2png の句点コード判定 `/[12]-\d{1,2}-\d{1,2}/`。
+/// Ruby(SJIS) の `\d` は ASCII 0-9 のみなので `[0-9]` で固定する
+/// （Rust regex の `\d` は全角０-９も拾うため）。
+static PAT_KUTEN_CODE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"[12]-[0-9]{1,2}-[0-9]{1,2}").unwrap());
+/// 参照 NON_0213_GAIJI。含む場合は画像化しない。
+static NON_0213_GAIJI: &str = "非0213外字";
+/// 参照 PAT_KUTEN_DUAL `※.*※`。※ が2つ以上ある説明は画像化しない。
+static PAT_KUTEN_DUAL: Lazy<Regex> = Lazy::new(|| Regex::new(r"※.*※").unwrap());
 
 /// 外字説明からUnicode文字列に変換
 ///
@@ -56,12 +68,11 @@ pub enum GaijiResult {
 
 /// 外字説明を解析して結果を返す（HTML変換用）
 pub fn parse_gaiji(description: &str) -> GaijiResult {
-    // 1. Unicode直接指定を探す
-    if let Some(unicode_char) = extract_unicode(description) {
-        return GaijiResult::Unicode(unicode_char.to_string());
-    }
-
-    // 2. JISコードを探す
+    // 参照実装 dispatch_gaiji は kuten2png（句点コード→画像）を先に試し、句点
+    // コードが取れたときはそれを使う。U+ 指定は句点コードが取れなかったときの
+    // フォールバック。よって U+ と句点コードの両方がある説明
+    // （例:「りっしんべん＋粟」、U+619F、2-12-34）は句点コード側（画像）になる。
+    // 1. JISコード（句点コード）を先に探す
     if let Some(jis_code) = extract_jis_code(description) {
         let normalized = normalize_jis_code(&jis_code);
         if let Some(unicode) = jis_to_unicode(&normalized) {
@@ -73,6 +84,11 @@ pub fn parse_gaiji(description: &str) -> GaijiResult {
         return GaijiResult::JisImage {
             jis_code: normalized,
         };
+    }
+
+    // 2. Unicode直接指定
+    if let Some(unicode_char) = extract_unicode(description) {
+        return GaijiResult::Unicode(unicode_char.to_string());
     }
 
     // 3. 変換不能
@@ -103,64 +119,26 @@ fn extract_unicode(description: &str) -> Option<char> {
     None
 }
 
-/// "X-XX-XX" パターンからJISコードを抽出
+/// 句点コード（面-区-点）を抽出する。
+///
+/// 参照実装 kuten2png は `/[12]-\d{1,2}-\d{1,2}/` に一致する最初の部分文字列
+/// だけを句点コードとして画像化する。面（先頭）は 1 か 2 の**1桁**、区・点は
+/// それぞれ 1〜2桁。したがって面が無効な `24-1-3`（これは底本の位置参照で
+/// あって句点コードではない）や `第4水準` の 4 などは一致せず、画像化されず
+/// 注記のまま出る。従来は `\d+-\d+-\d+` を無条件に拾って `24-1-3` まで画像化
+/// していたためオラクルと乖離していた。
 fn extract_jis_code(description: &str) -> Option<String> {
-    // JISコードのパターン: 数字-数字-数字
-    // 例: 1-2-22, 2-14-75
-    let mut chars = description.chars().peekable();
-    let mut result = String::new();
-
-    while let Some(c) = chars.next() {
-        if c.is_ascii_digit() {
-            result.push(c);
-
-            // 続く数字を読む
-            while let Some(&next) = chars.peek() {
-                if next.is_ascii_digit() {
-                    result.push(chars.next()?);
-                } else {
-                    break;
-                }
-            }
-
-            // ハイフンが続くか確認
-            if chars.peek() == Some(&'-') {
-                result.push(chars.next()?);
-
-                // 2番目の数字
-                while let Some(&next) = chars.peek() {
-                    if next.is_ascii_digit() {
-                        result.push(chars.next()?);
-                    } else {
-                        break;
-                    }
-                }
-
-                // 2番目のハイフン
-                if chars.peek() == Some(&'-') {
-                    result.push(chars.next()?);
-
-                    // 3番目の数字
-                    while let Some(&next) = chars.peek() {
-                        if next.is_ascii_digit() {
-                            result.push(chars.next()?);
-                        } else {
-                            break;
-                        }
-                    }
-
-                    // パターン "X-XX-XX" が完成
-                    if result.matches('-').count() == 2 {
-                        return Some(result);
-                    }
-                }
-            }
-
-            result.clear();
-        }
+    // 参照実装 kuten2png と同じ判定:
+    //   matched = desc.match(/[12]-\d{1,2}-\d{1,2}/)
+    //   if matched && !desc.match?(NON_0213_GAIJI) && !desc.match?(PAT_KUTEN_DUAL)
+    // - NON_0213_GAIJI「非0213外字」: つくりの水準参照 1-92-16 等があっても画像化しない。
+    // - PAT_KUTEN_DUAL「※.*※」: ※ が2つ以上ある説明は画像化しない。
+    if description.contains(NON_0213_GAIJI) || PAT_KUTEN_DUAL.is_match(description) {
+        return None;
     }
-
-    None
+    PAT_KUTEN_CODE
+        .find(description)
+        .map(|m| m.as_str().to_string())
 }
 
 #[cfg(test)]
@@ -185,6 +163,70 @@ mod tests {
             Some("2-14-75".to_string())
         );
         assert_eq!(extract_jis_code("テスト"), None);
+    }
+
+    #[test]
+    fn test_parse_gaiji_prefers_kuten_over_unicode() {
+        // U+ と句点コードの両方がある説明は、参照実装 dispatch_gaiji 同様に
+        // 句点コード（画像/変換）を優先する（U+ は句点コードが無いときのフォールバック）。
+        match parse_gaiji("りっしんべん＋粟、U+619F、2-12-34") {
+            GaijiResult::JisConverted { jis_code, .. } | GaijiResult::JisImage { jis_code } => {
+                assert_eq!(jis_code, "2-12-34");
+            }
+            other => panic!("句点コード優先になっていない: {other:?}"),
+        }
+        // 句点コードが無ければ U+ を使う。
+        assert!(matches!(
+            parse_gaiji("なにか、U+619F"),
+            GaijiResult::Unicode(_)
+        ));
+    }
+
+    #[test]
+    fn test_extract_jis_code_rejects_non0213() {
+        // 「非0213外字」を含む説明は、水準参照 1-92-16 があっても句点コードにしない
+        // （参照実装 NON_0213_GAIJI ガード）。
+        assert_eq!(
+            extract_jis_code("非0213外字：「厂＋菫」、ただし「菫」は第3水準1-92-16のつくりの形、読みは「わづか」、286-下-24"),
+            None
+        );
+    }
+
+    #[test]
+    fn test_extract_jis_code_rejects_invalid_men() {
+        // 参照実装 kuten2png は /[12]-\d{1,2}-\d{1,2}/ にしか一致しないので、
+        // 面が 1・2 以外（24 など）や3桁以上のものは句点コードにしない。
+        // 24-1-3 は底本位置参照であって句点コードではない → 画像化されず注記のまま。
+        assert_eq!(extract_jis_code("「未」の「二」に代えて「三」、24-1-3"), None);
+        assert_eq!(extract_jis_code("説明、3-14-11"), None); // 面3は無効
+        assert_eq!(extract_jis_code("説明、4-94-51"), None); // 面4は無効
+        // 面が 1・2 の正しい句点コードは従来どおり拾う。
+        assert_eq!(
+            extract_jis_code("「にんべん＋憂」、第3水準1-14-11"),
+            Some("1-14-11".to_string())
+        );
+        assert_eq!(
+            extract_jis_code("説明、2-94-51"),
+            Some("2-94-51".to_string())
+        );
+        // 区・点は1〜2桁。1桁でも拾う。
+        assert_eq!(extract_jis_code("説明、1-2-3"), Some("1-2-3".to_string()));
+        // 面が多桁でも内部に [12]-\d{1,2}-\d{1,2} を含まなければ不一致。
+        assert_eq!(extract_jis_code("24-1-3"), None);
+    }
+
+    #[test]
+    fn test_extract_jis_code_rejects_dual_gaiji() {
+        // 参照 PAT_KUTEN_DUAL「※.*※」: ※ が2つ以上ある説明は句点コードにしない。
+        assert_eq!(
+            extract_jis_code("「※」の左に「※」、1-2-22"),
+            None
+        );
+        // ※ が1つ以下なら従来どおり拾う。
+        assert_eq!(
+            extract_jis_code("「※」に代わる字、1-2-22"),
+            Some("1-2-22".to_string())
+        );
     }
 
     #[test]
