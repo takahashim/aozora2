@@ -140,9 +140,7 @@ impl InlineKind {
             InlineKind::Yokogumi => Node::Yokogumi { children },
             InlineKind::Caption => Node::Caption { children },
             // 返り点・送り仮名は対象テキストを平文にして sub/sup で包む。
-            InlineKind::Kaeriten => {
-                Node::Kaeriten(children.iter().map(|n| n.to_text()).collect())
-            }
+            InlineKind::Kaeriten => Node::Kaeriten(children.iter().map(|n| n.to_text()).collect()),
             InlineKind::Okurigana => {
                 Node::Okurigana(children.iter().map(|n| n.to_text()).collect())
             }

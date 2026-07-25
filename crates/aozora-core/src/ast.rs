@@ -197,7 +197,11 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
                     width: params.width.unwrap_or(0),
                     children: inner,
                 });
-                i = if end < nodes.len() { end + 1 } else { nodes.len() };
+                i = if end < nodes.len() {
+                    end + 1
+                } else {
+                    nodes.len()
+                };
                 continue;
             }
         }
@@ -532,7 +536,10 @@ pub enum Inline {
     /// 終わり］TEXT`）。参照は is_block=true のブロック開始タグ（div/h4）を行内に埋め
     /// 込み、行末の close_inline_blocks／同行終わりで閉じる。開き直後の `\r\n` や
     /// 内側 `<br />` は出ない（インライン埋め込み）。
-    BlockInline { kind: BlockKind, children: Vec<Inline> },
+    BlockInline {
+        kind: BlockKind,
+        children: Vec<Inline>,
+    },
 }
 
 #[cfg(test)]
@@ -548,9 +555,7 @@ mod tests {
         let nodes = parse(&tokenize("東京《とうきょう》の本文※［＃「丸印」、U+25CB］"));
         let inlines = to_inlines(&nodes);
         // ルビ・テキスト・外字がインラインとして写ること。
-        assert!(inlines
-            .iter()
-            .any(|i| matches!(i, Inline::Ruby { .. })));
+        assert!(inlines.iter().any(|i| matches!(i, Inline::Ruby { .. })));
         assert!(inlines.iter().any(|i| matches!(i, Inline::Text(_))));
         assert!(inlines.iter().any(|i| matches!(i, Inline::Gaiji { .. })));
     }
@@ -568,8 +573,14 @@ mod tests {
             .iter()
             .filter(|i| matches!(i, Inline::Warichu { open: false, .. }))
             .count();
-        assert_eq!(opens, 1, "割り注開きが Inline::Warichu にならない: {inlines:?}");
-        assert_eq!(closes, 1, "割り注終わりが Inline::Warichu にならない: {inlines:?}");
+        assert_eq!(
+            opens, 1,
+            "割り注開きが Inline::Warichu にならない: {inlines:?}"
+        );
+        assert_eq!(
+            closes, 1,
+            "割り注終わりが Inline::Warichu にならない: {inlines:?}"
+        );
     }
 
     /// ブロック構造マーカー（ここから字下げ）はインラインに現れない。
@@ -577,6 +588,9 @@ mod tests {
     fn test_to_inlines_skips_block_markers() {
         let nodes = parse(&tokenize("［＃ここから２字下げ］"));
         let inlines = to_inlines(&nodes);
-        assert!(inlines.is_empty(), "ブロックマーカーがインライン化された: {inlines:?}");
+        assert!(
+            inlines.is_empty(),
+            "ブロックマーカーがインライン化された: {inlines:?}"
+        );
     }
 }

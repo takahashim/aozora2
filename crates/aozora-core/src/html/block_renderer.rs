@@ -407,7 +407,8 @@ impl<'a> BlockRenderer<'a> {
                     ));
                     self.render_inlines(children, out);
                     out.push_str(&format!("</a></{tag}>"));
-                } else if let Some(open) = block_open_tag(kind, self.options.quirks.empty_indent_css)
+                } else if let Some(open) =
+                    block_open_tag(kind, self.options.quirks.empty_indent_css)
                 {
                     out.push_str(&open);
                     self.render_inlines(children, out);
@@ -416,9 +417,10 @@ impl<'a> BlockRenderer<'a> {
                     self.render_inlines(children, out);
                 }
             }
-            Inline::Kaeriten(text) => {
-                out.push_str(&format!("<sub class=\"kaeriten\">{}</sub>", html_escape(text)))
-            }
+            Inline::Kaeriten(text) => out.push_str(&format!(
+                "<sub class=\"kaeriten\">{}</sub>",
+                html_escape(text)
+            )),
             Inline::Note(text) => {
                 self.has_notes = true;
                 let inner = self.render_note_content(text);
@@ -586,7 +588,8 @@ impl<'a> BlockRenderer<'a> {
     }
 
     fn accent_name(&self, name: &str) -> String {
-        if !self.options.quirks.accent_name_typos && name == "サーカムフレックスアクセント付き" {
+        if !self.options.quirks.accent_name_typos && name == "サーカムフレックスアクセント付き"
+        {
             return "サーカムフレックスアクセント付きA".to_string();
         }
         name.to_string()
@@ -610,7 +613,8 @@ impl<'a> BlockRenderer<'a> {
         for inline in base {
             let mut html = String::new();
             self.render_inline(inline, &mut html);
-            if matches!(inline, Inline::Gaiji { .. }) && html.starts_with("<span class=\"notes\">") {
+            if matches!(inline, Inline::Gaiji { .. }) && html.starts_with("<span class=\"notes\">")
+            {
                 rb.push_str(GAIJI_MARK);
                 trailing.push_str(&html);
             } else {
@@ -839,8 +843,8 @@ pub fn render_line_inline(line: &str, options: &RenderOptions) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::html::{convert, RenderOptions};
     use crate::document::extract_body_lines;
+    use crate::html::{convert, RenderOptions};
     use crate::lower::lower_to_blocks;
     use crate::parser::parse_document_raw;
 

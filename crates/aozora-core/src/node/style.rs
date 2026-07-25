@@ -205,7 +205,10 @@ mod tests {
 
     #[test]
     fn test_style_aliases_resolve() {
-        assert_eq!(StyleType::from_command("行左小書き"), Some(StyleType::Subscript));
+        assert_eq!(
+            StyleType::from_command("行左小書き"),
+            Some(StyleType::Subscript)
+        );
         assert_eq!(
             StyleType::from_command("行右小書き"),
             Some(StyleType::Superscript)

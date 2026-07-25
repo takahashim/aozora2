@@ -184,16 +184,17 @@ pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
 /// 見出しコマンド範囲などブロックマーカーはそのまま残す（to_inlines が畳む）。
 fn strip_leading_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
     // まず LineJisage を1個だけ落とす（参照 apply_jisage の位置除去）。
-    if let Some(pos) = nodes.iter().position(|n| matches!(n, Node::LineJisage { .. })) {
+    if let Some(pos) = nodes
+        .iter()
+        .position(|n| matches!(n, Node::LineJisage { .. }))
+    {
         let mut rest = nodes;
         rest.remove(pos);
         return rest;
     }
     // 先頭が行スコープ BlockStart（is_block=false の Jisage/Chitsuki）なら落とす。
     if let Some(Node::BlockStart { block_type, params }) = nodes.first() {
-        if !params.is_block
-            && matches!(block_type, BlockType::Jisage | BlockType::Chitsuki)
-        {
+        if !params.is_block && matches!(block_type, BlockType::Jisage | BlockType::Chitsuki) {
             return nodes.into_iter().skip(1).collect();
         }
     }
@@ -263,13 +264,16 @@ fn classify_line(nodes: &[Node]) -> LineKind {
     // 行単位字下げ ［＃N字下げ］。行にこのマーカーしか無ければ複数行ブロックを開く
     // （参照 apply_jisage の unshift 相当＝ここから字下げと同一）。本文が続けば行包み。
     if let [Node::LineJisage { width }] = nodes {
-        return LineKind::BlockOpen(BlockKind::Jisage { width: Some(*width) });
+        return LineKind::BlockOpen(BlockKind::Jisage {
+            width: Some(*width),
+        });
     }
-    if let Some(Node::LineJisage { width }) = nodes
-        .iter()
-        .find(|n| matches!(n, Node::LineJisage { .. }))
+    if let Some(Node::LineJisage { width }) =
+        nodes.iter().find(|n| matches!(n, Node::LineJisage { .. }))
     {
-        return LineKind::LineWrap(BlockKind::Jisage { width: Some(*width) });
+        return LineKind::LineWrap(BlockKind::Jisage {
+            width: Some(*width),
+        });
     }
     // 行スコープ地付き／字上げ ［＃地付き］text（先頭が is_block=false の Chitsuki）。
     // 参照 renderer は先頭ノードで判定し、行末でブロックを閉じる（1行包み）。
@@ -290,7 +294,9 @@ pub(crate) fn block_kind_of(
 ) -> Option<BlockKind> {
     let w = || params.width.unwrap_or(0);
     match block_type {
-        BlockType::Jisage => Some(BlockKind::Jisage { width: params.width }),
+        BlockType::Jisage => Some(BlockKind::Jisage {
+            width: params.width,
+        }),
         BlockType::Chitsuki => Some(BlockKind::Chitsuki { width: w() }),
         BlockType::Jizume => Some(BlockKind::Jizume { width: w() }),
         BlockType::Keigakomi => Some(BlockKind::Keigakomi),
@@ -331,10 +337,10 @@ mod position_tests {
     fn blocks_carry_source_line_numbers() {
         // 本文（extract 後を模した行列）。0 起点で数える。
         let lines = vec![
-            "本文0",                       // 0
-            "［＃ここから２字下げ］",       // 1 (Nested open)
-            "内容2",                       // 2
-            "［＃ここで字下げ終わり］",     // 3
+            "本文0",                    // 0
+            "［＃ここから２字下げ］",   // 1 (Nested open)
+            "内容2",                    // 2
+            "［＃ここで字下げ終わり］", // 3
         ];
         let raw = parse_document_raw(&lines);
         let blocks = lower_to_blocks(&raw);

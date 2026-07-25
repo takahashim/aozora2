@@ -336,12 +336,7 @@ fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Optio
 
 /// 照合結果をノード列に適用する。start_idx..=（注記の直前）を
 /// [分割前半?][解決済みノード] に置き換え、注記自身を除去する。
-fn apply_front_reference(
-    nodes: &mut Vec<Node>,
-    i: &mut usize,
-    m: FrontRefMatch,
-    spec: &RefSpec,
-) {
+fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch, spec: &RefSpec) {
     let new_node = spec.resolve(m.children);
     let mut replacement = Vec::new();
     if !m.prefix.is_empty() {
@@ -381,7 +376,6 @@ fn extract_plain_text(node: &Node) -> String {
         _ => String::new(),
     }
 }
-
 
 /// 注記テキストをノード列にパース
 ///
@@ -535,7 +529,9 @@ mod tests {
             "見出し解決の直後の縦中横参照が解決されていない: {nodes:?}"
         );
         assert!(
-            !nodes.iter().any(|n| matches!(n, Node::UnresolvedReference { .. })),
+            !nodes
+                .iter()
+                .any(|n| matches!(n, Node::UnresolvedReference { .. })),
             "未解決参照が残っている: {nodes:?}"
         );
     }
@@ -559,9 +555,19 @@ mod tests {
         }];
         resolve_style_references(&mut nodes);
         if let Node::Ruby { children, .. } = &nodes[0] {
-            assert_eq!(children.len(), 1, "親文字が装飾1ノードに畳まれていない: {children:?}");
+            assert_eq!(
+                children.len(),
+                1,
+                "親文字が装飾1ノードに畳まれていない: {children:?}"
+            );
             assert!(
-                matches!(&children[0], Node::Style { style_type: StyleType::Bold, .. }),
+                matches!(
+                    &children[0],
+                    Node::Style {
+                        style_type: StyleType::Bold,
+                        ..
+                    }
+                ),
                 "親文字内の前方参照が太字に解決されていない: {children:?}"
             );
         } else {

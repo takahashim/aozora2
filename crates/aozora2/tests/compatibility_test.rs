@@ -14,8 +14,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use aozora_core::html::{self, RenderOptions};
 use aozora_core::encoding::decode_to_utf8;
+use aozora_core::html::{self, RenderOptions};
 
 /// fixturesディレクトリのパス
 fn fixtures_dir() -> PathBuf {

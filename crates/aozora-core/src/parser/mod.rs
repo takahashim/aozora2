@@ -580,12 +580,18 @@ mod tests {
         let nodes = parse(&tokens);
         // どこかに Gaiji ノードが1つ残っていること。
         let has_gaiji = nodes.iter().any(|n| matches!(n, Node::Gaiji { .. }));
-        assert!(has_gaiji, "アクセント内の外字が Gaiji ノードとして残っていない: {nodes:?}");
+        assert!(
+            has_gaiji,
+            "アクセント内の外字が Gaiji ノードとして残っていない: {nodes:?}"
+        );
         // 記述文字列が生テキストとして紛れ込んでいないこと。
         let has_raw_desc = nodes
             .iter()
             .any(|n| matches!(n, Node::Text(s) if s.contains("37-下-11")));
-        assert!(!has_raw_desc, "外字の記述が生テキストになっている: {nodes:?}");
+        assert!(
+            !has_raw_desc,
+            "外字の記述が生テキストになっている: {nodes:?}"
+        );
     }
 
     #[test]
@@ -601,7 +607,10 @@ mod tests {
             }
             _ => false,
         });
-        assert!(base_has_accent, "ルビ親文字にアクセント変換が適用されていない: {nodes:?}");
+        assert!(
+            base_has_accent,
+            "ルビ親文字にアクセント変換が適用されていない: {nodes:?}"
+        );
     }
 
     #[test]
@@ -636,10 +645,12 @@ mod tests {
             .any(|n| matches!(n, Node::Text(s) if s.starts_with("一番向")));
         assert!(has_text, "一番向 が本文に残っていない: {nodes:?}");
         // 空親文字のルビがある。
-        let empty_base_ruby = nodes.iter().any(|n| matches!(n,
+        let empty_base_ruby = nodes.iter().any(|n| {
+            matches!(n,
             Node::Ruby { children, ruby, .. }
                 if ruby.iter().any(|r| matches!(r, Node::Text(s) if s == "むか"))
-                    && children.iter().all(|c| matches!(c, Node::Text(s) if s.is_empty()))));
+                    && children.iter().all(|c| matches!(c, Node::Text(s) if s.is_empty())))
+        });
         assert!(empty_base_ruby, "空親文字ルビになっていない: {nodes:?}");
     }
 

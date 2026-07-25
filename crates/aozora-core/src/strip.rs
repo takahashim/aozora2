@@ -219,9 +219,6 @@ mod tests {
         let input =
             "T\n著\n\n本文1\n［＃ここから２字下げ］\n字下げ本文\n［＃ここで字下げ終わり］\n本文2\n底本：青空文庫";
         // 中立AST版: ブロックマーカー行は消え、本文だけが連続する。
-        assert_eq!(
-            convert(input.as_bytes()),
-            "本文1\n字下げ本文\n本文2\n"
-        );
+        assert_eq!(convert(input.as_bytes()), "本文1\n字下げ本文\n本文2\n");
     }
 }

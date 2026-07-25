@@ -5,9 +5,9 @@
 
 use crate::document::HeaderInfo;
 
-use super::presentation::UnconvertedGaiji;
 use super::options::RenderOptions;
 use super::presentation::html_escape;
+use super::presentation::UnconvertedGaiji;
 
 /// 青空文庫パブリッシャー名
 const AOZORA_BUNKO: &str = "青空文庫";

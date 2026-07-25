@@ -197,10 +197,13 @@ mod tests {
         // 参照実装 kuten2png は /[12]-\d{1,2}-\d{1,2}/ にしか一致しないので、
         // 面が 1・2 以外（24 など）や3桁以上のものは句点コードにしない。
         // 24-1-3 は底本位置参照であって句点コードではない → 画像化されず注記のまま。
-        assert_eq!(extract_jis_code("「未」の「二」に代えて「三」、24-1-3"), None);
+        assert_eq!(
+            extract_jis_code("「未」の「二」に代えて「三」、24-1-3"),
+            None
+        );
         assert_eq!(extract_jis_code("説明、3-14-11"), None); // 面3は無効
         assert_eq!(extract_jis_code("説明、4-94-51"), None); // 面4は無効
-        // 面が 1・2 の正しい句点コードは従来どおり拾う。
+                                                             // 面が 1・2 の正しい句点コードは従来どおり拾う。
         assert_eq!(
             extract_jis_code("「にんべん＋憂」、第3水準1-14-11"),
             Some("1-14-11".to_string())
@@ -218,10 +221,7 @@ mod tests {
     #[test]
     fn test_extract_jis_code_rejects_dual_gaiji() {
         // 参照 PAT_KUTEN_DUAL「※.*※」: ※ が2つ以上ある説明は句点コードにしない。
-        assert_eq!(
-            extract_jis_code("「※」の左に「※」、1-2-22"),
-            None
-        );
+        assert_eq!(extract_jis_code("「※」の左に「※」、1-2-22"), None);
         // ※ が1つ以下なら従来どおり拾う。
         assert_eq!(
             extract_jis_code("「※」に代わる字、1-2-22"),

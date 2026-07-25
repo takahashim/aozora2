@@ -176,8 +176,8 @@ pub fn try_parse_line_indent(content: &str) -> Option<CommandResult> {
     // 漢数字「一字下げ」も 1 として読み、`一字下げ忘れか？200-14` のような
     // 校正注記も参照実装同様 jisage_1 になる（後続の 200-14 は巻き込まない）。
     let normalized = convert_japanese_number(content);
-    let width = extract_number_before(&normalized, "字下げ")
-        .or_else(|| extract_number(&normalized))?;
+    let width =
+        extract_number_before(&normalized, "字下げ").or_else(|| extract_number(&normalized))?;
     Some(CommandResult::LineIndent { width })
 }
 

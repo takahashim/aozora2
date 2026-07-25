@@ -275,7 +275,10 @@ mod tests {
     /// 割り注はペア（同一行）で `<span class="warichu">（…）</span>` になる。
     #[test]
     fn test_warichu_pair() {
-        let html = convert_line("前［＃割り注］中身［＃割り注終わり］後", &RenderOptions::default());
+        let html = convert_line(
+            "前［＃割り注］中身［＃割り注終わり］後",
+            &RenderOptions::default(),
+        );
         assert!(
             html.contains("前<span class=\"warichu\">（中身）</span>後"),
             "実際: {html}"
@@ -287,7 +290,10 @@ mod tests {
     /// いない状態での『割り注終わり』）。孤立した割り注終わりでも `）</span>` を出す。
     #[test]
     fn test_warichu_orphan_end() {
-        let html = convert_line("前［＃ここから割り注］中身［＃割り注終わり］後", &RenderOptions::default());
+        let html = convert_line(
+            "前［＃ここから割り注］中身［＃割り注終わり］後",
+            &RenderOptions::default(),
+        );
         assert!(
             html.contains("中身）</span>後"),
             "孤立した割り注終わりが `）</span>` を出していない: {html}"
@@ -297,7 +303,10 @@ mod tests {
     /// 中身が空のルビ 《》 は、ルビ要素にせず 《》 のテキストとして出す
     #[test]
     fn test_empty_ruby_is_literal_text() {
-        let html = convert("タイトル\r\n\r\n記号「《》」です", &RenderOptions::default());
+        let html = convert(
+            "タイトル\r\n\r\n記号「《》」です",
+            &RenderOptions::default(),
+        );
         assert!(html.contains("記号「《》」です"), "実際: {html}");
         assert!(
             !html.contains("<ruby><rb></rb>"),
@@ -496,7 +505,8 @@ mod tests {
         );
         // 基底に対象、ルビに外字画像を持つ ruby になる（裸の gaiji ではない）。
         assert!(
-            html.contains("<rb>すはどり</rb>") && html.contains("<rt><img src=\"../../../gaiji/2-94/2-94-02.png\""),
+            html.contains("<rb>すはどり</rb>")
+                && html.contains("<rt><img src=\"../../../gaiji/2-94/2-94-02.png\""),
             "実際: {html}"
         );
     }

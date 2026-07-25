@@ -230,7 +230,7 @@ impl Tokenizer {
     /// 外字トークンを読む ※［...］（＃は任意）
     fn read_gaiji(&mut self) -> Token {
         self.skip(2); // ※［
-        // ＃（IGETA）があれば読み捨てて had_igeta を立てる。
+                      // ＃（IGETA）があれば読み捨てて had_igeta を立てる。
         let had_igeta = self.peek_nth(0) == Some(IGETA);
         if had_igeta {
             self.skip(1);
@@ -480,7 +480,10 @@ mod tests {
             let has_literal_bracket = children
                 .iter()
                 .any(|t| matches!(t, Token::Text(s) if s.contains('〔')));
-            assert!(has_literal_bracket, "内側の未閉じ 〔 がリテラルになっていない: {children:?}");
+            assert!(
+                has_literal_bracket,
+                "内側の未閉じ 〔 がリテラルになっていない: {children:?}"
+            );
         }
     }
 

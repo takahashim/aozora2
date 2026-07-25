@@ -575,7 +575,8 @@ mod tests {
     fn test_parse_block_end_lenient_suffix() {
         // 参照 detect_command_mode はキーワードだけで閉じるので、終止語の綴りは不問。
         // 送り仮名欠き「終り」や余分な 」 でも字下げ終了になる。
-        for cmd in ["ここで字下げ終り", "ここで字下げ終わり」", "ここで字下げ"] {
+        for cmd in ["ここで字下げ終り", "ここで字下げ終わり」", "ここで字下げ"]
+        {
             assert_eq!(
                 parse_command(cmd),
                 CommandResult::BlockEnd {
@@ -586,7 +587,10 @@ mod tests {
             );
         }
         // キーワードの無い「ここで…」は注記のまま。
-        assert!(matches!(parse_command("ここで何か"), CommandResult::Note(_)));
+        assert!(matches!(
+            parse_command("ここで何か"),
+            CommandResult::Note(_)
+        ));
     }
 
     #[test]

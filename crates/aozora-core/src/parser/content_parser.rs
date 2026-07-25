@@ -228,7 +228,8 @@ mod tests {
     fn test_try_parse_image_trailing_char() {
         // PAT_IMAGE は末尾アンカー無し。`入る` の後に `。` が続いても画像化する
         // （参照実装 4206 のケース）。
-        let result = try_parse_image("四分音符ミファレに「ネーヱ」の歌詞の楽譜（fig4206_02.png）入る。");
+        let result =
+            try_parse_image("四分音符ミファレに「ネーヱ」の歌詞の楽譜（fig4206_02.png）入る。");
         match result {
             Some(CommandResult::Image {
                 filename,

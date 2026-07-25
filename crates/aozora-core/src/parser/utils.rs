@@ -161,7 +161,10 @@ mod tests {
     #[test]
     fn test_extract_number_before_anchors_to_keyword() {
         // 直前の数字だけを取り、後続の別の数字を巻き込まない
-        assert_eq!(extract_number_before("７字下げ、２１字詰め", "字下げ"), Some(7));
+        assert_eq!(
+            extract_number_before("７字下げ、２１字詰め", "字下げ"),
+            Some(7)
+        );
         assert_eq!(extract_number_before("２字下げ、", "字下げ"), Some(2));
         assert_eq!(extract_number_before("字下げ", "字下げ"), None);
         assert_eq!(extract_number_before("改行天付き", "字下げ"), None);
