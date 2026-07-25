@@ -15,7 +15,7 @@
 use crate::ast::{Block, BlockKind};
 use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node};
-use crate::parser::reference_resolver::reference_resolves;
+use crate::parser::reference_resolver::resolve_references;
 use crate::parser::{parse_document_raw, RawLine};
 
 #[cfg(feature = "serde")]
@@ -156,12 +156,11 @@ pub fn analyze(input: &str) -> Analysis {
 
             match node {
                 // 前方参照は生ノードでは未解決だが、その多くは同じ行の前方テキストに
-                // 正当に解決する。実際に解決できないものだけを診断する（偽陽性を除く）。
-                Node::UnresolvedReference {
-                    target,
-                    raw: original,
-                    ..
-                } if !reference_resolves(&raw.nodes[..idx], target) => {
+                // 正当に解決する（ルビ親文字も含む）。実際に解決を走らせて失敗した
+                // ものだけを診断する（ルビ併用などの偽陽性を除く）。
+                Node::UnresolvedReference { raw: original, .. }
+                    if reference_fails(&raw.nodes, idx, original) =>
+                {
                     analysis.diagnostics.push(Diagnostic {
                         range,
                         severity: Severity::Warning,
@@ -217,6 +216,16 @@ pub fn analyze(input: &str) -> Analysis {
     }
 
     analysis
+}
+
+/// `idx` の前方参照が解決に失敗するか。実際の `resolve_references`（ルビ親文字解決を含む）を
+/// 前方スライスに対して走らせ、この参照の `raw` がそのまま `Note` として残れば失敗と判定する。
+/// 参照は前方のみ見るので、`nodes[..=idx]` を分離して解決しても結果は行全体と同じ。
+fn reference_fails(line_nodes: &[Node], idx: usize, raw: &str) -> bool {
+    let mut slice = line_nodes[..=idx].to_vec();
+    resolve_references(&mut slice);
+    // 解決成功なら Midashi/Style 等に化ける。失敗時のみ raw と同じ Note が残る。
+    slice.iter().any(|n| matches!(n, Node::Note(s) if s == raw))
 }
 
 /// Block 木から折りたたみ範囲を集める（複数行の Nested ブロックのみ）。
@@ -483,6 +492,19 @@ mod tests {
                 .iter()
                 .all(|d| d.code != "unresolved-reference"),
             "正当な注記を未解決扱いしない"
+        );
+    }
+
+    #[test]
+    fn ruby_base_annotation_is_not_flagged() {
+        // ルビ親文字を対象にした見出し（実際に解決する）は誤検知しない。
+        let a = analyze("タイトル\n著者\n\n序章《じょしょう》［＃「序章」は大見出し］");
+        assert!(
+            a.diagnostics
+                .iter()
+                .all(|d| d.code != "unresolved-reference"),
+            "ルビ親文字の見出しを未解決扱いしない: {:?}",
+            a.diagnostics
         );
     }
 
