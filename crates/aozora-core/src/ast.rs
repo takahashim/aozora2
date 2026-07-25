@@ -193,12 +193,21 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
     out
 }
 
-/// 同行に畳めるインライン範囲コマンドの種類か（見出し・装飾・大小文字）。
+/// 同行に畳めるインライン範囲コマンドの種類か（見出し・装飾・大小文字・
+/// 横組み・縦中横・罫囲み・キャプション・割書）。
 fn is_inline_range_type(block_type: &crate::node::BlockType) -> bool {
     use crate::node::BlockType;
     matches!(
         block_type,
-        BlockType::Midashi | BlockType::Style | BlockType::FontDai | BlockType::FontSho
+        BlockType::Midashi
+            | BlockType::Style
+            | BlockType::FontDai
+            | BlockType::FontSho
+            | BlockType::Yokogumi
+            | BlockType::Tcy
+            | BlockType::Keigakomi
+            | BlockType::Caption
+            | BlockType::Warigaki
     )
 }
 
@@ -231,6 +240,11 @@ fn wrap_inline_range(
             size_type: FontSizeType::Sho,
             level: params.font_size.unwrap_or(1),
         }),
+        BlockType::Yokogumi => Some(Inline::Yokogumi { children: inner }),
+        BlockType::Tcy => Some(Inline::Tcy { children: inner }),
+        BlockType::Keigakomi => Some(Inline::Keigakomi { children: inner }),
+        BlockType::Caption => Some(Inline::Caption { children: inner }),
+        BlockType::Warigaki => Some(Inline::Warigaki { children: inner }),
         _ => None,
     }
 }
