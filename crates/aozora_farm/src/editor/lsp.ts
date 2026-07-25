@@ -25,11 +25,32 @@ import {
   type OutlineSymbol,
 } from '@/commands/tauri'
 
-/** 0 起点(line,ch) → CodeMirror の絶対位置。範囲外は行末/文末にクランプ。 */
+/** コードポイント位置 → UTF-16 コード単位オフセット（サロゲートペア対応）。 */
+function cpToUtf16(text: string, cpIndex: number): number {
+  let cp = 0
+  let u16 = 0
+  for (const ch of text) {
+    // for..of は文字（コードポイント）単位で反復する。
+    if (cp >= cpIndex) break
+    u16 += ch.length // BMP=1, astral=2
+    cp++
+  }
+  return u16
+}
+
+/**
+ * 0 起点(line,ch) → CodeMirror の絶対位置。範囲外は行末/文末にクランプ。
+ *
+ * Rust の char は Unicode スカラ（コードポイント）数、CodeMirror の位置は UTF-16 コード単位。
+ * astral 文字（𠮷 など CJK 拡張B）を含む行では両者がずれるため、その行だけ変換する。
+ */
 export function toPos(doc: Text, line0: number, ch: number): number {
   const lineNo = Math.min(Math.max(line0, 0) + 1, doc.lines)
   const line = doc.line(lineNo)
-  return Math.min(line.from + Math.max(ch, 0), line.to)
+  const c = Math.max(ch, 0)
+  // 高サロゲートが無ければコードポイント数＝コード単位数なのでそのまま使える（速い経路）。
+  const offset = /[\uD800-\uDBFF]/.test(line.text) ? cpToUtf16(line.text, c) : c
+  return Math.min(line.from + offset, line.to)
 }
 
 // --- 解析結果を保持する StateField（ハイライト・アウトライン用）-----------------
@@ -173,9 +194,12 @@ function analysisRunner(delayMs: number): Extension {
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const run = (view: EditorView) => {
-    const text = view.state.doc.toString()
-    analyze(text)
+    // 解析中に編集されると結果の位置が現在の文書とずれるため、要求時の doc を控え、
+    // 結果到着時にまだ同じ doc なら適用、変わっていれば破棄する（次の解析で反映）。
+    const startDoc = view.state.doc
+    analyze(startDoc.toString())
       .then((a) => {
+        if (view.state.doc !== startDoc) return // 途中で編集された → 古い結果は捨てる
         // ハイライト/アウトライン用の保持と診断セットを 1 トランザクションにまとめる
         // （dispatch を 2 回するとエディタ更新も 2 回走るため）。
         view.dispatch(setDiagnostics(view.state, toCmDiagnostics(view.state.doc, a.diagnostics)), {

@@ -143,3 +143,21 @@ describe('outline panel', () => {
     parent.remove()
   })
 })
+
+describe('toPos astral 文字', () => {
+  it('サロゲートペアを含む行でも UTF-16 位置に正しく変換する', () => {
+    // 𠮷 = U+20BB7（Rust では 1 char、UTF-16 では 2 コード単位）。
+    const d = Text.of(['𠮷野です'])
+    // Rust の char オフセット: 𠮷=0, 野=1, で=2, す=3
+    // UTF-16: 𠮷=[0,2), 野=[2,3)...
+    expect(toPos(d, 0, 0)).toBe(0) // 行頭
+    expect(toPos(d, 0, 1)).toBe(2) // 𠮷 の後（UTF-16 で 2）
+    expect(toPos(d, 0, 2)).toBe(3) // 野 の後
+  })
+
+  it('BMP のみの行はそのまま（速い経路）', () => {
+    const d = Text.of(['東京《とうきょう》'])
+    expect(toPos(d, 0, 2)).toBe(2)
+    expect(toPos(d, 0, 9)).toBe(9)
+  })
+})
