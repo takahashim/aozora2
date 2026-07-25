@@ -1,0 +1,141 @@
+//! Lowerer: RawAST（平坦マーカー）→ 中立AST（block ⊃ line ⊃ inline の木）
+//!
+//! architecture.md §4.1/§4.3・docs/plan-neutral-ast.md（Phase B2〜）。
+//! 参照実装 `@indent_stack`/`implicit_close`/`@terprip` の逐次モデルを Lower 時に
+//! 一度だけ計算し、ブロックを部分木に畳み、行末の改行を [`Break`] メタデータへ
+//! 載せる。バックエンドはこの木を状態なしに歩くだけになる。
+//!
+//! **段階実装中**: まず jisage と内容行だけを畳む（垂直スライスの最小核）。
+//! 旧 BlockManager 経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ
+//! 増やす。未対応のブロック種は暫定でトップレベルに落とす（TODO）。
+
+use crate::ast::{Block, BlockKind, Break};
+use crate::node::{BlockType, Node};
+use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
+use crate::parser::RawDoc;
+
+/// RawDoc（未解決・平坦マーカー）を中立ASTのブロック列に畳む。
+pub fn lower_to_blocks(raw: &RawDoc) -> Vec<Block> {
+    // 開いている Nested ブロックのビルダー（種類と、たまった子ブロック列）。
+    let mut stack: Vec<(BlockKind, Vec<Block>)> = Vec::new();
+    let mut top: Vec<Block> = Vec::new();
+
+    for raw_line in &raw.lines {
+        // 前方参照とルビ親文字を解決してから畳む（旧経路と同順）。
+        let mut nodes = raw_line.nodes.clone();
+        resolve_references(&mut nodes);
+        resolve_inline_ruby(&mut nodes);
+
+        match classify_line(&nodes) {
+            LineKind::BlockOpen(kind) => {
+                // 参照実装 apply_jisage → implicit_close(:jisage): 新しい jisage を
+                // 開くとき、最上位ブロックが jisage（または String＝ぶら下げ）なら
+                // 先に閉じてから開く（＝兄弟）。別種が最上位ならネスト。
+                if matches!(kind, BlockKind::Jisage { .. }) {
+                    if let Some((top_kind, _)) = stack.last() {
+                        if matches!(
+                            top_kind,
+                            BlockKind::Jisage { .. } | BlockKind::Burasage { .. }
+                        ) {
+                            // 暗黙閉じ（次の開きと同じ行に出るので explicit_close=false）。
+                            let (k, children) = stack.pop().expect("top exists");
+                            push_block(
+                                &mut stack,
+                                &mut top,
+                                Block::Nested {
+                                    kind: k,
+                                    children,
+                                    explicit_close: false,
+                                },
+                            );
+                        }
+                    }
+                }
+                stack.push((kind, Vec::new()));
+            }
+            LineKind::BlockClose => {
+                if let Some((kind, children)) = stack.pop() {
+                    // `ここで…終わり` による明示閉じ（`</div>\r\n`）。
+                    let nested = Block::Nested {
+                        kind,
+                        children,
+                        explicit_close: true,
+                    };
+                    push_block(&mut stack, &mut top, nested);
+                }
+                // 対応する開きが無ければ捨てる（旧経路も未マッチ終了は無出力）。
+            }
+            LineKind::Content => {
+                let inline = crate::ast::to_inlines(&nodes);
+                let line = Block::Line {
+                    inline,
+                    brk: Break::Br,
+                };
+                push_block(&mut stack, &mut top, line);
+            }
+        }
+    }
+
+    // 閉じられていないブロックはそのまま閉じる（旧経路の末尾 pop 相当）。
+    // 末尾クローズは行を持たないので explicit_close=true（`</div>\r\n`）とする。
+    while let Some((kind, children)) = stack.pop() {
+        let nested = Block::Nested {
+            kind,
+            children,
+            explicit_close: true,
+        };
+        push_block(&mut stack, &mut top, nested);
+    }
+
+    top
+}
+
+/// 現在開いている最上位ブロック（あれば）へ、無ければトップレベルへ block を積む。
+fn push_block(stack: &mut [(BlockKind, Vec<Block>)], top: &mut Vec<Block>, block: Block) {
+    if let Some((_, children)) = stack.last_mut() {
+        children.push(block);
+    } else {
+        top.push(block);
+    }
+}
+
+/// 行の種類。
+enum LineKind {
+    /// ブロック開始（`ここから…`）。単独行の BlockStart(is_block=true)。
+    BlockOpen(BlockKind),
+    /// ブロック終了（`ここで…終わり`）。単独行の BlockEnd。
+    BlockClose,
+    /// 内容行。
+    Content,
+}
+
+/// 解決済みノード列から行の種類を判定する。
+///
+/// **最小核**: 単独の BlockStart(is_block=true) を開始、単独の BlockEnd を終了、
+/// それ以外を内容行とみなす。コマンドと同行に本文があるケース・行単位字下げ
+/// （LineJisage）・ぶら下げ per-line 等は今後の段で足す（TODO）。
+fn classify_line(nodes: &[Node]) -> LineKind {
+    if let [Node::BlockStart { block_type, params }] = nodes {
+        if params.is_block {
+            if let Some(kind) = block_kind_of(block_type, params) {
+                return LineKind::BlockOpen(kind);
+            }
+        }
+    }
+    if let [Node::BlockEnd { .. }] = nodes {
+        return LineKind::BlockClose;
+    }
+    LineKind::Content
+}
+
+/// RawAST の BlockType＋params を中立ASTの BlockKind に写す（対応済みのものだけ）。
+fn block_kind_of(block_type: &BlockType, params: &crate::node::BlockParams) -> Option<BlockKind> {
+    match block_type {
+        BlockType::Jisage => Some(BlockKind::Jisage {
+            width: params.width.unwrap_or(0),
+        }),
+        // TODO: Chitsuki/Jizume/Burasage/Midashi/Keigakomi/Yokogumi/Caption/
+        //       FontSize/Futoji/Shatai を段階的に足す。
+        _ => None,
+    }
+}

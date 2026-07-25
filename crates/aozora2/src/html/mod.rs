@@ -3,6 +3,7 @@
 //! 青空文庫形式のテキストをHTMLに変換します。
 
 mod block_manager;
+mod block_renderer;
 mod document_renderer;
 mod node_renderer;
 mod options;

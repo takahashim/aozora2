@@ -54,6 +54,7 @@ pub mod document;
 pub mod encoding;
 pub mod gaiji;
 pub mod jis_table;
+pub mod lower;
 pub mod node;
 pub mod parser;
 pub mod token;

@@ -145,3 +145,17 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   切替える（並行実装＝§5 安全策）。この一体スライスは腰を据えて取り組む単位なので、
   着手時は「まず jisage だけの最小文書で新経路→HTML→旧経路と byte 一致」を作り、
   記法を1種類ずつ増やして全件一致まで広げる（各段オラクル悪化0）。
+- 2026-07-25 **垂直スライス最小核 稼働（jisage）**。`lower.rs`（`lower_to_blocks`）と
+  `block_renderer.rs`（`render_body_blocks`）を新設し、jisage の Nested・内容行・
+  Inline::Text を実装。旧経路（convert の main_text 内側）と新経路が byte 一致する
+  比較テスト3本（単純 jisage・兄弟 jisage＝implicit_close・順次 jisage）。確定した
+  互換モデル: (1) **implicit_close** ＝新 jisage を開くとき最上位が jisage/burasage
+  なら閉じてから開く（兄弟）、(2) **閉じタグ直後の改行**は explicit_close（`ここで…
+  終わり`＝`</div>\r\n`）か暗黙閉じ（次の開きと同じ行＝`</div>`）かで変わる →
+  `Block::Nested.explicit_close` を互換メタデータに追加。新経路は未接続でテストのみ
+  使用（オラクル 17406 不変）。
+  次の一歩: 記法を1種類ずつ拡張。優先: (a) 内容行の Break（terprip：見出し・
+  `ここで…終わり` 行の `<br/>` 抑制）、(b) インライン（Ruby/Gaiji/Style… を
+  block_renderer に足す＝旧 node_renderer のインライン描画の中立AST版）、(c) chitsuki/
+  jizume/font/burasage の Nested。各段で比較テストを足し byte 一致を保つ。最終的に
+  render() 全体を新経路へ切替え（全オラクル byte 一致確認後）BlockManager を撤去。
