@@ -192,8 +192,17 @@ fn block_kind_of(block_type: &BlockType, params: &crate::node::BlockParams) -> O
         BlockType::Keigakomi => Some(BlockKind::Keigakomi),
         BlockType::Yokogumi => Some(BlockKind::Yokogumi),
         BlockType::Caption => Some(BlockKind::Caption),
-        // TODO: Burasage（per-line 包み）・Midashi（id カウンタ）・FontSize/Futoji/
-        //       Shatai を段階的に足す。
+        BlockType::FontDai => Some(BlockKind::FontSize {
+            size_type: crate::node::FontSizeType::Dai,
+            level: params.font_size.unwrap_or(1),
+        }),
+        BlockType::FontSho => Some(BlockKind::FontSize {
+            size_type: crate::node::FontSizeType::Sho,
+            level: params.font_size.unwrap_or(1),
+        }),
+        BlockType::Futoji => Some(BlockKind::Futoji),
+        BlockType::Shatai => Some(BlockKind::Shatai),
+        // TODO: Burasage（per-line 包み）・Midashi（id カウンタ）を段階的に足す。
         _ => None,
     }
 }

@@ -46,7 +46,13 @@ fn block_open_tag(kind: &BlockKind) -> Option<String> {
         }
         BlockKind::Yokogumi => Some("<div class=\"yokogumi\">".to_string()),
         BlockKind::Caption => Some("<div class=\"caption\">".to_string()),
-        // TODO: Burasage（per-line 包み）・Midashi・FontSize/Futoji/Shatai。
+        BlockKind::FontSize { size_type, level } => {
+            let (class, style) = font_size_class_style(*size_type, *level);
+            Some(format!("<div class=\"{class}\" style=\"{style}\">"))
+        }
+        BlockKind::Futoji => Some("<div class=\"futoji\">".to_string()),
+        BlockKind::Shatai => Some("<div class=\"shatai\">".to_string()),
+        // TODO: Burasage（per-line 包み）・Midashi（id カウンタ）。
         _ => None,
     }
 }
