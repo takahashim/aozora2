@@ -111,3 +111,33 @@ describe('tokenAtPos', () => {
     view.destroy()
   })
 })
+
+describe('outline panel', () => {
+  it('見出しシンボルを select の option に反映する', async () => {
+    const { outline, setAnalysisEffect, analysisField } = await import('./lsp')
+    const parent = document.createElement('div')
+    document.body.appendChild(parent)
+    const view = new EditorView({
+      state: EditorState.create({ doc: '序章\n本文\n第二章', extensions: [analysisField, outline] }),
+      parent,
+    })
+    view.dispatch({
+      effects: setAnalysisEffect.of({
+        tokens: [],
+        symbols: [
+          { range: { line: 0, start: 0, end: 2 }, level: 1, text: '序章' },
+          { range: { line: 2, start: 0, end: 3 }, level: 2, text: '第二章' },
+        ],
+        diagnostics: [],
+      }),
+    })
+    const select = view.dom.querySelector('.cm-aoz-outline-select') as HTMLSelectElement
+    expect(select).toBeTruthy()
+    // 先頭のプレースホルダ + 見出し2件
+    expect(select.options.length).toBe(3)
+    expect(select.options[1].textContent).toContain('序章')
+    expect(select.options[2].textContent).toContain('第二章')
+    view.destroy()
+    parent.remove()
+  })
+})

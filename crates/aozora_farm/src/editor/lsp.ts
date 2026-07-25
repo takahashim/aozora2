@@ -8,8 +8,8 @@
 //
 // 位置は Rust 側が LSP 準拠の 0 起点、CodeMirror は行 1 起点なので toPos で変換する。
 
-import { EditorView, Decoration, ViewPlugin, hoverTooltip } from '@codemirror/view'
-import type { DecorationSet, ViewUpdate, Tooltip } from '@codemirror/view'
+import { EditorView, Decoration, ViewPlugin, hoverTooltip, showPanel } from '@codemirror/view'
+import type { DecorationSet, ViewUpdate, Tooltip, Panel } from '@codemirror/view'
 import { StateField, StateEffect, RangeSetBuilder } from '@codemirror/state'
 import type { Extension, Text } from '@codemirror/state'
 import { setDiagnostics, lintGutter } from '@codemirror/lint'
@@ -192,6 +192,69 @@ function analysisRunner(delayMs: number): Extension {
   })
 }
 
+// --- アウトライン（見出しジャンプ・上部パネル）----------------------------------
+// エディタ上部に見出し一覧の select を出し、選ぶとその行へスクロールする。
+// レイアウトを変えない自己完結パネル。データは analysisField.symbols。
+function outlinePanel(view: EditorView): Panel {
+  const dom = document.createElement('div')
+  dom.className = 'cm-aoz-outline'
+
+  const label = document.createElement('span')
+  label.className = 'cm-aoz-outline-label'
+  label.textContent = '見出し'
+
+  const select = document.createElement('select')
+  select.className = 'cm-aoz-outline-select'
+
+  dom.appendChild(label)
+  dom.appendChild(select)
+
+  const rebuild = (v: EditorView) => {
+    const symbols = getOutline(v)
+    select.textContent = ''
+    const head = document.createElement('option')
+    head.value = ''
+    head.textContent = symbols.length ? `（${symbols.length} 件）へジャンプ…` : '（見出しなし）'
+    select.appendChild(head)
+    symbols.forEach((s, i) => {
+      const o = document.createElement('option')
+      o.value = String(i)
+      // レベルでインデント（大=0, 中=1, 小=2）
+      o.textContent = '　'.repeat(Math.max(0, s.level - 1)) + s.text
+      select.appendChild(o)
+    })
+    select.disabled = symbols.length === 0
+  }
+  rebuild(view)
+
+  select.addEventListener('change', () => {
+    const i = Number(select.value)
+    const symbols = getOutline(view)
+    if (Number.isInteger(i) && symbols[i]) {
+      const pos = toPos(view.state.doc, symbols[i].range.line, 0)
+      view.dispatch({
+        selection: { anchor: pos },
+        effects: EditorView.scrollIntoView(pos, { y: 'center' }),
+      })
+      view.focus()
+    }
+    select.value = ''
+  })
+
+  return {
+    dom,
+    top: true,
+    update(u: ViewUpdate) {
+      if (u.state.field(analysisField, false) !== u.startState.field(analysisField, false)) {
+        rebuild(u.view)
+      }
+    },
+  }
+}
+
+/** アウトライン（見出しジャンプ）パネル拡張。テスト用に公開。 */
+export const outline = showPanel.of(outlinePanel)
+
 // --- ハイライト/診断の見た目 -----------------------------------------------------
 const lspTheme = EditorView.theme({
   '.cm-aoz-ruby': { color: '#6c9249' },
@@ -207,6 +270,22 @@ const lspTheme = EditorView.theme({
     fontSize: '0.85rem',
     maxWidth: '32em',
   },
+  '.cm-aoz-outline': {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '4px 8px',
+    fontFamily: 'sans-serif',
+    fontSize: '0.8rem',
+    borderBottom: '1px solid var(--border)',
+  },
+  '.cm-aoz-outline-label': { opacity: '0.7' },
+  '.cm-aoz-outline-select': {
+    flex: '1',
+    maxWidth: '28em',
+    fontSize: '0.8rem',
+    padding: '2px 4px',
+  },
 })
 
 /**
@@ -214,5 +293,13 @@ const lspTheme = EditorView.theme({
  * baseExtensions に展開して使う。delayMs は解析デバウンス（既定 200ms）。
  */
 export function aozoraLsp(delayMs = 200): Extension[] {
-  return [analysisField, highlightPlugin, hover, lspTheme, lintGutter(), analysisRunner(delayMs)]
+  return [
+    analysisField,
+    highlightPlugin,
+    hover,
+    outline,
+    lspTheme,
+    lintGutter(),
+    analysisRunner(delayMs),
+  ]
 }
