@@ -7,6 +7,8 @@ export const ja = {
   "btn.save-text": "テキストを保存",
 
   "panel.preview": "プレビュー",
+  "preview.live": "ライブ",
+  "btn.refresh": "更新",
   "btn.view-html": "HTMLを表示",
   "btn.copy-html": "HTMLをコピー",
   "btn.save-html": "HTMLを保存",

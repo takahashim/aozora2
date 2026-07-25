@@ -7,6 +7,8 @@ export const en = {
   "btn.save-text": "Save Text",
 
   "panel.preview": "Preview",
+  "preview.live": "Live",
+  "btn.refresh": "Refresh",
   "btn.view-html": "View HTML",
   "btn.copy-html": "Copy HTML",
   "btn.save-html": "Save HTML",

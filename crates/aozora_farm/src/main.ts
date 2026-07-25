@@ -1,4 +1,13 @@
-import { createEditor, getContent, setContent, getEditor, openSearch, openReplace } from '@/editor'
+import {
+  createEditor,
+  getContent,
+  setContent,
+  getEditor,
+  openSearch,
+  openReplace,
+  setLiveAnalysis,
+  analyzeNow,
+} from '@/editor'
 import { initPreview, updatePreview, setBaseDir, getHtml } from '@/preview'
 import { t, updateUI, toggleLang, onLangChange } from '@/i18n'
 import {
@@ -28,6 +37,12 @@ const saveTextBtn = document.getElementById('save-text')!
 const viewHtmlBtn = document.getElementById('view-html')!
 const copyHtmlBtn = document.getElementById('copy-html')!
 const saveHtmlBtn = document.getElementById('save-html')!
+const liveToggle = document.getElementById('live-toggle') as HTMLInputElement
+const refreshBtn = document.getElementById('refresh-preview')!
+
+// ライブ更新（編集追従の自動変換＋自動解析）の有効/無効。大きな文書では OFF にして
+// 手動更新にすると、入力停止後の周期的な重さを避けられる。
+let liveEnabled = true
 const htmlModal = document.getElementById('html-modal')!
 const htmlSource = document.getElementById('html-source')!
 const closeModalBtn = document.getElementById('close-modal')!
@@ -151,6 +166,8 @@ async function init(): Promise<void> {
 
 // Debounced convert
 function debouncedConvert(content: string): void {
+  // ライブ OFF 時は編集で自動更新しない（プレビュー変換も走らせない）。
+  if (!liveEnabled) return
   if (debounceTimer) {
     clearTimeout(debounceTimer)
   }
@@ -274,8 +291,28 @@ function closeModal(): void {
 }
 
 // Setup event listeners
+// 手動更新: 現在の内容でプレビュー変換と解析を今すぐ一括実行する。
+async function refreshNow(): Promise<void> {
+  const content = getContent()
+  const ed = getEditor()
+  if (ed) analyzeNow(ed)
+  setStatus(t('status.converting'), '')
+  await updatePreview(content)
+  setStatus(content.trim() ? t('status.converted') : t('status.ready'), content.trim() ? 'success' : '')
+}
+
+function setLive(on: boolean): void {
+  liveEnabled = on
+  setLiveAnalysis(on)
+  liveToggle.checked = on
+  // ON に戻したら即座に最新へ揃える。
+  if (on) void refreshNow()
+}
+
 function setupEventListeners(): void {
   openFileBtn.addEventListener('click', openFile)
+  refreshBtn.addEventListener('click', () => void refreshNow())
+  liveToggle.addEventListener('change', () => setLive(liveToggle.checked))
   saveTextBtn.addEventListener('click', saveText)
   viewHtmlBtn.addEventListener('click', viewHtml)
   copyHtmlBtn.addEventListener('click', copyHtml)

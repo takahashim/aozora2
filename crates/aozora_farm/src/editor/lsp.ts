@@ -199,33 +199,47 @@ export function toCmDiagnostics(doc: Text, diags: AozoraDiagnostic[]): CmDiagnos
 }
 
 // --- 解析ランナー（デバウンス）--------------------------------------------------
+// ライブ解析（編集追従の自動解析）の ON/OFF。大きな文書で周期的な重さを避けたいとき
+// OFF にし、手動更新（analyzeNow）で一括反映する。
+let liveAnalysis = true
+
+/** ライブ解析（編集追従の自動解析）を切り替える。 */
+export function setLiveAnalysis(on: boolean): void {
+  liveAnalysis = on
+}
+
+/** 現在の文書を今すぐ解析して反映する（ライブ OFF 時の手動更新用）。 */
+export function analyzeNow(view: EditorView): void {
+  runAnalysis(view)
+}
+
+function runAnalysis(view: EditorView): void {
+  // 解析中に編集されると結果の位置が現在の文書とずれるため、要求時の doc を控え、
+  // 結果到着時にまだ同じ doc なら適用、変わっていれば破棄する（次の解析で反映）。
+  const startDoc = view.state.doc
+  analyze(startDoc.toString())
+    .then((a) => {
+      if (view.state.doc !== startDoc) return // 途中で編集された → 古い結果は捨てる
+      // ハイライト/アウトライン用の保持と診断セットを 1 トランザクションにまとめる
+      // （dispatch を 2 回するとエディタ更新も 2 回走るため）。
+      view.dispatch(setDiagnostics(view.state, toCmDiagnostics(view.state.doc, a.diagnostics)), {
+        effects: setAnalysisEffect.of(a),
+      })
+    })
+    .catch(() => {
+      // Tauri 非接続（素の vite 等）では解析不可。支援なしで動作継続。
+    })
+}
+
 function analysisRunner(delayMs: number): Extension {
   let timer: ReturnType<typeof setTimeout> | undefined
 
-  const run = (view: EditorView) => {
-    // 解析中に編集されると結果の位置が現在の文書とずれるため、要求時の doc を控え、
-    // 結果到着時にまだ同じ doc なら適用、変わっていれば破棄する（次の解析で反映）。
-    const startDoc = view.state.doc
-    analyze(startDoc.toString())
-      .then((a) => {
-        if (view.state.doc !== startDoc) return // 途中で編集された → 古い結果は捨てる
-        // ハイライト/アウトライン用の保持と診断セットを 1 トランザクションにまとめる
-        // （dispatch を 2 回するとエディタ更新も 2 回走るため）。
-        view.dispatch(setDiagnostics(view.state, toCmDiagnostics(view.state.doc, a.diagnostics)), {
-          effects: setAnalysisEffect.of(a),
-        })
-      })
-      .catch(() => {
-        // Tauri 非接続（素の vite 等）では解析不可。支援なしで動作継続。
-      })
-  }
-
   return EditorView.updateListener.of((u) => {
-    if (u.docChanged) {
+    if (u.docChanged && liveAnalysis) {
       if (timer) clearTimeout(timer)
       // 大きな文書ほど解析頻度を下げる（base + 長さ比例、上限 1500ms）。
       const delay = Math.min(delayMs + Math.floor(u.state.doc.length / 1000), 1500)
-      timer = setTimeout(() => run(u.view), delay)
+      timer = setTimeout(() => runAnalysis(u.view), delay)
     }
   })
 }

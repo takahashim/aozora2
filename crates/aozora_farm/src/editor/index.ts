@@ -8,7 +8,9 @@ import { getCodeMirrorPhrases, onLangChange } from '@/i18n'
 import { aozoraKeymap } from './keymap'
 import { aozoraToolbar } from './toolbar'
 import { aozoraPalette } from './palette'
-import { aozoraLsp } from './lsp'
+import { aozoraLsp, setLiveAnalysis, analyzeNow } from './lsp'
+
+export { setLiveAnalysis, analyzeNow }
 import { aozoraCompletion } from './completion'
 
 export type ChangeCallback = (content: string) => void

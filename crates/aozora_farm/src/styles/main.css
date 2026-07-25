@@ -388,3 +388,18 @@ footer {
     height: 45%;
   }
 }
+
+/* ライブ更新トグル（プレビューパネル） */
+.live-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.live-toggle input {
+  cursor: pointer;
+}
