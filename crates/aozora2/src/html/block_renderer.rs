@@ -6,8 +6,9 @@
 //! バックエンドは木を**状態なしに歩く**だけ（BlockManager を持たない）。
 
 use aozora_core::ast::{Block, BlockKind, Break, Inline};
+use aozora_core::node::RubyDirection;
 
-use super::presentation::html_escape;
+use super::presentation::{html_escape, style_css_class, style_html_tag};
 
 /// ブロック列を本文HTML（main_text の内側）に変換する。
 pub fn render_body_blocks(blocks: &[Block]) -> String {
@@ -66,9 +67,52 @@ fn render_inlines(inlines: &[Inline], out: &mut String) {
 fn render_inline(inline: &Inline, out: &mut String) {
     match inline {
         Inline::Text(s) => out.push_str(&html_escape(s)),
-        // TODO: 他の Inline を段階的に足す（Ruby/Gaiji/Style/…）。
+        Inline::Style {
+            children,
+            style_type,
+        } => {
+            let tag = style_html_tag(*style_type);
+            let class = style_css_class(*style_type);
+            out.push_str(&format!("<{tag} class=\"{class}\">"));
+            render_inlines(children, out);
+            out.push_str(&format!("</{tag}>"));
+        }
+        Inline::Tcy { children } => wrap_span(children, "dir=\"ltr\"", out),
+        Inline::Keigakomi { children } => wrap_span(children, "class=\"keigakomi\"", out),
+        Inline::Yokogumi { children } => wrap_span(children, "class=\"yokogumi\"", out),
+        Inline::Caption { children } => wrap_span(children, "class=\"caption\"", out),
+        Inline::Warigaki { children } => wrap_span(children, "class=\"warigaki\"", out),
+        Inline::Ruby {
+            base,
+            ruby,
+            direction,
+            ..
+        } => {
+            // 外字を含まない親文字では notes 分割は起きない（両分岐とも同描画）。
+            // 外字入り親文字（UnEmbedGaiji の rb 外出し）は Gaiji 実装時に足す。
+            let mut base_html = String::new();
+            render_inlines(base, &mut base_html);
+            let mut ruby_html = String::new();
+            render_inlines(ruby, &mut ruby_html);
+            let ruby_html = ruby_html.replace('\u{00a0}', "&nbsp;");
+            let open = match direction {
+                RubyDirection::Right => "<ruby>",
+                RubyDirection::Left => "<ruby class=\"leftrb\">",
+            };
+            out.push_str(&format!(
+                "{open}<rb>{base_html}</rb><rp>（</rp><rt>{ruby_html}</rt><rp>）</rp></ruby>"
+            ));
+        }
+        // TODO: Gaiji/Accent/Img/Note/FontSize/Midashi/Warichu/… を足す。
         _ => {}
     }
+}
+
+/// `<span {attr}>{children}</span>` で包む（縦中横・罫囲み・横組み・キャプション等）。
+fn wrap_span(children: &[Inline], attr: &str, out: &mut String) {
+    out.push_str(&format!("<span {attr}>"));
+    render_inlines(children, out);
+    out.push_str("</span>");
 }
 
 #[cfg(test)]
@@ -115,6 +159,30 @@ mod tests {
     fn test_sibling_jisage_body_matches_old() {
         assert_body_matches(
             "題\r\n著\r\n\r\n［＃ここから１字下げ］\r\nA\r\n［＃ここから３字下げ］\r\nB\r\n［＃ここで字下げ終わり］\r\n後\r\n底本：テスト\r\n",
+        );
+    }
+
+    /// 装飾（傍点＝Style）・縦中横（Tcy）を含む内容行が旧経路と byte 一致すること。
+    #[test]
+    fn test_inline_style_tcy_body_matches_old() {
+        assert_body_matches(
+            "題\r\n著\r\n\r\n対象［＃「対象」に傍点］の文と12［＃「12」は縦中横］日\r\n底本：テスト\r\n",
+        );
+    }
+
+    /// ルビ（外字を含まない一般ケース）が旧経路と byte 一致すること。
+    #[test]
+    fn test_inline_ruby_body_matches_old() {
+        assert_body_matches(
+            "題\r\n著\r\n\r\n東京《とうきょう》の｜山手線《やまのてせん》に乗る\r\n底本：テスト\r\n",
+        );
+    }
+
+    /// jisage の中に装飾を含む内容行。
+    #[test]
+    fn test_jisage_with_inline_style_matches_old() {
+        assert_body_matches(
+            "題\r\n著\r\n\r\n［＃ここから２字下げ］\r\n強い［＃「強い」は太字］語\r\n［＃ここで字下げ終わり］\r\n底本：テスト\r\n",
         );
     }
 
