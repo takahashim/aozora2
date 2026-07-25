@@ -63,10 +63,18 @@ pub fn compare_body(input: &str, options: &RenderOptions) -> (String, String) {
         Some(s) => {
             let start = s + open.len();
             let rest = &full[start..];
-            let end = rest
-                .find("</div>\r\n<div class=\"bibliographical_information\">")
-                .or_else(|| rest.find("</div>\r\n<div id=\"card\""))
-                .unwrap_or(rest.len());
+            // main_text の閉じ `</div>\r\n` の直後に来る tail セクション開始のうち、
+            // 最も手前の位置で切る（after_text / bibliographical / notation_notes / card）。
+            let end = [
+                "</div>\r\n<div class=\"after_text\">",
+                "</div>\r\n<div class=\"bibliographical_information\">",
+                "</div>\r\n<div class=\"notation_notes\">",
+                "</div>\r\n<div id=\"card\"",
+            ]
+            .iter()
+            .filter_map(|pat| rest.find(pat))
+            .min()
+            .unwrap_or(rest.len());
             rest[..end].to_string()
         }
         None => String::new(),
