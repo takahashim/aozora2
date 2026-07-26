@@ -87,7 +87,10 @@ mod tests {
 
     #[test]
     fn test_tokenize() {
-        let tokens = tokenize("吾輩《わがはい》は猫である");
+        let tokens: Vec<_> = tokenize("吾輩《わがはい》は猫である")
+            .into_iter()
+            .map(|st| st.node)
+            .collect();
         assert_eq!(tokens.len(), 3);
         assert!(matches!(&tokens[0], Token::Text(s) if s == "吾輩"));
         assert!(matches!(&tokens[1], Token::Ruby { .. }));

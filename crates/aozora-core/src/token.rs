@@ -1,8 +1,8 @@
 //! 青空文庫形式のトークン型定義
 
 /// ソース行内の**文字（char）単位**の範囲 `[start, end)`（半開区間・0 起点）。
-/// 位置情報として RawAST（`RawLine.spans`）が保持する。byte ではなく char 数なので、
-/// 全角文字も1として数える（`line.chars().nth(start)` 等でそのまま使える）。
+/// 位置情報として RawAST（`RawLine.nodes[i].span`＝[`Spanned`]）が保持する。byte ではなく
+/// char 数なので、全角文字も1として数える（`line.chars().nth(start)` 等でそのまま使える）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     /// 開始 char オフセット（0 起点・含む）
@@ -23,6 +23,27 @@ impl Span {
     /// 空範囲か。
     pub fn is_empty(&self) -> bool {
         self.start >= self.end
+    }
+}
+
+/// 値に、それが由来するソース行内の char 位置範囲（[`Span`]）を添えた器。
+///
+/// 位置情報が意味を持つのは**トップレベルのトークン列・生ノード列**だけ（入れ子の
+/// ルビ内容などは行内位置を持たない）。その境界で値と位置がずれないよう、並行配列や
+/// 生タプルではなく1つの値にまとめる。トークナイザ出力（`Vec<Spanned<Token>>`）と
+/// RawAST の生ノード列（`RawLine.nodes: Vec<Spanned<Node>>`）で使う。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spanned<T> {
+    /// 中身（[`Token`] や [`crate::node::Node`]）。
+    pub node: T,
+    /// `node` のソース行内 char 位置範囲。
+    pub span: Span,
+}
+
+impl<T> Spanned<T> {
+    /// 値と範囲を組にする。
+    pub fn new(node: T, span: Span) -> Self {
+        Self { node, span }
     }
 }
 

@@ -11,7 +11,7 @@ aozora_farm のエディタ（CodeMirror 6）へ LSP 的な支援機能を導入
 
 ```
                      ┌─────────────────────────── aozora-core (Rust) ───────────────────────────┐
-  source (buffer) ─► │ tokenize_spanned → parse_raw_nodes_spanned → RawDoc{RawLine{nodes,spans}} │
+  source (buffer) ─► │ tokenize → parse_raw_nodes_spanned → RawDoc{RawLine{nodes:Vec<Spanned<Node>>}} │
                      │        │                                              │                    │
                      │        ├─ lower_to_blocks → html/strip (convert)      │  ← 既存             │
                      │        └─ analysis::analyze ──────────────────────────┘  ← 本設計          │

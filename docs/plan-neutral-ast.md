@@ -347,12 +347,15 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
 
 - 2026-07-25 **位置情報を char 単位 span まで拡張（出力 byte 不変）。**
   `token::Span`（行内 char オフセット [start,end)）を追加。tokenizer を next_token 抽出＋
-  `tokenize_spanned`、parser に `parse_raw_nodes_spanned` を追加し、`RawLine.spans` に各
-  生ノードの由来トークン span を格納（`nodes[i]↔spans[i]`）。**位置情報は源泉忠実な
-  RawAST に置く**設計（char span＝RawLine.spans／Aozora AST は派生の行番号＝Block.line）。
-  `line.chars()[span.start..span.end]` で原文断片を取得可。Aozora AST Inline への per-inline
-  span は変換パーサ（後方参照・ルビ抽出・範囲畳み込み）を跨ぐ Node への span 付与が要る
-  ため大規模——現状は RawAST span＋中立 line 番号で source-map 可能。
+  span 付き `tokenize`、parser に `parse_raw_nodes_spanned` を追加し、生ノードに由来
+  トークン span を格納。**位置情報は源泉忠実な RawAST に置く**設計（char span＝RawAST 側／
+  Aozora AST は派生の行番号＝Block.line）。`line.chars()[span.start..span.end]` で原文断片を
+  取得可。Aozora AST Inline への per-inline span は変換パーサ（後方参照・ルビ抽出・範囲畳み
+  込み）を跨ぐ Node への span 付与が要るため大規模——現状は RawAST span＋中立 line 番号で
+  source-map 可能。
+  - 2026-07-26 追記: `tokenize_spanned` と `RawLine` の並行配列 `nodes`/`spans` を廃止し、
+    `Spanned<T>{node,span}` に統一（`tokenize -> Vec<Spanned<Token>>`／
+    `RawLine.nodes: Vec<Spanned<Node>>`）。値と位置がずれない形に。出力 byte 不変・オラクル 17361。
 
 - 2026-07-25 **main 整合＋aozora_farm（Tauri GUI）取り込み（オラクル 17361・回帰0）。**
   main は html/strip を aozora-core へ移す再構成＋parser 分割（＝機能追加なしの整理）を

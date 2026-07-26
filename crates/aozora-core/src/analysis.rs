@@ -143,14 +143,16 @@ pub fn analyze(input: &str) -> Analysis {
         // なので、実際の解決を **1 行 1 回**走らせて、注記化された（＝解決に失敗した）
         // raw の集合を得ておく。個々の参照を再解決する二次コストを避けるため。
         let failed: HashSet<String> = {
-            let mut nodes = raw.nodes.clone();
+            let mut nodes: Vec<_> = raw.nodes.iter().map(|sn| sn.node.clone()).collect();
             resolve_references_collecting_failures(&mut nodes)
                 .into_iter()
                 .collect()
         };
 
-        // `nodes[i]` と `spans[i]` は 1:1 対応（parse_raw_nodes_spanned の契約）。
-        for (node, span) in raw.nodes.iter().zip(raw.spans.iter()) {
+        // 各生ノードには Spanned として char 位置範囲が同居する。
+        for sn in &raw.nodes {
+            let node = &sn.node;
+            let span = &sn.span;
             let range = Range {
                 line: raw.line_no,
                 start: span.start,
@@ -277,7 +279,7 @@ fn block_kind_label(kind: &BlockKind) -> &'static str {
 fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
     let mut i = 0;
     while i < raw.nodes.len() {
-        match &raw.nodes[i] {
+        match &raw.nodes[i].node {
             Node::Midashi {
                 level, children, ..
             } => {
@@ -310,7 +312,7 @@ fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
                 let mut j = i + 1;
                 while j < raw.nodes.len() {
                     if matches!(
-                        &raw.nodes[j],
+                        &raw.nodes[j].node,
                         Node::BlockEnd {
                             block_type: BlockType::Midashi,
                             ..
@@ -318,7 +320,7 @@ fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
                     ) {
                         break;
                     }
-                    text.push_str(&raw.nodes[j].to_text());
+                    text.push_str(&raw.nodes[j].node.to_text());
                     j += 1;
                 }
                 let end = j.min(raw.nodes.len().saturating_sub(1));
@@ -339,8 +341,8 @@ fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
 fn span_range(raw: &RawLine, from: usize, to: usize) -> Range {
     Range {
         line: raw.line_no,
-        start: raw.spans[from].start,
-        end: raw.spans[to].end,
+        start: raw.nodes[from].span.start,
+        end: raw.nodes[to].span.end,
     }
 }
 

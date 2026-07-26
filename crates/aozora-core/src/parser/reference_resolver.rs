@@ -407,8 +407,8 @@ fn parse_annotation_text(text: &str) -> Vec<Node> {
     let tokens = tokenize(text);
     let mut nodes = Vec::new();
 
-    for token in tokens {
-        match token {
+    for st in tokens {
+        match st.node {
             Token::Text(s) => nodes.push(Node::text(&s)),
             Token::Gaiji {
                 description,

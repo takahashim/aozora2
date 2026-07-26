@@ -11,8 +11,8 @@ pub mod ruby_parser;
 mod utils;
 
 use crate::node::{BlockParams, BlockType, InlineKind, Node, RefSpec, RubyDirection};
-use crate::token::{Span, Token};
-use crate::tokenizer::{tokenize, tokenize_spanned};
+use crate::token::{Spanned, Token};
+use crate::tokenizer::tokenize;
 
 pub use command_parser::{parse_command, CommandResult};
 pub use reference_resolver::{resolve_inline_ruby, resolve_references};
@@ -28,13 +28,11 @@ pub use ruby_parser::extract_ruby_base;
 pub struct RawLine {
     /// もとのソース行（くの字点走査などで参照する）
     pub source: String,
-    /// この行を忠実にパースした生ノード列（前方参照は未解決）
-    pub nodes: Vec<Node>,
+    /// この行を忠実にパースした生ノード列（前方参照は未解決）。各ノードには行内 char
+    /// 位置範囲（[`Span`]）が [`Spanned`] として同居する（旧 `nodes`＋並行配列 `spans`）。
+    pub nodes: Vec<Spanned<Node>>,
     /// 本文（extract_body_lines 後）における 0 起点の行番号（位置情報）。
     pub line_no: usize,
-    /// 各生ノードの char 位置範囲（[`Span`]、行内の char オフセット）。`nodes[i]` に
-    /// `spans[i]` が対応。ソース忠実な位置情報の置き場（Aozora AST は派生的に line 番号を持つ）。
-    pub spans: Vec<Span>,
 }
 
 /// 文書全体の RawAST（[`RawLine`] の列）。
@@ -51,12 +49,11 @@ pub fn parse_document_raw(lines: &[&str]) -> RawDoc {
         .iter()
         .enumerate()
         .map(|(line_no, line)| {
-            let (nodes, spans) = parse_raw_nodes_spanned(&tokenize_spanned(line));
+            let nodes = parse_raw_nodes_spanned(&tokenize(line));
             RawLine {
                 source: (*line).to_string(),
                 nodes,
                 line_no,
-                spans,
             }
         })
         .collect();
@@ -76,20 +73,24 @@ pub fn parse_raw_nodes(tokens: &[Token]) -> Vec<Node> {
 }
 
 /// `parse_raw_nodes` の span 付き版。各生ノードに、由来トークンの char 位置範囲
-/// （[`Span`]）を対応付けて返す（`nodes[i]` と `spans[i]` が対応）。1トークンが複数
-/// ノードに展開される場合、それらは同じトークン span を共有する。
-pub fn parse_raw_nodes_spanned(spanned: &[(Token, Span)]) -> (Vec<Node>, Vec<Span>) {
-    let tokens: Vec<Token> = spanned.iter().map(|(t, _)| t.clone()).collect();
+/// （[`Span`]）を [`Spanned`] として添えて返す。1トークンが複数ノードに展開される
+/// 場合、それらは同じトークン span を共有する。
+pub fn parse_raw_nodes_spanned(spanned: &[Spanned<Token>]) -> Vec<Spanned<Node>> {
+    let tokens: Vec<Token> = spanned.iter().map(|st| st.node.clone()).collect();
     let mut nodes = Vec::new();
     let mut spans = Vec::new();
-    for (i, (token, span)) in spanned.iter().enumerate() {
-        let parsed = parse_token_with_context(token, &nodes, &tokens, i);
+    for (i, st) in spanned.iter().enumerate() {
+        let parsed = parse_token_with_context(&st.node, &nodes, &tokens, i);
         for n in parsed {
             nodes.push(n);
-            spans.push(*span);
+            spans.push(st.span);
         }
     }
-    (nodes, spans)
+    nodes
+        .into_iter()
+        .zip(spans)
+        .map(|(node, span)| Spanned::new(node, span))
+        .collect()
 }
 
 /// トークン列をノード列にパースし、行内で完結する前方参照を解決する
@@ -103,8 +104,10 @@ pub fn parse_raw_nodes_spanned(spanned: &[(Token, Span)]) -> (Vec<Node>, Vec<Spa
 ///
 /// let nodes = parse(&tokenize("東京《とうきょう》"));
 /// ```
-pub fn parse(tokens: &[Token]) -> Vec<Node> {
-    let mut nodes = parse_raw_nodes(tokens);
+pub fn parse(tokens: &[Spanned<Token>]) -> Vec<Node> {
+    // span は使わないので落として plain 経路へ（余分な spans 確保を避ける）。
+    let toks: Vec<Token> = tokens.iter().map(|st| st.node.clone()).collect();
+    let mut nodes = parse_raw_nodes(&toks);
     resolve_references(&mut nodes);
     nodes
 }
@@ -703,25 +706,28 @@ mod tests {
 #[cfg(test)]
 mod span_tests {
     use super::*;
+    use crate::token::Span;
 
-    /// RawLine.spans が各生ノードの char 位置範囲を正しく表す（行を char で切り出せる）。
+    /// RawLine.nodes の各 Spanned が生ノードの char 位置範囲を正しく表す（行を char で
+    /// 切り出せる）。
     #[test]
     fn raw_nodes_have_char_spans() {
         let line = "あ※［＃「丸」、U+25CB］い《い》";
         let doc = parse_document_raw(&[line]);
         let rl = &doc.lines[0];
-        assert_eq!(rl.nodes.len(), rl.spans.len(), "nodes と spans は同数");
         let chars: Vec<char> = line.chars().collect();
         // 先頭ノードは Text("あ") で span [0,1)
-        assert_eq!(rl.spans[0], Span::new(0, 1));
-        let s0: String = chars[rl.spans[0].start..rl.spans[0].end].iter().collect();
+        assert_eq!(rl.nodes[0].span, Span::new(0, 1));
+        let s0: String = chars[rl.nodes[0].span.start..rl.nodes[0].span.end]
+            .iter()
+            .collect();
         assert_eq!(s0, "あ");
         // 2番目は外字 ※［＃…］。span はその範囲を覆う（先頭が ※）。
-        let g = &rl.spans[1];
+        let g = &rl.nodes[1].span;
         assert_eq!(chars[g.start], '※');
         // span で行を char 単位に切り出せることを確認（全 span が行内）。
-        for sp in &rl.spans {
-            assert!(sp.end <= chars.len(), "span が行内: {sp:?}");
+        for sn in &rl.nodes {
+            assert!(sn.span.end <= chars.len(), "span が行内: {:?}", sn.span);
         }
     }
 }

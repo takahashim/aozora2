@@ -40,8 +40,8 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
 
     for raw_line in &raw.lines {
         let line_no = raw_line.line_no;
-        // 前方参照とルビ親文字を解決してから畳む（旧経路と同順）。
-        let mut nodes = raw_line.nodes.clone();
+        // 前方参照とルビ親文字を解決してから畳む（旧経路と同順）。span は畳み込みに使わない。
+        let mut nodes: Vec<Node> = raw_line.nodes.iter().map(|sn| sn.node.clone()).collect();
         resolve_references(&mut nodes);
         resolve_inline_ruby(&mut nodes);
 

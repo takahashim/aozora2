@@ -20,12 +20,12 @@
 
 ```
 source
-  │  tokenize / tokenize_spanned
+  │  tokenize
   ▼
-Token 列（+ Span）              … 字句（lexer 出力）
+Vec<Spanned<Token>>            … 字句（lexer 出力・各トークンに行内 char span 同居）
   │  parse_raw_nodes / parse_raw_nodes_spanned
   ▼
-RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Node>, line_no, spans:Vec<Span> }> }
+RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Spanned<Node>>, line_no }> }
   │  resolve（前方参照の解決）＋ lower_to_blocks（行→入れ子ブロックへの畳み込み）
   ▼
 Aozora AST : Vec<Block>        … 解決済み・入れ子・型付き
@@ -47,12 +47,15 @@ HTML   /   プレーンテキスト
 ```rust
 /// ソース行内の char 単位の範囲 [start, end)（半開・0 起点）。byte でなく char 数。
 struct Span { start: usize, end: usize }
+/// 値に、それが由来する行内 char 範囲を添えた器（並行配列を避けるため値と同居）。
+struct Spanned<T> { node: T, span: Span }
 ```
 
-- **RawAST** … `RawLine.spans[i]` が `RawLine.nodes[i]` に 1:1 対応。char 精度の位置を持つ。
+- **RawAST** … `RawLine.nodes[i]` は `Spanned<Node>`。各生ノードに char 精度の位置
+  （`.span`）が同居する（旧: `nodes` と並行配列 `spans` の 1:1 対応）。
 - **Aozora AST** … 各 `Block` は由来行番号 `line: usize`（本文 0 起点）を持つ。char 精度の
-  範囲は持たない（必要なら RawAST 側の `spans` を参照する。エディタ支援 `analysis` は
-  RawAST の spans を使う）。
+  範囲は持たない（必要なら RawAST 側の `nodes[i].span` を参照する。エディタ支援
+  `analysis` は RawAST の span を使う）。
 
 行番号 `line_no` / `line` はいずれも**本文（`extract_body_lines` 後）における 0 起点**。
 
@@ -65,10 +68,9 @@ struct Span { start: usize, end: usize }
 ```rust
 struct RawDoc  { lines: Vec<RawLine> }
 struct RawLine {
-    source: String,      // もとのソース行（くの字点走査などで参照）
-    nodes:  Vec<Node>,   // この行を忠実にパースした生ノード列（前方参照は未解決）
-    line_no: usize,      // 本文 0 起点の行番号
-    spans:  Vec<Span>,   // nodes[i] の char 位置範囲（nodes と 1:1）
+    source: String,             // もとのソース行（くの字点走査などで参照）
+    nodes:  Vec<Spanned<Node>>, // 生ノード列（前方参照は未解決）＋各ノードの char 位置範囲
+    line_no: usize,             // 本文 0 起点の行番号
 }
 ```
 
@@ -140,7 +142,7 @@ RawLine を構成する平坦ノード。**入れ子はマーカーで表し**�
 
 ### RawAST の特徴（不変条件）
 
-1. **ソース忠実**：1 ソース行 = 1 `RawLine`。`source` を保持し、char 単位 `spans` を持つ。
+1. **ソース忠実**：1 ソース行 = 1 `RawLine`。`source` を保持し、各生ノードは char 単位 span（`nodes[i].span`）を持つ。
 2. **平坦**：入れ子は `BlockStart`/`BlockEnd`/`LineJisage` マーカーで表し、木化しない。
 3. **未解決**：`《》` 等の前方参照は `UnresolvedReference` のまま。
 4. **可逆志向**：位置と原文を残すので、エディタ支援（ハイライト・診断・アウトライン）の基盤。
@@ -242,7 +244,7 @@ enum CloseKind { NoBreak, Newline, BareBreak } // 入れ子ブロック閉じの
 3. **型付き・マーカーレス**：記法は `BlockKind`/`Inline` の型で表され、生の `［＃…］`
    文字列は残らない（`Note` として明示された編集者注を除く）。
 4. **backend-neutral**：HTML・プレーンテキストどちらも同じ木から状態レスに描画できる。
-5. **行番号を保持**：各ブロックは由来行 `line` を持つ（char 精度は RawAST 側 `spans`）。
+5. **行番号を保持**：各ブロックは由来行 `line` を持つ（char 精度は RawAST 側 `nodes[i].span`）。
 
 ---
 
@@ -265,7 +267,7 @@ enum CloseKind { NoBreak, Newline, BareBreak } // 入れ子ブロック閉じの
 | 用途 | 使う AST | 理由 |
 |------|----------|------|
 | HTML / プレーンテキスト描画 | **Aozora AST** | 解決済み・入れ子・状態レスに描ける |
-| エディタ支援（ハイライト・診断・アウトライン, `analysis`） | **RawAST** | char 単位 `spans` と原文を持つ |
+| エディタ支援（ハイライト・診断・アウトライン, `analysis`） | **RawAST** | 各生ノードに char 単位 span（`nodes[i].span`）と原文を持つ |
 | 位置 → 意味の対応（将来の LSP） | 両方 | RawAST の span で位置特定、Aozora AST で構造理解 |
 
 関連ドキュメント: [`plan-neutral-ast.md`](plan-neutral-ast.md)（移行計画）、

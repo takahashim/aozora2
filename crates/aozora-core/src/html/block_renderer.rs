@@ -770,7 +770,7 @@ impl<'a> BlockRenderer<'a> {
 
     /// 画像注記 alt 内の外字を外字一覧・表記フラグに登録する（出力に影響しない）。
     fn register_alt_gaiji(&mut self, alt: &str) {
-        for token in tokenize(alt) {
+        for token in tokenize(alt).into_iter().map(|st| st.node) {
             let Token::Gaiji {
                 description,
                 had_igeta,

@@ -1,7 +1,7 @@
 //! 青空文庫形式の字句解析（トークナイザ）
 
 use crate::delimiters::*;
-use crate::token::{Span, Token};
+use crate::token::{Span, Spanned, Token};
 
 /// 1行をトークン列に変換するトークナイザ
 pub struct Tokenizer {
@@ -35,28 +35,30 @@ impl Tokenizer {
         }
     }
 
-    /// 入力をトークン列に変換
-    pub fn tokenize(&mut self) -> Vec<Token> {
-        let mut tokens = Vec::new();
-        while !self.is_eof() {
-            tokens.push(self.next_token());
-        }
-        tokens
-    }
-
-    /// トークンを char 位置範囲（[`Span`]）付きで返す。span は入力先頭からの char
-    /// オフセット `[start, end)`。`Tokenizer::new_top_level` の入力（1行）に対する位置。
-    pub fn tokenize_spanned(&mut self) -> Vec<(Token, Span)> {
+    /// 入力を [`Spanned<Token>`] 列に変換する。各トークンには入力先頭からの char 位置
+    /// 範囲（[`Span`]、`[start, end)`）を付ける。`Tokenizer::new_top_level` の入力（1行）
+    /// に対する位置。span 不要な経路は `.into_iter().map(|st| st.node)` で捨てる。
+    pub fn tokenize(&mut self) -> Vec<Spanned<Token>> {
         let mut out = Vec::new();
         while !self.is_eof() {
             let start = self.pos;
             let token = self.next_token();
-            out.push((token, Span::new(start, self.pos)));
+            out.push(Spanned::new(token, Span::new(start, self.pos)));
         }
         out
     }
 
-    /// 現在位置から1トークン読む（tokenize / tokenize_spanned が共有）。
+    /// 入れ子内容（ルビ・親文字・アクセント内）を span 無しのトークン列にする。
+    /// 子トークンの位置は使わないため span を捨てる。
+    fn tokenize_children(input: &str) -> Vec<Token> {
+        Tokenizer::new(input)
+            .tokenize()
+            .into_iter()
+            .map(|st| st.node)
+            .collect()
+    }
+
+    /// 現在位置から1トークン読む（`tokenize` が使う）。
     fn next_token(&mut self) -> Token {
         let ch = self.current_char().unwrap();
         match ch {
@@ -149,7 +151,7 @@ impl Tokenizer {
         }
 
         // ルビ内を再帰的にトークナイズ
-        let children = Tokenizer::new(&content).tokenize();
+        let children = Self::tokenize_children(&content);
 
         Token::Ruby { children }
     }
@@ -218,8 +220,8 @@ impl Tokenizer {
         self.skip_if(RUBY_END);
 
         // 親文字とルビを再帰的にトークナイズ
-        let base_children = Tokenizer::new(&base_content).tokenize();
-        let ruby_children = Tokenizer::new(&ruby_content).tokenize();
+        let base_children = Self::tokenize_children(&base_content);
+        let ruby_children = Self::tokenize_children(&ruby_content);
 
         Token::PrefixedRuby {
             base_children,
@@ -279,7 +281,7 @@ impl Tokenizer {
             self.skip(1); // 〕
         }
 
-        let children = Tokenizer::new(&content).tokenize();
+        let children = Self::tokenize_children(&content);
         Some(Token::Accent { children })
     }
 
@@ -350,29 +352,31 @@ impl Tokenizer {
     }
 }
 
-/// 文字列をトークン列に変換するユーティリティ関数
-pub fn tokenize(input: &str) -> Vec<Token> {
+/// 文字列を [`Spanned<Token>`] 列に変換するユーティリティ関数。span は入力先頭からの
+/// char オフセット `[start, end)`。span 不要な呼び出しは `.into_iter().map(|st| st.node)`
+/// でトークンだけ取り出す。
+pub fn tokenize(input: &str) -> Vec<Spanned<Token>> {
     Tokenizer::new_top_level(input).tokenize()
-}
-
-/// 文字列を char 位置範囲（[`Span`]）付きトークン列に変換する。
-pub fn tokenize_spanned(input: &str) -> Vec<(Token, Span)> {
-    Tokenizer::new_top_level(input).tokenize_spanned()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// span を落として Token 列だけを比較するテスト用ヘルパー。
+    fn plain(input: &str) -> Vec<Token> {
+        tokenize(input).into_iter().map(|st| st.node).collect()
+    }
+
     #[test]
     fn test_plain_text() {
-        let tokens = tokenize("こんにちは");
+        let tokens = plain("こんにちは");
         assert_eq!(tokens, vec![Token::Text("こんにちは".to_string())]);
     }
 
     #[test]
     fn test_ruby() {
-        let tokens = tokenize("漢字《かんじ》");
+        let tokens = plain("漢字《かんじ》");
         assert_eq!(
             tokens,
             vec![
@@ -386,7 +390,7 @@ mod tests {
 
     #[test]
     fn test_prefixed_ruby() {
-        let tokens = tokenize("｜東京《とうきょう》");
+        let tokens = plain("｜東京《とうきょう》");
         assert_eq!(
             tokens,
             vec![Token::PrefixedRuby {
@@ -400,7 +404,7 @@ mod tests {
     fn test_prefixed_ruby_multiple_pipes() {
         // ｜A｜B《r》: 参照実装は 《》 直前の最後の ｜ からを親文字にし、
         // それより前の ｜A は（｜ をリテラルに残して）本文へ出す。
-        let tokens = tokenize("｜東京｜大阪《おおさか》");
+        let tokens = plain("｜東京｜大阪《おおさか》");
         assert_eq!(
             tokens,
             vec![
@@ -417,7 +421,7 @@ mod tests {
     #[test]
     fn test_prefixed_ruby_pipe_inside_command_not_delimiter() {
         // コマンド ［＃…］ の中の ｜ は区切りではない。親文字は 《》 まで伸びる。
-        let tokens = tokenize("｜東京［＃「東」に傍点］《とうきょう》");
+        let tokens = plain("｜東京［＃「東」に傍点］《とうきょう》");
         assert_eq!(
             tokens,
             vec![Token::PrefixedRuby {
@@ -434,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_command() {
-        let tokens = tokenize("猫である［＃「である」に傍点］");
+        let tokens = plain("猫である［＃「である」に傍点］");
         assert_eq!(
             tokens,
             vec![
@@ -448,7 +452,7 @@ mod tests {
 
     #[test]
     fn test_gaiji() {
-        let tokens = tokenize("※［＃「丸印」、U+25CB］");
+        let tokens = plain("※［＃「丸印」、U+25CB］");
         assert_eq!(
             tokens,
             vec![Token::Gaiji {
@@ -463,14 +467,14 @@ mod tests {
         // トップレベルの行で 〔 に対応する 〕 が無くアクセント記号を含むなら、
         // 行末までをアクセントブロックにする（参照実装の複数行 〔…改行…〕 の
         // 最初の行の挙動。例:4363「〔Pardonnez a`...」）。
-        let tokens = tokenize("〔Pardonnez a` mon");
+        let tokens = plain("〔Pardonnez a` mon");
         assert!(
             matches!(tokens.as_slice(), [Token::Accent { .. }]),
             "未閉じ 〔 がトップレベルでアクセントブロックになっていない: {tokens:?}"
         );
         // 入れ子（アクセント内容の再トークナイズ）では未閉じ 〔 はリテラル。
         // 〔訳者注…〔Beethoven e`…〕 の内側 〔Beethoven は 〔 が本文に残る（54931）。
-        let tokens = tokenize("〔訳者注 〔Beethoven e`〕");
+        let tokens = plain("〔訳者注 〔Beethoven e`〕");
         // 外側だけが Accent になり、その中に 〔 テキストが残る。
         assert!(
             matches!(tokens.as_slice(), [Token::Accent { .. }]),
@@ -491,7 +495,7 @@ mod tests {
     fn test_gaiji_without_igeta() {
         // 参照 dispatch_gaiji は「※」の次が「［」なら ＃ 不問で外字扱いする。
         // ＃無しは had_igeta=false（描画時に注記の＃無し・alt名空を再現する）。
-        let tokens = tokenize("※［感嘆符二つ、1-8-75］");
+        let tokens = plain("※［感嘆符二つ、1-8-75］");
         assert_eq!(
             tokens,
             vec![Token::Gaiji {
@@ -500,7 +504,7 @@ mod tests {
             }]
         );
         // 空角括弧 ※［］ も外字（UnEmbedGaiji → ［］ の注記になる）。
-        let tokens = tokenize("※［］");
+        let tokens = plain("※［］");
         assert_eq!(
             tokens,
             vec![Token::Gaiji {
@@ -512,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_gaiji_mark_alone() {
-        let tokens = tokenize("※普通の文");
+        let tokens = plain("※普通の文");
         assert_eq!(
             tokens,
             vec![
@@ -524,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_bracket_without_igeta() {
-        let tokens = tokenize("［テスト］");
+        let tokens = plain("［テスト］");
         assert_eq!(
             tokens,
             vec![
@@ -536,7 +540,7 @@ mod tests {
 
     #[test]
     fn test_nested_command() {
-        let tokens = tokenize("［＃ここから罫囲み［＃「罫囲み」に傍点］］");
+        let tokens = plain("［＃ここから罫囲み［＃「罫囲み」に傍点］］");
         assert_eq!(
             tokens,
             vec![Token::Command {
@@ -547,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_accent() {
-        let tokens = tokenize("〔E'difice〕");
+        let tokens = plain("〔E'difice〕");
         assert_eq!(
             tokens,
             vec![Token::Accent {
@@ -558,7 +562,7 @@ mod tests {
 
     #[test]
     fn test_accent_no_mark() {
-        let tokens = tokenize("〔参考〕");
+        let tokens = plain("〔参考〕");
         assert_eq!(
             tokens,
             vec![
@@ -570,7 +574,7 @@ mod tests {
 
     #[test]
     fn test_prefixed_ruby_without_ruby() {
-        let tokens = tokenize("｜だけ");
+        let tokens = plain("｜だけ");
         assert_eq!(
             tokens,
             vec![
@@ -582,14 +586,14 @@ mod tests {
 
     #[test]
     fn test_empty_input() {
-        let tokens = tokenize("");
+        let tokens = plain("");
         assert_eq!(tokens, vec![]);
     }
 
     #[test]
     fn test_multiple_tokens() {
         let tokens =
-            tokenize("吾輩《わがはい》は※［＃「米印」、U+203B］猫である［＃「である」に傍点］");
+            plain("吾輩《わがはい》は※［＃「米印」、U+203B］猫である［＃「である」に傍点］");
         assert_eq!(
             tokens,
             vec![
