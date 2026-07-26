@@ -174,9 +174,12 @@ enum BlockKind {
     Jizume   { width: u32 },                          // 字詰め
     Burasage { wrap_width: Option<u32>, width: Option<u32> }, // ぶら下げ（折り返し字下げ）
     Midashi  { level: MidashiLevel, style: MidashiStyle },    // 見出し（後続行を包む）
-    Keigakomi, Yokogumi, Caption,                     // 罫囲み／横組み／キャプション（ブロック形）
+    Keigakomi,                     // 罫囲み（ブロック形）
+    Yokogumi,                      // 横組み（ブロック形）
+    Caption,                       // キャプション（ブロック形）
     FontSize { size_type: FontSizeType, level: u32 }, // 大きな/小さな文字（ブロック形）
-    Futoji, Shatai,                                   // 太字／斜体（ブロック形）
+    Futoji,                                           // 太字（ブロック形）
+    Shatai,                                           // 斜体（ブロック形）
 }
 ```
 
