@@ -16,7 +16,6 @@ import {
   insertHeadingSmall,
   insertIndent,
   insertRightAlign,
-  insertQuoteBlock,
   insertMainTextBlock,
   insertFramedBlock,
 } from './commands'
@@ -247,20 +246,6 @@ describe('Structure commands', () => {
 })
 
 describe('Block commands', () => {
-  describe('insertQuoteBlock', () => {
-    it('inserts block markers when no selection', () => {
-      const view = createView('', 0)
-      insertQuoteBlock(view)
-      expect(getDoc(view)).toBe('［＃ここから引用］\n\n［＃ここで引用終わり］')
-    })
-
-    it('wraps selected text with block markers', () => {
-      const view = createView('引用文', 0, 3)
-      insertQuoteBlock(view)
-      expect(getDoc(view)).toBe('［＃ここから引用］\n引用文\n［＃ここで引用終わり］')
-    })
-  })
-
   describe('insertMainTextBlock', () => {
     it('inserts block markers when no selection', () => {
       const view = createView('', 0)

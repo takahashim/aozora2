@@ -218,27 +218,6 @@ export const insertRightAlign: AozoraCommand = (view) => {
   return true
 }
 
-// Quote block
-export const insertQuoteBlock: AozoraCommand = (view) => {
-  const { state } = view
-  const selection = state.selection.main
-
-  if (selection.empty) {
-    const template = '［＃ここから引用］\n\n［＃ここで引用終わり］'
-    view.dispatch({
-      changes: { from: selection.from, insert: template },
-      selection: EditorSelection.cursor(selection.from + '［＃ここから引用］\n'.length)
-    })
-  } else {
-    const selectedText = state.sliceDoc(selection.from, selection.to)
-    const insertText = `［＃ここから引用］\n${selectedText}\n［＃ここで引用終わり］`
-    view.dispatch({
-      changes: { from: selection.from, to: selection.to, insert: insertText }
-    })
-  }
-  return true
-}
-
 // Main text block
 export const insertMainTextBlock: AozoraCommand = (view) => {
   const { state } = view

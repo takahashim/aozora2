@@ -48,13 +48,6 @@ export const SNIPPETS: Snippet[] = [
     reading: 'ここからじさげ',
   },
   {
-    label: 'ここから引用',
-    detail: 'ブロック',
-    apply: '［＃ここから引用］\n\n［＃ここで引用終わり］',
-    cursor: 10, // 開始行＋改行の後（空の中間行）
-    reading: 'ここからいんよう',
-  },
-  {
     label: 'ここから罫囲み',
     detail: 'ブロック',
     apply: '［＃ここから罫囲み］\n\n［＃ここで罫囲み終わり］',

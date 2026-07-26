@@ -63,8 +63,6 @@ export const en = {
   "toolbar.heading-small.tooltip": "Insert small heading",
   "toolbar.indent": "Indent",
   "toolbar.indent.tooltip": "Insert indent",
-  "toolbar.quote": "Quote",
-  "toolbar.quote.tooltip": "Insert quote block",
   "toolbar.palette": "Annotations",
   "toolbar.palette.tooltip": "Open annotation palette",
 
@@ -85,7 +83,6 @@ export const en = {
   "palette.cmd.komidashi": "Small heading",
   "palette.cmd.jisage": "Indent",
   "palette.cmd.jitsuki": "Right align",
-  "palette.cmd.inyou": "Quote",
   "palette.cmd.honbun": "Main text",
   "palette.cmd.keigakomi": "Framed",
 

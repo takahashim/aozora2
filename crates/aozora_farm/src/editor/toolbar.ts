@@ -9,7 +9,6 @@ import {
   insertHeadingMedium,
   insertHeadingSmall,
   insertIndent,
-  insertQuoteBlock,
   undoCommand,
   redoCommand,
   AozoraCommand,
@@ -36,7 +35,6 @@ const toolbarButtons: ToolbarButton[] = [
   { id: 'heading-medium', labelKey: 'toolbar.heading-medium', tooltipKey: 'toolbar.heading-medium.tooltip', shortcut: null, command: insertHeadingMedium, icon: '中' },
   { id: 'heading-small', labelKey: 'toolbar.heading-small', tooltipKey: 'toolbar.heading-small.tooltip', shortcut: null, command: insertHeadingSmall, icon: '小' },
   { id: 'indent', labelKey: 'toolbar.indent', tooltipKey: 'toolbar.indent.tooltip', shortcut: 'Cmd+]', command: insertIndent, icon: '→' },
-  { id: 'quote', labelKey: 'toolbar.quote', tooltipKey: 'toolbar.quote.tooltip', shortcut: 'Cmd+Shift+Q', command: insertQuoteBlock, icon: '引' },
   { id: 'palette', labelKey: 'toolbar.palette', tooltipKey: 'toolbar.palette.tooltip', shortcut: 'Cmd+E', command: openAnnotationPalette, icon: '＃' },
 ]
 
@@ -46,7 +44,7 @@ const buttonGroups = [
   ['ruby', 'ruby-range'],
   ['emphasis', 'bold'],
   ['heading-large', 'heading-medium', 'heading-small'],
-  ['indent', 'quote'],
+  ['indent'],
   ['palette'],
 ]
 

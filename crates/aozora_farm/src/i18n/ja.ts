@@ -63,8 +63,6 @@ export const ja = {
   "toolbar.heading-small.tooltip": "小見出しを挿入",
   "toolbar.indent": "字下げ",
   "toolbar.indent.tooltip": "字下げを挿入",
-  "toolbar.quote": "引用",
-  "toolbar.quote.tooltip": "引用ブロックを挿入",
   "toolbar.palette": "注記",
   "toolbar.palette.tooltip": "注記パレットを開く",
 
@@ -85,7 +83,6 @@ export const ja = {
   "palette.cmd.komidashi": "小見出し",
   "palette.cmd.jisage": "字下げ",
   "palette.cmd.jitsuki": "地付き",
-  "palette.cmd.inyou": "引用",
   "palette.cmd.honbun": "本文",
   "palette.cmd.keigakomi": "罫囲み",
 

@@ -30,7 +30,6 @@ const annotationCommands: AnnotationCommand[] = [
   { id: 'jitsuki', labelKey: 'palette.cmd.jitsuki', category: 'structure', template: '［＃地付き］', hasSelection: false },
 
   // Block (ブロック系)
-  { id: 'inyou', labelKey: 'palette.cmd.inyou', category: 'block', template: '［＃ここから引用］\n{text}\n［＃ここで引用終わり］', hasSelection: true },
   { id: 'honbun', labelKey: 'palette.cmd.honbun', category: 'block', template: '［＃ここから本文］\n{text}\n［＃ここで本文終わり］', hasSelection: true },
   { id: 'keigakomi', labelKey: 'palette.cmd.keigakomi', category: 'block', template: '［＃ここから罫囲み］\n{text}\n［＃ここで罫囲み終わり］', hasSelection: true },
 ]
