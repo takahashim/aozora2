@@ -21,9 +21,10 @@ jobs:
       matrix:
         include:
           - os: macos-latest # Apple Silicon (.dmg)
-            args: ""
+            args: "--bundles dmg"
           - os: windows-latest # NSIS インストーラ (.exe)
-            args: ""
+            # MSI(WiX) は CI で失敗しやすい（gui.yml も nsis のみで通している）ため nsis に限定。
+            args: "--bundles nsis"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
