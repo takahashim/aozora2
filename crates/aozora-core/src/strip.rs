@@ -73,28 +73,28 @@ fn render_block_plain(block: &crate::ast::Block, out: &mut Vec<String>) {
 
 /// インライン列をプレーンテキスト化する（読める文字だけ残す）。
 fn render_inlines_plain(inlines: &[crate::ast::Inline], out: &mut String) {
-    use crate::ast::Inline;
+    use crate::ast::InlineKind;
     for i in inlines {
-        match i {
-            Inline::Text(s) => out.push_str(s),
+        match &i.kind {
+            InlineKind::Text(s) => out.push_str(s),
             // ルビは親文字だけ残す。
-            Inline::Ruby { base, .. } => render_inlines_plain(base, out),
+            InlineKind::Ruby { base, .. } => render_inlines_plain(base, out),
             // 装飾・範囲系は中身のテキストを残す。
-            Inline::Style { children, .. }
-            | Inline::Midashi { children, .. }
-            | Inline::Tcy { children }
-            | Inline::Keigakomi { children }
-            | Inline::Yokogumi { children }
-            | Inline::Caption { children }
-            | Inline::Warigaki { children }
-            | Inline::FontSize { children, .. }
-            | Inline::ChitsukiInline { children, .. }
-            | Inline::BlockInline { children, .. } => render_inlines_plain(children, out),
-            Inline::AnnotationEnd { content, .. } => render_inlines_plain(content, out),
+            InlineKind::Style { children, .. }
+            | InlineKind::Midashi { children, .. }
+            | InlineKind::Tcy { children }
+            | InlineKind::Keigakomi { children }
+            | InlineKind::Yokogumi { children }
+            | InlineKind::Caption { children }
+            | InlineKind::Warigaki { children }
+            | InlineKind::FontSize { children, .. }
+            | InlineKind::ChitsukiInline { children, .. }
+            | InlineKind::BlockInline { children, .. } => render_inlines_plain(children, out),
+            InlineKind::AnnotationEnd { content, .. } => render_inlines_plain(content, out),
             // 外字は Unicode 文字列へ。解決済みの unicode / 句点コード（jis_code）を
             // 優先し（AST 解決後は description が空でも jis_code を持つ）、無ければ
             // description からのフォールバック（変換不能なら 〓）。
-            Inline::Gaiji {
+            InlineKind::Gaiji {
                 description,
                 unicode,
                 jis_code,
@@ -112,20 +112,20 @@ fn render_inlines_plain(inlines: &[crate::ast::Inline], out: &mut String) {
                 }
             }
             // アクセント分解は合成文字へ（無ければ空）。
-            Inline::Accent { unicode, .. } => {
+            InlineKind::Accent { unicode, .. } => {
                 if let Some(u) = unicode {
                     out.push_str(u);
                 }
             }
-            Inline::DakutenKatakana { num } => {
+            InlineKind::DakutenKatakana { num } => {
                 out.push_str(crate::node::Node::dakuten_katakana_char(num))
             }
             // 注記・返り点・送り仮名・画像・割り注マーカーはコマンド由来なので落とす。
-            Inline::Note(_)
-            | Inline::Kaeriten(_)
-            | Inline::Okurigana(_)
-            | Inline::Img { .. }
-            | Inline::Warichu { .. } => {}
+            InlineKind::Note(_)
+            | InlineKind::Kaeriten(_)
+            | InlineKind::Okurigana(_)
+            | InlineKind::Img { .. }
+            | InlineKind::Warichu { .. } => {}
         }
     }
 }

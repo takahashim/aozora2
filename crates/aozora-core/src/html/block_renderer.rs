@@ -5,7 +5,7 @@
 //! のみ）。旧経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ足す。
 //! バックエンドは木を**状態なしに歩く**だけ（BlockManager を持たない）。
 
-use crate::ast::{to_inlines, Block, BlockKind, Break, CloseKind, Inline};
+use crate::ast::{to_inlines, Block, BlockKind, Break, CloseKind, Inline, InlineKind};
 use crate::gaiji::{parse_gaiji, GaijiResult};
 use crate::node::{FontSizeType, MidashiLevel, RubyDirection};
 use crate::parser::parse;
@@ -308,9 +308,9 @@ impl<'a> BlockRenderer<'a> {
     }
 
     fn render_inline(&mut self, inline: &Inline, out: &mut String) {
-        match inline {
-            Inline::Text(s) => out.push_str(&html_escape(s)),
-            Inline::Style {
+        match &inline.kind {
+            InlineKind::Text(s) => out.push_str(&html_escape(s)),
+            InlineKind::Style {
                 children,
                 style_type,
             } => {
@@ -320,12 +320,18 @@ impl<'a> BlockRenderer<'a> {
                 self.render_inlines(children, out);
                 out.push_str(&format!("</{tag}>"));
             }
-            Inline::Tcy { children } => self.wrap_span(children, "dir=\"ltr\"", out),
-            Inline::Keigakomi { children } => self.wrap_span(children, "class=\"keigakomi\"", out),
-            Inline::Yokogumi { children } => self.wrap_span(children, "class=\"yokogumi\"", out),
-            Inline::Caption { children } => self.wrap_span(children, "class=\"caption\"", out),
-            Inline::Warigaki { children } => self.wrap_span(children, "class=\"warigaki\"", out),
-            Inline::Ruby {
+            InlineKind::Tcy { children } => self.wrap_span(children, "dir=\"ltr\"", out),
+            InlineKind::Keigakomi { children } => {
+                self.wrap_span(children, "class=\"keigakomi\"", out)
+            }
+            InlineKind::Yokogumi { children } => {
+                self.wrap_span(children, "class=\"yokogumi\"", out)
+            }
+            InlineKind::Caption { children } => self.wrap_span(children, "class=\"caption\"", out),
+            InlineKind::Warigaki { children } => {
+                self.wrap_span(children, "class=\"warigaki\"", out)
+            }
+            InlineKind::Ruby {
                 base,
                 ruby,
                 direction,
@@ -352,7 +358,7 @@ impl<'a> BlockRenderer<'a> {
                     "{ropen}<rb>{base_html}</rb><rp>（</rp><rt>{ruby_html}</rt><rp>）</rp></ruby>{trailing_notes}"
                 ));
             }
-            Inline::Gaiji {
+            InlineKind::Gaiji {
                 description,
                 unicode,
                 jis_code,
@@ -366,7 +372,7 @@ impl<'a> BlockRenderer<'a> {
                 );
                 out.push_str(&s);
             }
-            Inline::Accent {
+            InlineKind::Accent {
                 code,
                 name,
                 unicode,
@@ -374,7 +380,7 @@ impl<'a> BlockRenderer<'a> {
                 let s = self.render_accent(code, name, unicode.as_deref());
                 out.push_str(&s);
             }
-            Inline::Img {
+            InlineKind::Img {
                 filename,
                 alt,
                 is_photo,
@@ -386,17 +392,17 @@ impl<'a> BlockRenderer<'a> {
                 let s = self.render_img(filename, alt, *is_photo, *width, *height);
                 out.push_str(&s);
             }
-            Inline::DakutenKatakana { num } => {
+            InlineKind::DakutenKatakana { num } => {
                 out.push_str(crate::node::Node::dakuten_katakana_char(num))
             }
-            Inline::ChitsukiInline { width, children } => {
+            InlineKind::ChitsukiInline { width, children } => {
                 out.push_str(&format!(
                     "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">"
                 ));
                 self.render_inlines(children, out);
                 out.push_str("</div>");
             }
-            Inline::BlockInline { kind, children } => {
+            InlineKind::BlockInline { kind, children } => {
                 // 同行で開閉するブロック形。見出しは h4/a＋id、その他は div で包む。
                 if let BlockKind::Midashi { level, style } = kind {
                     let tag = midashi_html_tag(*level);
@@ -417,16 +423,16 @@ impl<'a> BlockRenderer<'a> {
                     self.render_inlines(children, out);
                 }
             }
-            Inline::Kaeriten(text) => out.push_str(&format!(
+            InlineKind::Kaeriten(text) => out.push_str(&format!(
                 "<sub class=\"kaeriten\">{}</sub>",
                 html_escape(text)
             )),
-            Inline::Note(text) => {
+            InlineKind::Note(text) => {
                 self.has_notes = true;
                 let inner = self.render_note_content(text);
                 out.push_str(&format!("<span class=\"notes\">［＃{inner}］</span>"));
             }
-            Inline::AnnotationEnd {
+            InlineKind::AnnotationEnd {
                 prefix,
                 content,
                 suffix,
@@ -441,7 +447,7 @@ impl<'a> BlockRenderer<'a> {
                     html_escape(suffix)
                 ));
             }
-            Inline::Okurigana(text) => {
+            InlineKind::Okurigana(text) => {
                 // 参照実装 Tag::Okurigana は注記と同じ再パースを通し、外側 （ ） を除去する。
                 let inner = self
                     .render_note_content(text)
@@ -449,7 +455,7 @@ impl<'a> BlockRenderer<'a> {
                     .replace('）', "");
                 out.push_str(&format!("<sup class=\"okurigana\">{inner}</sup>"));
             }
-            Inline::FontSize {
+            InlineKind::FontSize {
                 children,
                 size_type,
                 level,
@@ -459,7 +465,7 @@ impl<'a> BlockRenderer<'a> {
                 self.render_inlines(children, out);
                 out.push_str("</span>");
             }
-            Inline::Midashi {
+            InlineKind::Midashi {
                 children,
                 level,
                 style,
@@ -473,7 +479,7 @@ impl<'a> BlockRenderer<'a> {
                     "<{tag} class=\"{class}\"><a class=\"midashi_anchor\" id=\"midashi{id}\">{inner}</a></{tag}>"
                 ));
             }
-            Inline::Warichu {
+            InlineKind::Warichu {
                 open,
                 suppress_paren,
             } => {
@@ -613,7 +619,8 @@ impl<'a> BlockRenderer<'a> {
         for inline in base {
             let mut html = String::new();
             self.render_inline(inline, &mut html);
-            if matches!(inline, Inline::Gaiji { .. }) && html.starts_with("<span class=\"notes\">")
+            if matches!(&inline.kind, InlineKind::Gaiji { .. })
+                && html.starts_with("<span class=\"notes\">")
             {
                 rb.push_str(GAIJI_MARK);
                 trailing.push_str(&html);

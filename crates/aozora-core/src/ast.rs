@@ -14,6 +14,7 @@
 //! （architecture.md §4.2 型の壁）。
 
 use crate::node::{FontSizeType, MidashiLevel, MidashiStyle, NodeKind, RubyDirection, StyleType};
+use crate::token::Span;
 
 /// 文書全体の Aozora AST ＝トップレベル [`Block`] の列。
 ///
@@ -25,7 +26,7 @@ pub type AozoraAst = Vec<Block>;
 /// ブロック構造マーカー（`BlockStart`/`BlockEnd` の is_block=true・`LineJisage`・
 /// `UnresolvedReference`）は None を返す（ブロック畳み込みが別途消費する）。
 /// 割り注（apply_warichu）は状態を持たないインライン出力なので、`BlockStart`/
-/// `BlockEnd` の Warichu だけは [`Inline::Warichu`] マーカーとして写す。
+/// `BlockEnd` の Warichu だけは [`InlineKind::Warichu`] マーカーとして写す。
 ///
 /// 純インライン内容（ブロックマーカーを含まない行）にはこれで十分。罫囲み等の
 /// インライン形ブロック（is_block=false の開閉対）の入れ子は後続のブロック
@@ -33,13 +34,13 @@ pub type AozoraAst = Vec<Block>;
 pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
     use crate::node::BlockType;
     let out = match &node.kind {
-        NodeKind::Text(s) => Inline::Text(s.clone()),
+        NodeKind::Text(s) => InlineKind::Text(s.clone()),
         NodeKind::Ruby {
             children,
             ruby,
             direction,
             keep_gaiji_notes_in_base,
-        } => Inline::Ruby {
+        } => InlineKind::Ruby {
             base: to_inlines(children),
             ruby: to_inlines(ruby),
             direction: *direction,
@@ -48,7 +49,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
         NodeKind::Style {
             children,
             style_type,
-        } => Inline::Style {
+        } => InlineKind::Style {
             children: to_inlines(children),
             style_type: *style_type,
         },
@@ -56,7 +57,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             children,
             level,
             style,
-        } => Inline::Midashi {
+        } => InlineKind::Midashi {
             children: to_inlines(children),
             level: *level,
             style: *style,
@@ -66,7 +67,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             unicode,
             jis_code,
             had_igeta,
-        } => Inline::Gaiji {
+        } => InlineKind::Gaiji {
             description: description.clone(),
             unicode: unicode.clone(),
             jis_code: jis_code.clone(),
@@ -76,7 +77,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             code,
             name,
             unicode,
-        } => Inline::Accent {
+        } => InlineKind::Accent {
             code: code.clone(),
             name: name.clone(),
             unicode: unicode.clone(),
@@ -87,43 +88,43 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             is_photo,
             width,
             height,
-        } => Inline::Img {
+        } => InlineKind::Img {
             filename: filename.clone(),
             alt: alt.clone(),
             is_photo: *is_photo,
             width: *width,
             height: *height,
         },
-        NodeKind::Tcy { children } => Inline::Tcy {
+        NodeKind::Tcy { children } => InlineKind::Tcy {
             children: to_inlines(children),
         },
-        NodeKind::Keigakomi { children } => Inline::Keigakomi {
+        NodeKind::Keigakomi { children } => InlineKind::Keigakomi {
             children: to_inlines(children),
         },
-        NodeKind::Yokogumi { children } => Inline::Yokogumi {
+        NodeKind::Yokogumi { children } => InlineKind::Yokogumi {
             children: to_inlines(children),
         },
-        NodeKind::Caption { children } => Inline::Caption {
+        NodeKind::Caption { children } => InlineKind::Caption {
             children: to_inlines(children),
         },
         NodeKind::FontSize {
             children,
             size_type,
             level,
-        } => Inline::FontSize {
+        } => InlineKind::FontSize {
             children: to_inlines(children),
             size_type: *size_type,
             level: *level,
         },
-        NodeKind::Kaeriten(s) => Inline::Kaeriten(s.clone()),
-        NodeKind::Okurigana(s) => Inline::Okurigana(s.clone()),
-        NodeKind::Note(s) => Inline::Note(s.clone()),
-        NodeKind::DakutenKatakana { num } => Inline::DakutenKatakana { num: num.clone() },
+        NodeKind::Kaeriten(s) => InlineKind::Kaeriten(s.clone()),
+        NodeKind::Okurigana(s) => InlineKind::Okurigana(s.clone()),
+        NodeKind::Note(s) => InlineKind::Note(s.clone()),
+        NodeKind::DakutenKatakana { num } => InlineKind::DakutenKatakana { num: num.clone() },
         NodeKind::AnnotationEnd {
             prefix,
             content,
             suffix,
-        } => Inline::AnnotationEnd {
+        } => InlineKind::AnnotationEnd {
             prefix: prefix.clone(),
             content: to_inlines(content),
             suffix: suffix.clone(),
@@ -132,7 +133,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
         NodeKind::BlockStart {
             block_type: BlockType::Warichu,
             params,
-        } => Inline::Warichu {
+        } => InlineKind::Warichu {
             open: true,
             suppress_paren: params.has_open_paren,
         },
@@ -140,7 +141,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             block_type: BlockType::Warichu,
             params,
             ..
-        } => Inline::Warichu {
+        } => InlineKind::Warichu {
             open: false,
             suppress_paren: params.has_close_paren,
         },
@@ -152,7 +153,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
         | NodeKind::LineJisage { .. }
         | NodeKind::UnresolvedReference { .. } => return None,
     };
-    Some(out)
+    Some(Inline::new(out, node.span))
 }
 
 /// 解決済みノード列をAozora ASTのインライン列に変換する。
@@ -170,7 +171,12 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
             if !params.is_block && is_inline_range_type(block_type) {
                 if let Some(end) = find_matching_end(nodes, i, block_type) {
                     let inner = to_inlines(&nodes[i + 1..end]);
-                    if let Some(wrapped) = wrap_inline_range(block_type, params, inner) {
+                    if let Some(wrapped) = wrap_inline_range(
+                        block_type,
+                        params,
+                        inner,
+                        span_for_nodes(&nodes[i..=end]),
+                    ) {
                         out.push(wrapped);
                         i = end + 1;
                         continue;
@@ -184,10 +190,13 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
                 if let Some(end) = find_matching_end(nodes, i, block_type) {
                     if let Some(kind) = crate::lower::block_kind_of(block_type, params) {
                         let inner = to_inlines(&nodes[i + 1..end]);
-                        out.push(Inline::BlockInline {
-                            kind,
-                            children: inner,
-                        });
+                        out.push(Inline::new(
+                            InlineKind::BlockInline {
+                                kind,
+                                children: inner,
+                            },
+                            span_for_nodes(&nodes[i..=end]),
+                        ));
                         i = end + 1;
                         continue;
                     }
@@ -199,10 +208,14 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
             if !params.is_block && *block_type == crate::node::BlockType::Chitsuki {
                 let end = find_matching_end(nodes, i, block_type).unwrap_or(nodes.len());
                 let inner = to_inlines(&nodes[i + 1..end.min(nodes.len())]);
-                out.push(Inline::ChitsukiInline {
-                    width: params.width.unwrap_or(0),
-                    children: inner,
-                });
+                let span_end = if end < nodes.len() { end + 1 } else { end };
+                out.push(Inline::new(
+                    InlineKind::ChitsukiInline {
+                        width: params.width.unwrap_or(0),
+                        children: inner,
+                    },
+                    span_for_nodes(&nodes[i..span_end]),
+                ));
                 i = if end < nodes.len() {
                     end + 1
                 } else {
@@ -242,37 +255,39 @@ fn wrap_inline_range(
     block_type: &crate::node::BlockType,
     params: &crate::node::BlockParams,
     inner: Vec<Inline>,
+    span: Span,
 ) -> Option<Inline> {
     use crate::node::{BlockType, FontSizeType};
-    match block_type {
-        BlockType::Midashi => Some(Inline::Midashi {
+    let kind = match block_type {
+        BlockType::Midashi => Some(InlineKind::Midashi {
             children: inner,
             level: params.level.unwrap_or(crate::node::MidashiLevel::O),
             style: params
                 .midashi_style
                 .unwrap_or(crate::node::MidashiStyle::Normal),
         }),
-        BlockType::Style => params.style_type.map(|style_type| Inline::Style {
+        BlockType::Style => params.style_type.map(|style_type| InlineKind::Style {
             children: inner,
             style_type,
         }),
-        BlockType::FontDai => Some(Inline::FontSize {
+        BlockType::FontDai => Some(InlineKind::FontSize {
             children: inner,
             size_type: FontSizeType::Dai,
             level: params.font_size.unwrap_or(1),
         }),
-        BlockType::FontSho => Some(Inline::FontSize {
+        BlockType::FontSho => Some(InlineKind::FontSize {
             children: inner,
             size_type: FontSizeType::Sho,
             level: params.font_size.unwrap_or(1),
         }),
-        BlockType::Yokogumi => Some(Inline::Yokogumi { children: inner }),
-        BlockType::Tcy => Some(Inline::Tcy { children: inner }),
-        BlockType::Keigakomi => Some(Inline::Keigakomi { children: inner }),
-        BlockType::Caption => Some(Inline::Caption { children: inner }),
-        BlockType::Warigaki => Some(Inline::Warigaki { children: inner }),
+        BlockType::Yokogumi => Some(InlineKind::Yokogumi { children: inner }),
+        BlockType::Tcy => Some(InlineKind::Tcy { children: inner }),
+        BlockType::Keigakomi => Some(InlineKind::Keigakomi { children: inner }),
+        BlockType::Caption => Some(InlineKind::Caption { children: inner }),
+        BlockType::Warigaki => Some(InlineKind::Warigaki { children: inner }),
         _ => None,
-    }
+    };
+    kind.map(|kind| Inline::new(kind, span))
 }
 
 /// この行のインライン列を描画すると「ブロックのみ行」になるか（末尾が `</div>` や
@@ -282,11 +297,20 @@ fn wrap_inline_range(
 pub fn line_is_block_only(inlines: &[Inline]) -> bool {
     match inlines.last() {
         // 見出しは Normal のみ `</hN>`（dogyo-/mado- はインラインなので br）。
-        Some(Inline::Midashi { style, .. }) => *style == crate::node::MidashiStyle::Normal,
+        Some(Inline {
+            kind: InlineKind::Midashi { style, .. },
+            ..
+        }) => *style == crate::node::MidashiStyle::Normal,
         // 行末で開いた地付き（`…</div>`）。
-        Some(Inline::ChitsukiInline { .. }) => true,
+        Some(Inline {
+            kind: InlineKind::ChitsukiInline { .. },
+            ..
+        }) => true,
         // 同行開閉のブロック形（div で包むか、Normal 見出し）。
-        Some(Inline::BlockInline { kind, .. }) => block_kind_is_block_only(kind),
+        Some(Inline {
+            kind: InlineKind::BlockInline { kind, .. },
+            ..
+        }) => block_kind_is_block_only(kind),
         _ => false,
     }
 }
@@ -330,6 +354,14 @@ fn find_matching_end(
         }
     }
     None
+}
+
+fn span_for_nodes(nodes: &[crate::node::Node]) -> Span {
+    let mut spans = nodes.iter().map(|node| node.span);
+    let first = spans
+        .next()
+        .expect("an inline conversion range is never empty");
+    spans.fold(first, Span::union)
 }
 
 /// ブロック（部分木の節、または内容の1行）。
@@ -451,7 +483,7 @@ pub enum Break {
 /// 解決済み・子を `Vec<Inline>` にした形で写す。`BlockStart`/`BlockEnd`/
 /// `LineJisage`/`UnresolvedReference` 等のマーカー系はAozora ASTには現れない。
 #[derive(Debug, Clone, PartialEq)]
-pub enum Inline {
+pub enum InlineKind {
     /// プレーンテキスト
     Text(String),
     /// ルビ
@@ -547,6 +579,34 @@ pub enum Inline {
     },
 }
 
+/// Aozora ASTのインライン要素。各要素が行内の絶対char spanを自前で持つ。
+#[derive(Debug, Clone)]
+pub struct Inline {
+    /// インライン種別と内容。
+    pub kind: InlineKind,
+    /// ソース行内のchar位置範囲。
+    pub span: Span,
+}
+
+impl Inline {
+    /// 種別とソース位置からインラインを作成する。
+    pub fn new(kind: InlineKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+
+    /// テキストインラインを作成する。
+    pub fn text(s: impl Into<String>, span: Span) -> Self {
+        Self::new(InlineKind::Text(s.into()), span)
+    }
+}
+
+/// span は位置メタデータであり、構造比較には含めない。
+impl PartialEq for Inline {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -560,32 +620,42 @@ mod tests {
         let nodes = parse(&tokenize("東京《とうきょう》の本文※［＃「丸印」、U+25CB］"));
         let inlines = to_inlines(&nodes);
         // ルビ・テキスト・外字がインラインとして写ること。
-        assert!(inlines.iter().any(|i| matches!(i, Inline::Ruby { .. })));
-        assert!(inlines.iter().any(|i| matches!(i, Inline::Text(_))));
-        assert!(inlines.iter().any(|i| matches!(i, Inline::Gaiji { .. })));
+        assert!(inlines
+            .iter()
+            .any(|i| matches!(i.kind, InlineKind::Ruby { .. })));
+        assert!(inlines
+            .iter()
+            .any(|i| matches!(i.kind, InlineKind::Text(_))));
+        assert!(inlines
+            .iter()
+            .any(|i| matches!(i.kind, InlineKind::Gaiji { .. })));
     }
 
-    /// 割り注（apply_warichu）はブロックマーカーだが開閉を Inline::Warichu に写す。
+    /// 割り注（apply_warichu）はブロックマーカーだがInlineKind::Warichuに写す。
     #[test]
     fn test_to_inlines_warichu_marker() {
         let nodes = parse(&tokenize("本文［＃割り注］注記［＃割り注終わり］"));
         let inlines = to_inlines(&nodes);
-        let opens = inlines
+        let opens: Vec<&Inline> = inlines
             .iter()
-            .filter(|i| matches!(i, Inline::Warichu { open: true, .. }))
-            .count();
-        let closes = inlines
+            .filter(|i| matches!(i.kind, InlineKind::Warichu { open: true, .. }))
+            .collect();
+        let closes: Vec<&Inline> = inlines
             .iter()
-            .filter(|i| matches!(i, Inline::Warichu { open: false, .. }))
-            .count();
+            .filter(|i| matches!(i.kind, InlineKind::Warichu { open: false, .. }))
+            .collect();
         assert_eq!(
-            opens, 1,
-            "割り注開きが Inline::Warichu にならない: {inlines:?}"
+            opens.len(),
+            1,
+            "割り注開きが InlineKind::Warichu にならない: {inlines:?}"
         );
         assert_eq!(
-            closes, 1,
-            "割り注終わりが Inline::Warichu にならない: {inlines:?}"
+            closes.len(),
+            1,
+            "割り注終わりが InlineKind::Warichu にならない: {inlines:?}"
         );
+        assert_eq!(opens[0].span, nodes[1].span);
+        assert_eq!(closes[0].span, nodes[3].span);
     }
 
     /// ブロック構造マーカー（ここから字下げ）はインラインに現れない。
@@ -597,5 +667,96 @@ mod tests {
             inlines.is_empty(),
             "ブロックマーカーがインライン化された: {inlines:?}"
         );
+    }
+
+    #[test]
+    fn inline_inherits_node_spans_recursively_and_ignores_them_for_equality() {
+        let nodes = parse(&tokenize("東京《とう》"));
+        let inlines = to_inlines(&nodes);
+        let ruby_node = nodes
+            .iter()
+            .find(|node| matches!(node.kind, NodeKind::Ruby { .. }))
+            .expect("ruby node");
+        let ruby_inline = inlines
+            .iter()
+            .find(|inline| matches!(inline.kind, InlineKind::Ruby { .. }))
+            .expect("ruby inline");
+
+        assert_eq!(ruby_inline.span, ruby_node.span);
+        let InlineKind::Ruby { base, ruby, .. } = &ruby_inline.kind else {
+            unreachable!();
+        };
+        assert_eq!(base[0].span, Span::new(0, 2));
+        assert_eq!(ruby[0].span, Span::new(3, 5));
+        assert!(ruby_inline.span.contains(base[0].span));
+        assert!(ruby_inline.span.contains(ruby[0].span));
+        assert_eq!(
+            Inline::text("同じ", Span::new(0, 2)),
+            Inline::text("同じ", Span::new(10, 12))
+        );
+    }
+
+    #[test]
+    fn inline_ranges_include_their_consumed_markers() {
+        let source = "［＃太字］本文［＃太字終わり］";
+        let nodes = parse(&tokenize(source));
+        let inlines = to_inlines(&nodes);
+        let style = inlines
+            .iter()
+            .find(|inline| matches!(inline.kind, InlineKind::Style { .. }))
+            .expect("inline style");
+        assert_eq!(style.span, span_for_nodes(&nodes));
+        let InlineKind::Style { children, .. } = &style.kind else {
+            unreachable!();
+        };
+        assert!(style.span.contains(children[0].span));
+    }
+
+    #[test]
+    fn block_inline_and_chitsuki_include_their_consumed_source_ranges() {
+        let block_nodes = parse(&tokenize(
+            "前［＃ここから横組み］中［＃ここで横組み終わり］後",
+        ));
+        let block_inlines = to_inlines(&block_nodes);
+        let block_inline = block_inlines
+            .iter()
+            .find(|inline| matches!(inline.kind, InlineKind::BlockInline { .. }))
+            .expect("block inline");
+        assert_eq!(block_inline.span, span_for_nodes(&block_nodes[1..4]));
+        let InlineKind::BlockInline { children, .. } = &block_inline.kind else {
+            unreachable!();
+        };
+        assert!(block_inline.span.contains(children[0].span));
+
+        let chitsuki_nodes = parse(&tokenize("前［＃地付き］末"));
+        let chitsuki_inlines = to_inlines(&chitsuki_nodes);
+        let chitsuki = chitsuki_inlines
+            .iter()
+            .find(|inline| matches!(inline.kind, InlineKind::ChitsukiInline { .. }))
+            .expect("chitsuki inline");
+        assert_eq!(chitsuki.span, span_for_nodes(&chitsuki_nodes[1..]));
+        let InlineKind::ChitsukiInline { children, .. } = &chitsuki.kind else {
+            unreachable!();
+        };
+        assert!(chitsuki.span.contains(children[0].span));
+    }
+
+    #[test]
+    fn annotation_end_preserves_its_node_and_content_spans() {
+        let node = crate::node::Node::new(
+            NodeKind::AnnotationEnd {
+                prefix: "左に「".to_string(),
+                content: vec![crate::node::Node::text("注記", Span::new(6, 8))],
+                suffix: "」の注記付き終わり".to_string(),
+            },
+            Span::new(4, 18),
+        );
+        let inline = inline_from_node(&node).expect("annotation end inline");
+        assert_eq!(inline.span, node.span);
+        let InlineKind::AnnotationEnd { content, .. } = &inline.kind else {
+            unreachable!();
+        };
+        assert_eq!(content[0].span, Span::new(6, 8));
+        assert!(inline.span.contains(content[0].span));
     }
 }

@@ -65,7 +65,7 @@ pub mod tokenizer;
 pub mod zip;
 
 // Re-exports for convenience
-pub use ast::AozoraAst;
+pub use ast::{AozoraAst, Inline, InlineKind};
 pub use char_type::{CharType, CharTypeExt};
 pub use delimiters::{
     ACCENT_BEGIN, ACCENT_END, ACCENT_MARKS, COMMAND_BEGIN, COMMAND_END, GAIJI_MARK, IGETA,

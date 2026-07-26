@@ -2,8 +2,8 @@
 
 作成 2026-07-26（intrinsic 方針で全面改稿）。目的は「ソース位置 span を、トークンから
 Aozora AST の `Inline` まで、**各構文要素が自前で持つ**形で運び、プレビュー↔ソースの
-相互対応・位置精度の高い診断を可能にする」ための設計と段階計画。段1・段2を実装済みで、
-残る対象はInlineのintrinsic化である。
+相互対応・位置精度の高い診断を可能にする」ための設計と段階計画。段1〜段3を実装済みで、
+Token・Node・Inlineはいずれもintrinsic spanを持つ。
 
 関連: [spec-ast.md](spec-ast.md)、[plan-lsp.md](plan-lsp.md)、[plan-neutral-ast.md](plan-neutral-ast.md)。
 
@@ -23,7 +23,7 @@ Aozora AST の `Inline` まで、**各構文要素が自前で持つ**形で運�
 - 位置をフィールドで持つと、splice・合併・分割の多い変換を跨いでも **span は値と一緒に運ばれ**、
   合成/分割の地点だけ計算すればよい。ラッパー方式（各変換で付け直し）より落としにくい。
 
-→ **`Spanned<T>` は本方針では置き換え対象**（直近コミットはブランチ上なので破棄容易）。
+→ **`Spanned<T>` は本方針で全段階を通じて置換済み**。
 
 ## 2. 「実在 span」が厳密に成り立つ境界
 
@@ -135,7 +135,7 @@ intrinsic なら「値に付いた span を運びつつ、下記の地点だけ�
     （`Spanned<Node>` を廃止。span は Node 内）。
   - `resolve_*` を §5 の合併/分割/継承で span 保持対応に（本工事の中心）。
   - `analysis` は `node.span` を直接使う（現行の `Spanned` 経由から移行）。
-- **段3: `Inline{kind,span}` へ intrinsic 化**
+- **段3: `Inline{kind,span}` へ intrinsic 化（完了）**
   - `to_inlines`/`inline_from_node` で node span を Inline に引き継ぐ（範囲畳み込みは合併）。
   - **描画器は `inline.kind` を見る**ため出力不変（span はメタデータ）。
   - `Block::Line{inline: Vec<Inline>}` はそのまま（Inline が span を内包）。
@@ -148,15 +148,11 @@ intrinsic なら「値に付いた span を運びつつ、下記の地点だけ�
 - **段1（Token）**: 中規模。`TokenKind` 化で tokenizer/parser の match・構築が対象。テスト書換多め。
 - **段2（Node）**: **最大工事**。`Node` は parser/resolver/lower/ast/html renderer 全域で使われ、
   `NodeKind` 化＝match・構築が数百箇所。resolve の span 演算実装もここ。**最もリスクが高い段**。
-- **段3（Inline）**: 中規模。`InlineKind` 化で renderer の match が対象（`.kind` 参照へ）。出力不変。
+- **段3（Inline）**: 完了。`InlineKind` 化とrendererの`.kind`参照への移行を行い、出力不変を確認する。
 
 段2 が重いので、**段ごとに独立でオラクル緑を保ちながら**進め、各段を別コミットにする。
-途中で「Token だけ intrinsic・Node/Inline は Spanned 折衷」に切り替える判断も段1完了後に可能。
+## 9. 採用結果
 
-## 9. 未決事項（実装前に確認）
-
-1. carrier は `kind`＋`span` 構造体＋`PartialEq` kind 委譲でよいか（等価は span 無視）。
-2. `Node`→`NodeKind` の大工事（段2）を許容するか。段1（Token）だけ先に入れて評価してから
-   段2 の可否を決める進め方でよいか。
-3. `Hash` 依存は無い想定だが、もしあれば kind のみでハッシュする方針でよいか。
-4. 段ごとに別コミット・オラクル確認、で進めてよいか。
+1. Token・Node・Inlineをすべて`kind`＋`span`の構造体とし、`PartialEq`はkindだけを比較する。
+2. `Hash`依存は無かったため、追加実装は不要だった。
+3. 各段階を独立コミットにし、ワークスペーステストと互換テストで出力不変を確認した。

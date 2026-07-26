@@ -190,7 +190,9 @@ enum BlockKind {
 ### インライン（`Inline`）
 
 ```rust
-enum Inline {
+struct Inline { kind: InlineKind, span: Span }
+
+enum InlineKind {
     Text(String),
     Ruby { base: Vec<Inline>, ruby: Vec<Inline>, direction, keep_gaiji_notes_in_base },
     Style { children, style_type },
@@ -211,6 +213,10 @@ enum Inline {
     BlockInline { kind: BlockKind, children },          // 同一行で開閉するブロック形コマンド
 }
 ```
+
+全Inlineは自前の行内char spanを持つ。Nodeから直接写るInlineはNodeのspanを引き継ぎ、
+開始・終了コマンドを畳む範囲Inlineは消費したマーカーと内容を覆うunion spanを持つ。
+spanは位置メタデータであり、構造比較・HTML／プレーンテキスト描画には影響しない。
 
 補助 enum:
 
