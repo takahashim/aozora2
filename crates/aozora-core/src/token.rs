@@ -1,8 +1,8 @@
 //! 青空文庫形式のトークン型定義
 
 /// ソース行内の**文字（char）単位**の範囲 `[start, end)`（半開区間・0 起点）。
-/// Token と RawAST（`RawLine.nodes[i].span`＝[`Spanned`]）が保持する。byte ではなく
-/// char 数なので、全角文字も1として数える（`line.chars().nth(start)` 等でそのまま使える）。
+/// Token と Node が保持する。byte ではなく char 数なので、全角文字も1として数える
+/// （`line.chars().nth(start)` 等でそのまま使える）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     /// 開始 char オフセット（0 起点・含む）
@@ -24,24 +24,21 @@ impl Span {
     pub fn is_empty(&self) -> bool {
         self.start >= self.end
     }
-}
 
-/// 値に、それが由来するソース行内の char 位置範囲（[`Span`]）を添えた器。
-///
-/// `Node` の intrinsic span 化は次段以降の対象なので、RawAST の生ノード列
-/// （`RawLine.nodes`）では引き続きこの器を使う。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Spanned<T> {
-    /// 中身（現在は [`crate::node::Node`]）。
-    pub node: T,
-    /// `node` のソース行内 char 位置範囲。
-    pub span: Span,
-}
+    /// 2つの範囲を覆う最小の範囲を返す。
+    pub fn union(self, other: Self) -> Self {
+        Self::new(self.start.min(other.start), self.end.max(other.end))
+    }
 
-impl<T> Spanned<T> {
-    /// 値と範囲を組にする。
-    pub fn new(node: T, span: Span) -> Self {
-        Self { node, span }
+    /// `offset`（この範囲の先頭からのchar数）で範囲を2つに分ける。
+    pub fn split_at(self, offset: usize) -> (Self, Self) {
+        let middle = self.start + offset.min(self.len());
+        (Self::new(self.start, middle), Self::new(middle, self.end))
+    }
+
+    /// `other` がこの範囲に含まれるか。
+    pub fn contains(self, other: Self) -> bool {
+        self.start <= other.start && other.end <= self.end
     }
 }
 
@@ -122,6 +119,15 @@ impl PartialEq for Token {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn span_operations_use_char_boundaries() {
+        let span = Span::new(3, 8);
+        assert_eq!(span.split_at(2), (Span::new(3, 5), Span::new(5, 8)));
+        assert_eq!(span.union(Span::new(1, 4)), Span::new(1, 8));
+        assert!(span.contains(Span::new(4, 7)));
+        assert!(!span.contains(Span::new(2, 7)));
+    }
 
     #[test]
     fn test_token_text() {

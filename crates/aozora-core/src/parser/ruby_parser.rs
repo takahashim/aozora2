@@ -4,7 +4,7 @@
 //! 青空文庫形式では、ルビ記号（《》）の直前の同一文字種別の連続を親文字として扱います。
 
 use crate::char_type::{CharType, CharTypeExt};
-use crate::node::Node;
+use crate::node::{Node, NodeKind};
 
 /// ルビ親文字の抽出結果
 #[derive(Debug, Clone, PartialEq)]
@@ -91,7 +91,7 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
     // 参照実装 aozora2html では、注記のようなタグが来た時点で溜めていた親文字が
     // 確定し（RubyBuffer#push_char が文字種 :else で dump_into する）、
     // タグ自身が新しい親文字になる。直前が注記なら注記だけが親文字。
-    if matches!(last_node, Node::Note(_)) {
+    if matches!(&last_node.kind, NodeKind::Note(_)) {
         let (remaining, base) = nodes.split_at(nodes.len() - 1);
         return Some((remaining.to_vec(), base.to_vec()));
     }
@@ -102,13 +102,13 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
     // 例:「公事根源［＃「公事根源」は斜体］《くじこんげん》」→ 親文字は
     // <span class="shatai">公事根源</span>。Note と同じくタグ単独を親文字にする。
     if matches!(
-        last_node,
-        Node::Style { .. }
-            | Node::Tcy { .. }
-            | Node::FontSize { .. }
-            | Node::Keigakomi { .. }
-            | Node::Yokogumi { .. }
-            | Node::Caption { .. }
+        &last_node.kind,
+        NodeKind::Style { .. }
+            | NodeKind::Tcy { .. }
+            | NodeKind::FontSize { .. }
+            | NodeKind::Keigakomi { .. }
+            | NodeKind::Yokogumi { .. }
+            | NodeKind::Caption { .. }
     ) {
         let (remaining, base) = nodes.split_at(nodes.len() - 1);
         return Some((remaining.to_vec(), base.to_vec()));
@@ -127,16 +127,19 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
             continue;
         }
 
-        match node {
-            Node::Text(text) => {
+        match &node.kind {
+            NodeKind::Text(text) => {
                 // テキストノードは文字種別で分割
                 if let Some(result) = extract_ruby_base(text) {
                     if result.char_type == last_char_type {
                         if !result.base.is_empty() {
-                            base_nodes.push(Node::Text(result.base));
+                            let split = text.chars().count() - result.base.chars().count();
+                            base_nodes.push(Node::text(result.base, node.span.split_at(split).1));
                         }
                         if !result.remaining.is_empty() {
-                            remaining_nodes.push(Node::Text(result.remaining));
+                            let split = result.remaining.chars().count();
+                            remaining_nodes
+                                .push(Node::text(result.remaining, node.span.split_at(split).0));
                             found_different_type = true;
                         }
                     } else {
@@ -148,7 +151,7 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
                     remaining_nodes.push(node.clone());
                 }
             }
-            Node::Gaiji { .. } => {
+            NodeKind::Gaiji { .. } => {
                 // 外字は漢字として扱う
                 if last_char_type == CharType::Kanji {
                     base_nodes.push(node.clone());
@@ -157,7 +160,7 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
                     remaining_nodes.push(node.clone());
                 }
             }
-            Node::Accent { .. } => {
+            NodeKind::Accent { .. } => {
                 // アクセント付き文字は半角として扱う
                 if last_char_type == CharType::Hankaku {
                     base_nodes.push(node.clone());
@@ -166,7 +169,7 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
                     remaining_nodes.push(node.clone());
                 }
             }
-            Node::DakutenKatakana { .. } => {
+            NodeKind::DakutenKatakana { .. } => {
                 // 濁点カタカナはカタカナとして扱う
                 if last_char_type == CharType::Katakana {
                     base_nodes.push(node.clone());
@@ -197,6 +200,15 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::token::Span;
+
+    fn text(value: &str) -> Node {
+        Node::text(value, Span::new(0, value.chars().count()))
+    }
+
+    fn node(kind: NodeKind) -> Node {
+        Node::new(kind, Span::new(0, 0))
+    }
 
     #[test]
     fn test_extract_ruby_base_kanji() {
@@ -275,30 +287,30 @@ mod tests {
 
     #[test]
     fn test_extract_ruby_base_from_nodes_simple() {
-        let nodes = vec![Node::text("私の東京")];
+        let nodes = vec![text("私の東京")];
         let (remaining, base) = extract_ruby_base_from_nodes(&nodes).unwrap();
         assert_eq!(remaining.len(), 1);
-        assert!(matches!(&remaining[0], Node::Text(s) if s == "私の"));
+        assert!(matches!(&remaining[0].kind, NodeKind::Text(s) if s == "私の"));
         assert_eq!(base.len(), 1);
-        assert!(matches!(&base[0], Node::Text(s) if s == "東京"));
+        assert!(matches!(&base[0].kind, NodeKind::Text(s) if s == "東京"));
     }
 
     #[test]
     fn test_extract_ruby_base_from_nodes_with_gaiji() {
         let nodes = vec![
-            Node::text("私の"),
-            Node::Gaiji {
+            text("私の"),
+            node(NodeKind::Gaiji {
                 description: "外字".to_string(),
                 unicode: Some("字".to_string()),
                 jis_code: None,
                 had_igeta: true,
-            },
+            }),
         ];
         let (remaining, base) = extract_ruby_base_from_nodes(&nodes).unwrap();
         assert_eq!(remaining.len(), 1);
-        assert!(matches!(&remaining[0], Node::Text(s) if s == "私の"));
+        assert!(matches!(&remaining[0].kind, NodeKind::Text(s) if s == "私の"));
         assert_eq!(base.len(), 1);
-        assert!(matches!(&base[0], Node::Gaiji { .. }));
+        assert!(matches!(&base[0].kind, NodeKind::Gaiji { .. }));
     }
 
     #[test]
@@ -306,29 +318,29 @@ mod tests {
         // 直前がスタイル span（斜体等）なら、そのタグが単独で親文字になる
         // （例:「…。公事根源［＃「公事根源」は斜体］《くじこんげん》」）。
         let nodes = vec![
-            Node::text("持っている。"),
-            Node::Style {
-                children: vec![Node::text("公事根源")],
+            text("持っている。"),
+            node(NodeKind::Style {
+                children: vec![text("公事根源")],
                 style_type: crate::node::StyleType::Italic,
-            },
+            }),
         ];
         let (remaining, base) = extract_ruby_base_from_nodes(&nodes).unwrap();
         assert_eq!(remaining.len(), 1);
-        assert!(matches!(&remaining[0], Node::Text(s) if s == "持っている。"));
+        assert!(matches!(&remaining[0].kind, NodeKind::Text(s) if s == "持っている。"));
         assert_eq!(base.len(), 1);
-        assert!(matches!(&base[0], Node::Style { .. }));
+        assert!(matches!(&base[0].kind, NodeKind::Style { .. }));
     }
 
     #[test]
     fn test_extract_ruby_base_from_nodes_kanji_gaiji() {
         let nodes = vec![
-            Node::text("東"),
-            Node::Gaiji {
+            text("東"),
+            node(NodeKind::Gaiji {
                 description: "京".to_string(),
                 unicode: Some("京".to_string()),
                 jis_code: None,
                 had_igeta: true,
-            },
+            }),
         ];
         let (remaining, base) = extract_ruby_base_from_nodes(&nodes).unwrap();
         assert!(remaining.is_empty());

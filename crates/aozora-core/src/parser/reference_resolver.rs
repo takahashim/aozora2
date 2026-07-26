@@ -3,8 +3,9 @@
 //! 青空文庫形式の「〇〇」に傍点 のようなパターンを解決します。
 //! これらのコマンドは前方のテキストを参照し、装飾を適用します。
 
-use crate::node::{BlockType, Node, RefSpec, RubyDirection};
+use crate::node::{BlockType, Node, NodeKind, RefSpec, RubyDirection};
 use crate::parser::ruby_parser::extract_ruby_base_from_nodes;
+use crate::token::Span;
 use crate::tokenizer::tokenize;
 
 /// ノード列の前方参照を解決
@@ -28,12 +29,12 @@ pub fn resolve_references(nodes: &mut Vec<Node>) {
 pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
-        if let Node::Ruby {
+        if let NodeKind::Ruby {
             children,
             ruby,
             direction,
             ..
-        } = &nodes[i]
+        } = &nodes[i].kind
         {
             if children.is_empty() && !ruby.is_empty() && i > 0 {
                 let ruby_clone = ruby.clone();
@@ -56,17 +57,26 @@ pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
                     nodes.splice(..new_i, remaining.into_iter());
 
                     // Rubyノードを更新（インデックスが変わっているので再計算）
-                    let ruby_idx = nodes
-                        .iter()
-                        .position(|n| matches!(n, Node::Ruby { children: c, .. } if c.is_empty()));
+                    let ruby_idx = nodes.iter().position(
+                        |n| matches!(&n.kind, NodeKind::Ruby { children: c, .. } if c.is_empty()),
+                    );
 
                     if let Some(idx) = ruby_idx {
-                        nodes[idx] = Node::Ruby {
-                            children: base,
-                            ruby: ruby_clone,
-                            direction: direction_clone,
-                            keep_gaiji_notes_in_base: false,
-                        };
+                        let span = base
+                            .iter()
+                            .fold(nodes[idx].span, |span, node| span.union(node.span));
+                        let span = ruby_clone
+                            .iter()
+                            .fold(span, |span, node| span.union(node.span));
+                        nodes[idx] = Node::new(
+                            NodeKind::Ruby {
+                                children: base,
+                                ruby: ruby_clone,
+                                direction: direction_clone,
+                                keep_gaiji_notes_in_base: false,
+                            },
+                            span,
+                        );
                     }
                     continue; // iを増やさない（ノードを操作したので）
                 }
@@ -81,12 +91,12 @@ fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
         // 親文字が空のRubyノードを探す
-        if let Node::Ruby {
+        if let NodeKind::Ruby {
             children,
             ruby,
             direction: _,
             ..
-        } = &nodes[i]
+        } = &nodes[i].kind
         {
             if children.is_empty() && !ruby.is_empty() {
                 // 直前のノードから親文字を抽出
@@ -104,7 +114,13 @@ fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
                         let new_i = nodes.len() - (nodes.len() - to_remove);
 
                         // Rubyノードを更新
-                        if let Some(Node::Ruby { children: c, .. }) = nodes.get_mut(new_i) {
+                        if let Some(Node {
+                            kind: NodeKind::Ruby { children: c, .. },
+                            span,
+                            ..
+                        }) = nodes.get_mut(new_i)
+                        {
+                            *span = base.iter().fold(*span, |span, node| span.union(node.span));
                             *c = base;
                         }
                     }
@@ -122,7 +138,7 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
         // 注記付き範囲の開始を探す
-        if let Node::BlockStart { block_type, .. } = &nodes[i] {
+        if let NodeKind::BlockStart { block_type, .. } = &nodes[i].kind {
             if *block_type == BlockType::AnnotationRange
                 || *block_type == BlockType::LeftAnnotationRange
             {
@@ -132,11 +148,11 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
                 let mut end_idx = None;
                 let mut annotation = None;
                 for j in (i + 1)..nodes.len() {
-                    if let Node::BlockEnd {
+                    if let NodeKind::BlockEnd {
                         block_type: bt,
                         params,
                         ..
-                    } = &nodes[j]
+                    } = &nodes[j].kind
                     {
                         if (*bt == BlockType::AnnotationRange && !is_left)
                             || (*bt == BlockType::LeftAnnotationRange && is_left)
@@ -152,31 +168,41 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
                     // 開始から終了までの間のノードを収集
                     let children: Vec<Node> = nodes[(i + 1)..end_idx].to_vec();
                     // 注記テキストをパース（外字を含む場合があるため）
-                    let annotation_nodes = parse_annotation_text(&annotation);
+                    let range = nodes[i].span.union(nodes[end_idx].span);
+                    let annotation_nodes = parse_annotation_text(&annotation, nodes[end_idx].span);
 
                     if is_left {
                         // 左注記の場合は注記として出力（Ruby版と同様）
                         // 開始マーカー + 内容ノード + 終了マーカー（外字を含む）
                         let mut new_nodes = Vec::new();
-                        new_nodes.push(Node::Note("左に注記付き".to_string()));
+                        new_nodes.push(Node::new(
+                            NodeKind::Note("左に注記付き".to_string()),
+                            nodes[i].span,
+                        ));
                         new_nodes.extend(children);
                         // 終了マーカーは外字を含む可能性があるのでAnnotationEndノードを使用
-                        new_nodes.push(Node::AnnotationEnd {
-                            prefix: "左に「".to_string(),
-                            content: annotation_nodes,
-                            suffix: "」の注記付き終わり".to_string(),
-                        });
+                        new_nodes.push(Node::new(
+                            NodeKind::AnnotationEnd {
+                                prefix: "左に「".to_string(),
+                                content: annotation_nodes,
+                                suffix: "」の注記付き終わり".to_string(),
+                            },
+                            nodes[end_idx].span,
+                        ));
 
                         // 範囲を新しいノード列で置き換え
                         nodes.splice(i..=end_idx, new_nodes.into_iter());
                     } else {
                         // 通常の注記付きはRubyとして出力
-                        let new_node = Node::Ruby {
-                            children,
-                            ruby: annotation_nodes,
-                            direction: RubyDirection::Right,
-                            keep_gaiji_notes_in_base: true,
-                        };
+                        let new_node = Node::new(
+                            NodeKind::Ruby {
+                                children,
+                                ruby: annotation_nodes,
+                                direction: RubyDirection::Right,
+                                keep_gaiji_notes_in_base: true,
+                            },
+                            range,
+                        );
                         // 範囲を新しいノードで置き換え
                         nodes.splice(i..=end_idx, std::iter::once(new_node));
                     }
@@ -211,7 +237,7 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
 fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<String>) {
     let mut i = 0;
     while i < nodes.len() {
-        if let Node::UnresolvedReference { target, spec, raw } = &nodes[i] {
+        if let NodeKind::UnresolvedReference { target, spec, raw } = &nodes[i].kind {
             let target_clone = target.clone();
             let spec_clone = spec.clone();
             let raw_clone = raw.clone();
@@ -227,7 +253,8 @@ fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<S
 
             // 解決できなかった場合は、もとの文字列のまま注記にする
             failed.push(raw_clone.clone());
-            nodes[i] = Node::Note(raw_clone);
+            let span = nodes[i].span;
+            nodes[i] = Node::new(NodeKind::Note(raw_clone), span);
         }
         i += 1;
     }
@@ -243,21 +270,21 @@ fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<S
 
 /// コンテナノードの子ノード列に対して前方参照解決を再帰的に適用する。
 fn resolve_style_references_in_children(node: &mut Node) {
-    match node {
-        Node::Ruby { children, ruby, .. } => {
+    match &mut node.kind {
+        NodeKind::Ruby { children, ruby, .. } => {
             resolve_style_references(children);
             resolve_style_references(ruby);
         }
-        Node::Style { children, .. }
-        | Node::FontSize { children, .. }
-        | Node::Tcy { children }
-        | Node::Keigakomi { children }
-        | Node::Yokogumi { children }
-        | Node::Caption { children }
-        | Node::Midashi { children, .. } => {
+        NodeKind::Style { children, .. }
+        | NodeKind::FontSize { children, .. }
+        | NodeKind::Tcy { children }
+        | NodeKind::Keigakomi { children }
+        | NodeKind::Yokogumi { children }
+        | NodeKind::Caption { children }
+        | NodeKind::Midashi { children, .. } => {
             resolve_style_references(children);
         }
-        Node::Warichu { upper, lower } => {
+        NodeKind::Warichu { upper, lower } => {
             resolve_style_references(upper);
             resolve_style_references(lower);
         }
@@ -279,17 +306,17 @@ struct FrontRefMatch {
 /// 対応: ルビ・装飾（Decorate: 傍点/傍線/太字/斜体/上下付き 等）・文字サイズ・
 /// 縦中横（Dir）・罫囲み・横組み・キャプション・見出し。画像/外字/アクセント/
 /// 訓点（送り仮名・返り点）はスパン不可（参照実装で false になる）。
-fn is_reference_mentioned(node: &Node) -> bool {
+fn is_reference_mentioned(kind: &NodeKind) -> bool {
     matches!(
-        node,
-        Node::Ruby { .. }
-            | Node::Style { .. }
-            | Node::FontSize { .. }
-            | Node::Tcy { .. }
-            | Node::Keigakomi { .. }
-            | Node::Yokogumi { .. }
-            | Node::Caption { .. }
-            | Node::Midashi { .. }
+        kind,
+        NodeKind::Ruby { .. }
+            | NodeKind::Style { .. }
+            | NodeKind::FontSize { .. }
+            | NodeKind::Tcy { .. }
+            | NodeKind::Keigakomi { .. }
+            | NodeKind::Yokogumi { .. }
+            | NodeKind::Caption { .. }
+            | NodeKind::Midashi { .. }
     )
 }
 
@@ -304,8 +331,8 @@ fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Optio
     if target.is_empty() {
         return None;
     }
-    match &nodes[end_idx] {
-        Node::Text(s) => {
+    match &nodes[end_idx].kind {
+        NodeKind::Text(s) => {
             if s.is_empty() {
                 // 空文字列は捨てて同じ対象で1つ前へ。
                 return end_idx
@@ -317,19 +344,23 @@ fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Optio
                 return Some(FrontRefMatch {
                     start_idx: end_idx,
                     prefix: prefix.to_string(),
-                    children: vec![Node::text(target)],
+                    children: vec![Node::text(
+                        target,
+                        nodes[end_idx].span.split_at(prefix.chars().count()).1,
+                    )],
                 });
             }
             // 部分一致: 対象が s で終わる → s は対象の末尾セグメント。残りを再帰。
             if let Some(remaining) = target.strip_suffix(s.as_str()) {
                 let e = end_idx.checked_sub(1)?;
                 let mut sub = search_front_reference(nodes, e, remaining)?;
-                sub.children.push(Node::text(s));
+                sub.children.push(Node::text(s, nodes[end_idx].span));
                 return Some(sub);
             }
             None
         }
-        node if is_reference_mentioned(node) => {
+        kind if is_reference_mentioned(kind) => {
+            let node = &nodes[end_idx];
             let inner = extract_plain_text(node);
             if inner.is_empty() {
                 return None;
@@ -356,10 +387,16 @@ fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Optio
 /// 照合結果をノード列に適用する。start_idx..=（注記の直前）を
 /// [分割前半?][解決済みノード] に置き換え、注記自身を除去する。
 fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch, spec: &RefSpec) {
-    let new_node = spec.resolve(m.children);
+    let reference_span = nodes[*i].span;
+    let combined_span = m
+        .children
+        .iter()
+        .fold(reference_span, |span, node| span.union(node.span));
+    let new_node = spec.resolve(m.children, combined_span);
     let mut replacement = Vec::new();
     if !m.prefix.is_empty() {
-        replacement.push(Node::text(&m.prefix));
+        let prefix_span = nodes[m.start_idx].span.split_at(m.prefix.chars().count()).0;
+        replacement.push(Node::text(&m.prefix, prefix_span));
     }
     replacement.push(new_node);
     let r = replacement.len();
@@ -379,19 +416,19 @@ fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch,
 
 /// ノードからプレーンテキストを抽出
 fn extract_plain_text(node: &Node) -> String {
-    match node {
-        Node::Text(text) => text.clone(),
-        Node::Ruby { children, .. } => {
+    match &node.kind {
+        NodeKind::Text(text) => text.clone(),
+        NodeKind::Ruby { children, .. } => {
             // Rubyノードからは親文字のみ抽出
             children.iter().map(extract_plain_text).collect()
         }
-        Node::Style { children, .. } => children.iter().map(extract_plain_text).collect(),
-        Node::FontSize { children, .. } => children.iter().map(extract_plain_text).collect(),
-        Node::Tcy { children } => children.iter().map(extract_plain_text).collect(),
-        Node::Keigakomi { children } => children.iter().map(extract_plain_text).collect(),
-        Node::Yokogumi { children } => children.iter().map(extract_plain_text).collect(),
-        Node::Caption { children } => children.iter().map(extract_plain_text).collect(),
-        Node::Midashi { children, .. } => children.iter().map(extract_plain_text).collect(),
+        NodeKind::Style { children, .. } => children.iter().map(extract_plain_text).collect(),
+        NodeKind::FontSize { children, .. } => children.iter().map(extract_plain_text).collect(),
+        NodeKind::Tcy { children } => children.iter().map(extract_plain_text).collect(),
+        NodeKind::Keigakomi { children } => children.iter().map(extract_plain_text).collect(),
+        NodeKind::Yokogumi { children } => children.iter().map(extract_plain_text).collect(),
+        NodeKind::Caption { children } => children.iter().map(extract_plain_text).collect(),
+        NodeKind::Midashi { children, .. } => children.iter().map(extract_plain_text).collect(),
         _ => String::new(),
     }
 }
@@ -400,7 +437,7 @@ fn extract_plain_text(node: &Node) -> String {
 ///
 /// 外字表記（`※［＃...］`）を含むテキストをパースして、
 /// テキストノードと外字ノードの列に変換します。
-fn parse_annotation_text(text: &str) -> Vec<Node> {
+fn parse_annotation_text(text: &str, span: Span) -> Vec<Node> {
     use crate::gaiji::{parse_gaiji, GaijiResult};
     use crate::token::TokenKind;
 
@@ -409,38 +446,38 @@ fn parse_annotation_text(text: &str) -> Vec<Node> {
 
     for token in tokens {
         match token.kind {
-            TokenKind::Text(s) => nodes.push(Node::text(&s)),
+            TokenKind::Text(s) => nodes.push(Node::text(&s, span)),
             TokenKind::Gaiji {
                 description,
                 had_igeta,
             } => {
                 let node = match parse_gaiji(&description) {
-                    GaijiResult::Unicode(s) => Node::Gaiji {
+                    GaijiResult::Unicode(s) => NodeKind::Gaiji {
                         description: description.clone(),
                         unicode: Some(s),
                         jis_code: None,
                         had_igeta,
                     },
-                    GaijiResult::JisConverted { jis_code, unicode } => Node::Gaiji {
+                    GaijiResult::JisConverted { jis_code, unicode } => NodeKind::Gaiji {
                         description: description.clone(),
                         unicode: Some(unicode),
                         jis_code: Some(jis_code),
                         had_igeta,
                     },
-                    GaijiResult::JisImage { jis_code } => Node::Gaiji {
+                    GaijiResult::JisImage { jis_code } => NodeKind::Gaiji {
                         description: description.clone(),
                         unicode: None,
                         jis_code: Some(jis_code),
                         had_igeta,
                     },
-                    GaijiResult::Unconvertible => Node::Gaiji {
+                    GaijiResult::Unconvertible => NodeKind::Gaiji {
                         description: description.clone(),
                         unicode: None,
                         jis_code: None,
                         had_igeta,
                     },
                 };
-                nodes.push(node);
+                nodes.push(Node::new(node, span));
             }
             // その他のトークンは無視（注記内にはルビやコマンドは含まれない想定）
             _ => {}
@@ -455,25 +492,33 @@ mod tests {
     use super::*;
     use crate::node::{InlineKind, RubyDirection, StyleType};
 
+    fn text(value: &str) -> Node {
+        Node::text(value, Span::new(0, value.chars().count()))
+    }
+
+    fn node(kind: NodeKind) -> Node {
+        Node::new(kind, Span::new(0, 0))
+    }
+
     #[test]
     fn test_resolve_inline_ruby() {
         let mut nodes = vec![
-            Node::text("私の東京"),
-            Node::Ruby {
+            text("私の東京"),
+            node(NodeKind::Ruby {
                 children: vec![],
-                ruby: vec![Node::text("とうきょう")],
+                ruby: vec![text("とうきょう")],
                 direction: RubyDirection::Right,
                 keep_gaiji_notes_in_base: false,
-            },
+            }),
         ];
 
         resolve_inline_ruby(&mut nodes);
 
         assert_eq!(nodes.len(), 2);
-        assert!(matches!(&nodes[0], Node::Text(s) if s == "私の"));
-        if let Node::Ruby { children, ruby, .. } = &nodes[1] {
-            assert!(matches!(&children[0], Node::Text(s) if s == "東京"));
-            assert!(matches!(&ruby[0], Node::Text(s) if s == "とうきょう"));
+        assert!(matches!(&nodes[0].kind, NodeKind::Text(s) if s == "私の"));
+        if let NodeKind::Ruby { children, ruby, .. } = &nodes[1].kind {
+            assert!(matches!(&children[0].kind, NodeKind::Text(s) if s == "東京"));
+            assert!(matches!(&ruby[0].kind, NodeKind::Text(s) if s == "とうきょう"));
         } else {
             panic!("Expected Ruby node");
         }
@@ -482,21 +527,21 @@ mod tests {
     #[test]
     fn test_resolve_inline_ruby_full_match() {
         let mut nodes = vec![
-            Node::text("東京"),
-            Node::Ruby {
+            text("東京"),
+            node(NodeKind::Ruby {
                 children: vec![],
-                ruby: vec![Node::text("とうきょう")],
+                ruby: vec![text("とうきょう")],
                 direction: RubyDirection::Right,
                 keep_gaiji_notes_in_base: false,
-            },
+            }),
         ];
 
         resolve_inline_ruby(&mut nodes);
 
         assert_eq!(nodes.len(), 1);
-        if let Node::Ruby { children, ruby, .. } = &nodes[0] {
-            assert!(matches!(&children[0], Node::Text(s) if s == "東京"));
-            assert!(matches!(&ruby[0], Node::Text(s) if s == "とうきょう"));
+        if let NodeKind::Ruby { children, ruby, .. } = &nodes[0].kind {
+            assert!(matches!(&children[0].kind, NodeKind::Text(s) if s == "東京"));
+            assert!(matches!(&ruby[0].kind, NodeKind::Text(s) if s == "とうきょう"));
         } else {
             panic!("Expected Ruby node");
         }
@@ -507,18 +552,20 @@ mod tests {
         // 参照実装は対象を直前バッファの接尾辞としてしか照合しないので、
         // 対象「重要」はテキストの末尾になければならない。
         let mut nodes = vec![
-            Node::text("とても重要"),
-            Node::UnresolvedReference {
+            text("とても重要"),
+            node(NodeKind::UnresolvedReference {
                 target: "重要".to_string(),
                 spec: RefSpec::Style(StyleType::SesameDot),
                 raw: "「重要」に傍点".to_string(),
-            },
+            }),
         ];
 
         resolve_style_references(&mut nodes);
 
         // 「重要」が装飾ノードになっているはず
-        assert!(nodes.iter().any(|n| matches!(n, Node::Style { .. })));
+        assert!(nodes
+            .iter()
+            .any(|n| matches!(n.kind, NodeKind::Style { .. })));
     }
 
     #[test]
@@ -528,29 +575,29 @@ mod tests {
         // 従来は MultiNodeExact 適用時に *i を更新せず、直後の参照を skip して
         // いた（同行中見出し＋日付の縦中横が注記化するバグ）。
         let mut nodes = vec![
-            Node::text("前"),
-            Node::text("半"),
-            Node::UnresolvedReference {
+            text("前"),
+            text("半"),
+            node(NodeKind::UnresolvedReference {
                 target: "前半".to_string(),
                 spec: RefSpec::Style(StyleType::Bold),
                 raw: "「前半」は太字".to_string(),
-            },
-            Node::text("４・19"),
-            Node::UnresolvedReference {
+            }),
+            text("４・19"),
+            node(NodeKind::UnresolvedReference {
                 target: "19".to_string(),
                 spec: RefSpec::Inline(InlineKind::Tcy),
                 raw: "「19」は縦中横".to_string(),
-            },
+            }),
         ];
         resolve_style_references(&mut nodes);
         assert!(
-            nodes.iter().any(|n| matches!(n, Node::Tcy { .. })),
+            nodes.iter().any(|n| matches!(n.kind, NodeKind::Tcy { .. })),
             "見出し解決の直後の縦中横参照が解決されていない: {nodes:?}"
         );
         assert!(
             !nodes
                 .iter()
-                .any(|n| matches!(n, Node::UnresolvedReference { .. })),
+                .any(|n| matches!(n.kind, NodeKind::UnresolvedReference { .. })),
             "未解決参照が残っている: {nodes:?}"
         );
     }
@@ -559,21 +606,21 @@ mod tests {
     fn test_resolve_frontref_inside_ruby_base() {
         // ｜瀕［＃「瀕」は太字］《ひん》: ルビ親文字の内側に前方参照がある場合、
         // 親文字ノード列の中で解決してから <rb> に入れる（子への再帰）。
-        let mut nodes = vec![Node::Ruby {
+        let mut nodes = vec![node(NodeKind::Ruby {
             keep_gaiji_notes_in_base: false,
             children: vec![
-                Node::text("瀕"),
-                Node::UnresolvedReference {
+                text("瀕"),
+                node(NodeKind::UnresolvedReference {
                     target: "瀕".to_string(),
                     spec: RefSpec::Style(StyleType::Bold),
                     raw: "「瀕」は太字".to_string(),
-                },
+                }),
             ],
-            ruby: vec![Node::text("ひん")],
+            ruby: vec![text("ひん")],
             direction: RubyDirection::Right,
-        }];
+        })];
         resolve_style_references(&mut nodes);
-        if let Node::Ruby { children, .. } = &nodes[0] {
+        if let NodeKind::Ruby { children, .. } = &nodes[0].kind {
             assert_eq!(
                 children.len(),
                 1,
@@ -581,8 +628,8 @@ mod tests {
             );
             assert!(
                 matches!(
-                    &children[0],
-                    Node::Style {
+                    &children[0].kind,
+                    NodeKind::Style {
                         style_type: StyleType::Bold,
                         ..
                     }
@@ -597,48 +644,44 @@ mod tests {
     #[test]
     fn test_search_front_reference_tail_only() {
         // 末尾（接尾辞）としてのみ照合する。末尾でないノードは対象でも解決しない。
-        let nodes = vec![
-            Node::text("前の文"),
-            Node::text("重要"),
-            Node::text("後の文"),
-        ];
+        let nodes = vec![text("前の文"), text("重要"), text("後の文")];
         // 末尾 "後の文" は "重要" で終わらないので照合失敗。
         assert!(search_front_reference(&nodes, nodes.len() - 1, "重要").is_none());
         // 末尾が対象そのものなら分割（prefix 空）で解決。
         let m = search_front_reference(&nodes[..2], 1, "重要").unwrap();
         assert_eq!(m.start_idx, 1);
         assert_eq!(m.prefix, "");
-        assert!(matches!(&m.children[..], [Node::Text(s)] if s == "重要"));
+        assert!(matches!(&m.children[..], [Node { kind: NodeKind::Text(s), .. }] if s == "重要"));
     }
 
     #[test]
     fn test_search_front_reference_suffix_split() {
         // 途中一致（これは[重要]なことだ）は解決しない＝注記のまま。
-        assert!(search_front_reference(&[Node::text("これは重要なことだ")], 0, "重要").is_none());
+        assert!(search_front_reference(&[text("これは重要なことだ")], 0, "重要").is_none());
 
         // 末尾一致は分割して前半を prefix に残す。
-        let nodes = [Node::text("これは重要")];
+        let nodes = [text("これは重要")];
         let m = search_front_reference(&nodes, 0, "重要").unwrap();
         assert_eq!(m.start_idx, 0);
         assert_eq!(m.prefix, "これは");
-        assert!(matches!(&m.children[..], [Node::Text(s)] if s == "重要"));
+        assert!(matches!(&m.children[..], [Node { kind: NodeKind::Text(s), .. }] if s == "重要"));
     }
 
     #[test]
     fn test_search_front_reference_spans_reference_mentioned() {
         // 対象が「Text＋既解決の装飾ノード」にまたがるとき、装飾ノードを丸ごと
         // 子に取り込んでスパン解決する（例:「Ｘ１」で Ｘ＝Text、１＝下付き）。
-        let subscript = Node::Style {
-            children: vec![Node::text("１")],
+        let subscript = node(NodeKind::Style {
+            children: vec![text("１")],
             style_type: StyleType::Subscript,
-        };
-        let nodes = vec![Node::text("前Ｘ"), subscript];
+        });
+        let nodes = vec![text("前Ｘ"), subscript];
         let m = search_front_reference(&nodes, 1, "Ｘ１").unwrap();
         assert_eq!(m.start_idx, 0);
         assert_eq!(m.prefix, "前");
         // 子は古い順: [Text("Ｘ"), Subscript(１)]
         assert_eq!(m.children.len(), 2);
-        assert!(matches!(&m.children[0], Node::Text(s) if s == "Ｘ"));
-        assert!(matches!(&m.children[1], Node::Style { .. }));
+        assert!(matches!(&m.children[0].kind, NodeKind::Text(s) if s == "Ｘ"));
+        assert!(matches!(&m.children[1].kind, NodeKind::Style { .. }));
     }
 }

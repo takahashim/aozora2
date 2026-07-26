@@ -14,7 +14,7 @@
 
 use crate::ast::{Block, BlockKind};
 use crate::lower::lower_to_blocks_with_diagnostics;
-use crate::node::{BlockType, MidashiLevel, Node, RefSpec};
+use crate::node::{BlockType, MidashiLevel, Node, NodeKind, RefSpec};
 use crate::parser::reference_resolver::resolve_references_collecting_failures;
 use crate::parser::{parse_document_raw, RawLine};
 use std::collections::HashSet;
@@ -143,16 +143,15 @@ pub fn analyze(input: &str) -> Analysis {
         // なので、実際の解決を **1 行 1 回**走らせて、注記化された（＝解決に失敗した）
         // raw の集合を得ておく。個々の参照を再解決する二次コストを避けるため。
         let failed: HashSet<String> = {
-            let mut nodes: Vec<_> = raw.nodes.iter().map(|sn| sn.node.clone()).collect();
+            let mut nodes = raw.nodes.clone();
             resolve_references_collecting_failures(&mut nodes)
                 .into_iter()
                 .collect()
         };
 
-        // 各生ノードには Spanned として char 位置範囲が同居する。
-        for sn in &raw.nodes {
-            let node = &sn.node;
-            let span = &sn.span;
+        // 各生ノードがchar位置範囲を自前で持つ。
+        for node in &raw.nodes {
+            let span = &node.span;
             let range = Range {
                 line: raw.line_no,
                 start: span.start,
@@ -167,9 +166,11 @@ pub fn analyze(input: &str) -> Analysis {
                 });
             }
 
-            match node {
+            match &node.kind {
                 // 実際に解決できず注記化されたものだけ診断（ルビ併用などの偽陽性を除く）。
-                Node::UnresolvedReference { raw: original, .. } if failed.contains(original) => {
+                NodeKind::UnresolvedReference { raw: original, .. }
+                    if failed.contains(original) =>
+                {
                     analysis.diagnostics.push(Diagnostic {
                         range,
                         severity: Severity::Warning,
@@ -178,7 +179,7 @@ pub fn analyze(input: &str) -> Analysis {
                     });
                 }
                 // 面区点にも U+ にも解決できない外字（画像にも文字にもならない）。
-                Node::Gaiji {
+                NodeKind::Gaiji {
                     description,
                     unicode: None,
                     jis_code: None,
@@ -274,13 +275,13 @@ fn block_kind_label(kind: &BlockKind) -> &'static str {
 }
 
 /// 行から見出しを抽出する。見出しには二形式ある:
-/// - インライン `Node::Midashi { level, children }`（同行見出しなど）
+/// - インライン `NodeKind::Midashi { level, children }`（同行見出しなど）
 /// - ブロック `BlockStart{Midashi}` … 本文Text … `BlockEnd{Midashi}`
 fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
     let mut i = 0;
     while i < raw.nodes.len() {
-        match &raw.nodes[i].node {
-            Node::Midashi {
+        match &raw.nodes[i].kind {
+            NodeKind::Midashi {
                 level, children, ..
             } => {
                 out.push(Symbol {
@@ -291,7 +292,7 @@ fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
             }
             // 後置形の見出し `対象［＃「対象」は大見出し］`（未解決の生ノード）。
             // 対象テキストを見出し名にする。
-            Node::UnresolvedReference {
+            NodeKind::UnresolvedReference {
                 spec: RefSpec::Midashi { level, .. },
                 target,
                 ..
@@ -302,7 +303,7 @@ fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
                     text: target.clone(),
                 });
             }
-            Node::BlockStart {
+            NodeKind::BlockStart {
                 block_type: BlockType::Midashi,
                 params,
             } => {
@@ -312,15 +313,15 @@ fn extract_symbols(raw: &RawLine, out: &mut Vec<Symbol>) {
                 let mut j = i + 1;
                 while j < raw.nodes.len() {
                     if matches!(
-                        &raw.nodes[j].node,
-                        Node::BlockEnd {
+                        &raw.nodes[j].kind,
+                        NodeKind::BlockEnd {
                             block_type: BlockType::Midashi,
                             ..
                         }
                     ) {
                         break;
                     }
-                    text.push_str(&raw.nodes[j].node.to_text());
+                    text.push_str(&raw.nodes[j].to_text());
                     j += 1;
                 }
                 let end = j.min(raw.nodes.len().saturating_sub(1));
@@ -348,30 +349,30 @@ fn span_range(raw: &RawLine, from: usize, to: usize) -> Range {
 
 /// ノードをセマンティックトークン種別に分類する。`Text` はハイライト不要なので `None`。
 fn classify(node: &Node) -> Option<SemTokenKind> {
-    match node {
-        Node::Text(_) => None,
-        Node::Ruby { .. } => Some(SemTokenKind::Ruby),
-        Node::Midashi { .. } => Some(SemTokenKind::Heading),
-        Node::Style { .. } => Some(SemTokenKind::Emphasis),
-        Node::Gaiji { .. } => Some(SemTokenKind::Gaiji),
-        Node::Accent { .. } => Some(SemTokenKind::Accent),
-        Node::Img { .. } => Some(SemTokenKind::Image),
+    match &node.kind {
+        NodeKind::Text(_) => None,
+        NodeKind::Ruby { .. } => Some(SemTokenKind::Ruby),
+        NodeKind::Midashi { .. } => Some(SemTokenKind::Heading),
+        NodeKind::Style { .. } => Some(SemTokenKind::Emphasis),
+        NodeKind::Gaiji { .. } => Some(SemTokenKind::Gaiji),
+        NodeKind::Accent { .. } => Some(SemTokenKind::Accent),
+        NodeKind::Img { .. } => Some(SemTokenKind::Image),
         // 後置形の参照（未解決の生ノード）: 見出し・強調は種別色にする。
-        // 例 `序章［＃「序章」は大見出し］` は Node::Midashi ではなく UnresolvedReference。
-        Node::UnresolvedReference {
+        // 例 `序章［＃「序章」は大見出し］` は NodeKind::Midashi ではなく UnresolvedReference。
+        NodeKind::UnresolvedReference {
             spec: RefSpec::Midashi { .. },
             ..
         } => Some(SemTokenKind::Heading),
-        Node::UnresolvedReference {
+        NodeKind::UnresolvedReference {
             spec: RefSpec::Style(_),
             ..
         } => Some(SemTokenKind::Emphasis),
         // ブロック見出しの開始／終了マーカーも見出し色にする。
-        Node::BlockStart {
+        NodeKind::BlockStart {
             block_type: BlockType::Midashi,
             ..
         }
-        | Node::BlockEnd {
+        | NodeKind::BlockEnd {
             block_type: BlockType::Midashi,
             ..
         } => Some(SemTokenKind::Heading),
@@ -400,9 +401,9 @@ fn level_label(level: MidashiLevel) -> &'static str {
 
 /// ホバー用の説明文を作る。値の分かるもの（外字の実文字・ルビ読み等）だけ返す。
 fn describe(node: &Node) -> Option<String> {
-    match node {
-        Node::Ruby { ruby, .. } => Some(format!("ルビ: {}", text_of(ruby))),
-        Node::Gaiji {
+    match &node.kind {
+        NodeKind::Ruby { ruby, .. } => Some(format!("ルビ: {}", text_of(ruby))),
+        NodeKind::Gaiji {
             description,
             unicode,
             jis_code,
@@ -416,20 +417,20 @@ fn describe(node: &Node) -> Option<String> {
             }
             Some(s)
         }
-        Node::Accent { unicode, name, .. } => Some(match unicode {
+        NodeKind::Accent { unicode, name, .. } => Some(match unicode {
             Some(u) => format!("アクセント: {u}（{name}）"),
             None => format!("アクセント: {name}"),
         }),
-        Node::Midashi { level, .. } => Some(format!("{}見出し", level_label(*level))),
-        Node::Img { filename, .. } => Some(format!("画像: {filename}")),
-        Node::BlockStart {
+        NodeKind::Midashi { level, .. } => Some(format!("{}見出し", level_label(*level))),
+        NodeKind::Img { filename, .. } => Some(format!("画像: {filename}")),
+        NodeKind::BlockStart {
             block_type: BlockType::Midashi,
             params,
         } => Some(format!(
             "{}見出し（開始）",
             params.level.map(level_label).unwrap_or("")
         )),
-        Node::BlockEnd {
+        NodeKind::BlockEnd {
             block_type: BlockType::Midashi,
             ..
         } => Some("見出し（終わり）".to_string()),
@@ -519,7 +520,7 @@ mod tests {
 
     #[test]
     fn postfix_heading_becomes_symbol_and_heading_token() {
-        // 最も一般的な後置形見出し（Node::Midashi ではなく UnresolvedReference）。
+        // 最も一般的な後置形見出し（NodeKind::Midashi ではなく UnresolvedReference）。
         let a = analyze("タイトル\n著者\n\n序章［＃「序章」は大見出し］");
         let heading: Vec<_> = a.symbols.iter().filter(|s| s.text == "序章").collect();
         assert_eq!(heading.len(), 1, "後置形見出しがアウトラインに出る");

@@ -13,10 +13,11 @@ pub use reference::{InlineKind, RefSpec};
 pub use style::StyleType;
 
 use crate::char_type::CharType;
+use crate::token::Span;
 
 /// ASTノード
 #[derive(Debug, Clone, PartialEq)]
-pub enum Node {
+pub enum NodeKind {
     /// プレーンテキスト
     Text(String),
 
@@ -200,6 +201,15 @@ pub enum Node {
     },
 }
 
+/// RawASTのノード。各ノードが行内の絶対char spanを自前で持つ。
+#[derive(Debug, Clone)]
+pub struct Node {
+    /// ノード種別と内容。
+    pub kind: NodeKind,
+    /// ソース行内のchar位置範囲。
+    pub span: Span,
+}
+
 /// ルビの方向
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RubyDirection {
@@ -273,9 +283,14 @@ fn extract_level(command: &str) -> Option<u32> {
 }
 
 impl Node {
+    /// 種別とソース位置からノードを作成する。
+    pub fn new(kind: NodeKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+
     /// テキストノードを作成
-    pub fn text(s: impl Into<String>) -> Self {
-        Node::Text(s.into())
+    pub fn text(s: impl Into<String>, span: Span) -> Self {
+        Self::new(NodeKind::Text(s.into()), span)
     }
 
     /// 濁点付き片仮名（面区点 1-7-82〜85）の表示文字。
@@ -292,46 +307,48 @@ impl Node {
 
     /// ノードからプレーンテキストを抽出
     pub fn to_text(&self) -> String {
-        match self {
-            Node::Text(s) => s.clone(),
-            Node::Ruby { children, .. } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Style { children, .. } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Midashi { children, .. } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Gaiji {
+        match &self.kind {
+            NodeKind::Text(s) => s.clone(),
+            NodeKind::Ruby { children, .. } => children.iter().map(|n| n.to_text()).collect(),
+            NodeKind::Style { children, .. } => children.iter().map(|n| n.to_text()).collect(),
+            NodeKind::Midashi { children, .. } => children.iter().map(|n| n.to_text()).collect(),
+            NodeKind::Gaiji {
                 unicode,
                 description,
                 ..
             } => unicode.clone().unwrap_or_else(|| description.clone()),
-            Node::Accent { unicode, name, .. } => unicode.clone().unwrap_or_else(|| name.clone()),
-            Node::Img { alt, .. } => alt.clone(),
-            Node::Tcy { children } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Keigakomi { children } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Yokogumi { children } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Caption { children } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Warichu { upper, lower } => {
+            NodeKind::Accent { unicode, name, .. } => {
+                unicode.clone().unwrap_or_else(|| name.clone())
+            }
+            NodeKind::Img { alt, .. } => alt.clone(),
+            NodeKind::Tcy { children } => children.iter().map(|n| n.to_text()).collect(),
+            NodeKind::Keigakomi { children } => children.iter().map(|n| n.to_text()).collect(),
+            NodeKind::Yokogumi { children } => children.iter().map(|n| n.to_text()).collect(),
+            NodeKind::Caption { children } => children.iter().map(|n| n.to_text()).collect(),
+            NodeKind::Warichu { upper, lower } => {
                 let u: String = upper.iter().map(|n| n.to_text()).collect();
                 let l: String = lower.iter().map(|n| n.to_text()).collect();
                 format!("{u}（{l}）")
             }
-            Node::FontSize { children, .. } => children.iter().map(|n| n.to_text()).collect(),
-            Node::Kaeriten(s) => s.clone(),
-            Node::Okurigana(s) => s.clone(),
-            Node::BlockStart { .. }
-            | Node::BlockEnd { .. }
-            | Node::Note(_)
-            | Node::LineJisage { .. }
-            | Node::AnnotationEnd { .. } => String::new(),
+            NodeKind::FontSize { children, .. } => children.iter().map(|n| n.to_text()).collect(),
+            NodeKind::Kaeriten(s) => s.clone(),
+            NodeKind::Okurigana(s) => s.clone(),
+            NodeKind::BlockStart { .. }
+            | NodeKind::BlockEnd { .. }
+            | NodeKind::Note(_)
+            | NodeKind::LineJisage { .. }
+            | NodeKind::AnnotationEnd { .. } => String::new(),
             // 未解決参照は解決器で必ず解決 or Note 化されるので通常ここには残らない。
             // 残った場合はもとの文字列で表す。
-            Node::UnresolvedReference { raw, .. } => format!("［＃{raw}］"),
-            Node::DakutenKatakana { num } => Node::dakuten_katakana_char(num).to_string(),
+            NodeKind::UnresolvedReference { raw, .. } => format!("［＃{raw}］"),
+            NodeKind::DakutenKatakana { num } => Node::dakuten_katakana_char(num).to_string(),
         }
     }
 
     /// ノードの最後の文字種別を取得（ルビ親文字抽出用）
     pub fn last_char_type(&self) -> Option<CharType> {
-        match self {
-            Node::Text(s) => s.chars().last().map(|c| {
+        match &self.kind {
+            NodeKind::Text(s) => s.chars().last().map(|c| {
                 let ct = crate::char_type::CharType::classify(c);
                 if ct.can_be_ruby_base() {
                     ct
@@ -339,11 +356,18 @@ impl Node {
                     CharType::Else
                 }
             }),
-            Node::Gaiji { .. } => Some(CharType::Kanji),
-            Node::Accent { .. } => Some(CharType::Hankaku),
-            Node::DakutenKatakana { .. } => Some(CharType::Katakana),
+            NodeKind::Gaiji { .. } => Some(CharType::Kanji),
+            NodeKind::Accent { .. } => Some(CharType::Hankaku),
+            NodeKind::DakutenKatakana { .. } => Some(CharType::Katakana),
             _ => None,
         }
+    }
+}
+
+/// span は位置メタデータであり、構造比較には含めない。
+impl PartialEq for Node {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
     }
 }
 
@@ -351,9 +375,13 @@ impl Node {
 mod tests {
     use super::*;
 
+    fn wrapped(kind: NodeKind) -> Node {
+        Node::new(kind, Span::new(0, 0))
+    }
+
     #[test]
     fn test_text_node() {
-        let node = Node::text("こんにちは");
+        let node = Node::text("こんにちは", Span::new(0, 5));
         assert_eq!(node.to_text(), "こんにちは");
     }
 
@@ -376,45 +404,45 @@ mod tests {
 
     #[test]
     fn test_ruby_node() {
-        let node = Node::Ruby {
-            children: vec![Node::text("漢字")],
-            ruby: vec![Node::text("かんじ")],
+        let node = wrapped(NodeKind::Ruby {
+            children: vec![Node::text("漢字", Span::new(0, 2))],
+            ruby: vec![Node::text("かんじ", Span::new(2, 5))],
             direction: RubyDirection::Right,
             keep_gaiji_notes_in_base: false,
-        };
+        });
         assert_eq!(node.to_text(), "漢字");
     }
 
     #[test]
     fn test_gaiji_node_to_text() {
-        let node = Node::Gaiji {
+        let node = wrapped(NodeKind::Gaiji {
             description: "丸印".to_string(),
             unicode: Some("○".to_string()),
             jis_code: None,
             had_igeta: true,
-        };
+        });
         assert_eq!(node.to_text(), "○");
 
-        let node = Node::Gaiji {
+        let node = wrapped(NodeKind::Gaiji {
             description: "不明な文字".to_string(),
             unicode: None,
             jis_code: None,
             had_igeta: true,
-        };
+        });
         assert_eq!(node.to_text(), "不明な文字");
     }
 
     #[test]
     fn test_last_char_type() {
-        let node = Node::text("漢字");
+        let node = Node::text("漢字", Span::new(0, 2));
         assert_eq!(node.last_char_type(), Some(CharType::Kanji));
 
-        let node = Node::Gaiji {
+        let node = wrapped(NodeKind::Gaiji {
             description: "外字".to_string(),
             unicode: None,
             jis_code: None,
             had_igeta: true,
-        };
+        });
         assert_eq!(node.last_char_type(), Some(CharType::Kanji));
     }
 }

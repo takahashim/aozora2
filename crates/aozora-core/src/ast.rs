@@ -13,7 +13,7 @@
 //! ソース文字列や `BlockStart`/`BlockEnd` マーカーを見られないようにする
 //! （architecture.md §4.2 型の壁）。
 
-use crate::node::{FontSizeType, MidashiLevel, MidashiStyle, RubyDirection, StyleType};
+use crate::node::{FontSizeType, MidashiLevel, MidashiStyle, NodeKind, RubyDirection, StyleType};
 
 /// 文書全体の Aozora AST ＝トップレベル [`Block`] の列。
 ///
@@ -31,10 +31,10 @@ pub type AozoraAst = Vec<Block>;
 /// インライン形ブロック（is_block=false の開閉対）の入れ子は後続のブロック
 /// 畳み込みで対にする（Phase B2 続き）。
 pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
-    use crate::node::{BlockType, Node};
-    let out = match node {
-        Node::Text(s) => Inline::Text(s.clone()),
-        Node::Ruby {
+    use crate::node::BlockType;
+    let out = match &node.kind {
+        NodeKind::Text(s) => Inline::Text(s.clone()),
+        NodeKind::Ruby {
             children,
             ruby,
             direction,
@@ -45,14 +45,14 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             direction: *direction,
             keep_gaiji_notes_in_base: *keep_gaiji_notes_in_base,
         },
-        Node::Style {
+        NodeKind::Style {
             children,
             style_type,
         } => Inline::Style {
             children: to_inlines(children),
             style_type: *style_type,
         },
-        Node::Midashi {
+        NodeKind::Midashi {
             children,
             level,
             style,
@@ -61,7 +61,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             level: *level,
             style: *style,
         },
-        Node::Gaiji {
+        NodeKind::Gaiji {
             description,
             unicode,
             jis_code,
@@ -72,7 +72,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             jis_code: jis_code.clone(),
             had_igeta: *had_igeta,
         },
-        Node::Accent {
+        NodeKind::Accent {
             code,
             name,
             unicode,
@@ -81,7 +81,7 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             name: name.clone(),
             unicode: unicode.clone(),
         },
-        Node::Img {
+        NodeKind::Img {
             filename,
             alt,
             is_photo,
@@ -94,19 +94,19 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             width: *width,
             height: *height,
         },
-        Node::Tcy { children } => Inline::Tcy {
+        NodeKind::Tcy { children } => Inline::Tcy {
             children: to_inlines(children),
         },
-        Node::Keigakomi { children } => Inline::Keigakomi {
+        NodeKind::Keigakomi { children } => Inline::Keigakomi {
             children: to_inlines(children),
         },
-        Node::Yokogumi { children } => Inline::Yokogumi {
+        NodeKind::Yokogumi { children } => Inline::Yokogumi {
             children: to_inlines(children),
         },
-        Node::Caption { children } => Inline::Caption {
+        NodeKind::Caption { children } => Inline::Caption {
             children: to_inlines(children),
         },
-        Node::FontSize {
+        NodeKind::FontSize {
             children,
             size_type,
             level,
@@ -115,11 +115,11 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             size_type: *size_type,
             level: *level,
         },
-        Node::Kaeriten(s) => Inline::Kaeriten(s.clone()),
-        Node::Okurigana(s) => Inline::Okurigana(s.clone()),
-        Node::Note(s) => Inline::Note(s.clone()),
-        Node::DakutenKatakana { num } => Inline::DakutenKatakana { num: num.clone() },
-        Node::AnnotationEnd {
+        NodeKind::Kaeriten(s) => Inline::Kaeriten(s.clone()),
+        NodeKind::Okurigana(s) => Inline::Okurigana(s.clone()),
+        NodeKind::Note(s) => Inline::Note(s.clone()),
+        NodeKind::DakutenKatakana { num } => Inline::DakutenKatakana { num: num.clone() },
+        NodeKind::AnnotationEnd {
             prefix,
             content,
             suffix,
@@ -129,14 +129,14 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             suffix: suffix.clone(),
         },
         // 割り注は apply_warichu の状態なし出力。開閉をマーカーとして写す。
-        Node::BlockStart {
+        NodeKind::BlockStart {
             block_type: BlockType::Warichu,
             params,
         } => Inline::Warichu {
             open: true,
             suppress_paren: params.has_open_paren,
         },
-        Node::BlockEnd {
+        NodeKind::BlockEnd {
             block_type: BlockType::Warichu,
             params,
             ..
@@ -144,13 +144,13 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
             open: false,
             suppress_paren: params.has_close_paren,
         },
-        // Node::Warichu{upper,lower} は構築箇所ゼロのデッドコード。念のため無視。
-        Node::Warichu { .. } => return None,
+        // NodeKind::Warichu{upper,lower} は構築箇所ゼロのデッドコード。念のため無視。
+        NodeKind::Warichu { .. } => return None,
         // ブロック構造マーカー・未解決参照はインラインではない（畳み込みが消費）。
-        Node::BlockStart { .. }
-        | Node::BlockEnd { .. }
-        | Node::LineJisage { .. }
-        | Node::UnresolvedReference { .. } => return None,
+        NodeKind::BlockStart { .. }
+        | NodeKind::BlockEnd { .. }
+        | NodeKind::LineJisage { .. }
+        | NodeKind::UnresolvedReference { .. } => return None,
     };
     Some(out)
 }
@@ -162,12 +162,11 @@ pub fn inline_from_node(node: &crate::node::Node) -> Option<Inline> {
 /// 見出しに畳む（参照実装は block stack への push/pop で同行に h4 を開閉する）。
 /// それ以外のブロックマーカーは除外する（畳み込みが別途消費するか、未対応）。
 pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
-    use crate::node::Node;
     let mut out = Vec::new();
     let mut i = 0;
     while i < nodes.len() {
         // 同行に開閉が揃うインライン範囲コマンド（見出し・装飾・大小文字）を畳む。
-        if let Node::BlockStart { block_type, params } = &nodes[i] {
+        if let NodeKind::BlockStart { block_type, params } = &nodes[i].kind {
             if !params.is_block && is_inline_range_type(block_type) {
                 if let Some(end) = find_matching_end(nodes, i, block_type) {
                     let inner = to_inlines(&nodes[i + 1..end]);
@@ -317,12 +316,11 @@ fn find_matching_end(
     start: usize,
     block_type: &crate::node::BlockType,
 ) -> Option<usize> {
-    use crate::node::Node;
     let mut depth = 0usize;
     for (offset, node) in nodes.iter().enumerate().skip(start) {
-        match node {
-            Node::BlockStart { block_type: bt, .. } if bt == block_type => depth += 1,
-            Node::BlockEnd { block_type: bt, .. } if bt == block_type => {
+        match &node.kind {
+            NodeKind::BlockStart { block_type: bt, .. } if bt == block_type => depth += 1,
+            NodeKind::BlockEnd { block_type: bt, .. } if bt == block_type => {
                 depth -= 1;
                 if depth == 0 {
                     return Some(offset);
@@ -461,7 +459,7 @@ pub enum Inline {
         base: Vec<Inline>,
         ruby: Vec<Inline>,
         direction: RubyDirection,
-        /// 親文字内の外字注記を rb 内に残すか（`crate::node::Node::Ruby` 参照）。
+        /// 親文字内の外字注記を rb 内に残すか（`crate::node::NodeKind::Ruby` 参照）。
         keep_gaiji_notes_in_base: bool,
     },
     /// 装飾（傍点・傍線・太字・斜体など）
@@ -475,7 +473,7 @@ pub enum Inline {
         level: MidashiLevel,
         style: MidashiStyle,
     },
-    /// 左注記範囲の終了マーカー（外字を含みうる。`crate::node::Node::AnnotationEnd`）
+    /// 左注記範囲の終了マーカー（外字を含みうる。`crate::node::NodeKind::AnnotationEnd`）
     AnnotationEnd {
         prefix: String,
         content: Vec<Inline>,

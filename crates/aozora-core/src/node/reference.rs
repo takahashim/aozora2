@@ -1,11 +1,12 @@
 //! 前方参照の指定（`「対象」に装飾` の「装飾」部分）を型で表す。
 //!
 //! パーサはコマンドを解析した時点で装飾の種類を型として確定できる。以前は
-//! これを文字列 `spec` に符号化して [`Node::UnresolvedReference`] に載せ、
+//! これを文字列 `spec` に符号化して [`NodeKind::UnresolvedReference`] に載せ、
 //! 解決器が再びパースし直していた（型→文字列→型の往復）。[`RefSpec`] を
 //! ノードに直接載せることで、その往復とマジック文字列による結合をなくす。
 
-use super::{FontSizeType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType};
+use super::{FontSizeType, MidashiLevel, MidashiStyle, Node, NodeKind, RubyDirection, StyleType};
+use crate::token::Span;
 
 /// 前方参照で対象に適用する指定
 #[derive(Debug, Clone, PartialEq)]
@@ -54,8 +55,8 @@ pub enum RefSpec {
 
 impl RefSpec {
     /// 対象の子ノード列にこの指定を適用して最終的なノードを作る
-    pub fn resolve(&self, children: Vec<Node>) -> Node {
-        match self {
+    pub fn resolve(&self, children: Vec<Node>, span: Span) -> Node {
+        let kind = match self {
             // 置換形（annotation_ruby=None）: 対象を外字画像に置き換える（正しい）。
             // 注記形（Some）: 対象を基底・外字入り注記をルビにした Ruby を作る
             // （参照実装は基底を落とすバグだが、ここでは正しくルビにする）。
@@ -63,37 +64,41 @@ impl RefSpec {
                 jis_code,
                 annotation_ruby,
             } => match annotation_ruby {
-                Some(ruby) => Node::Ruby {
+                Some(ruby) => NodeKind::Ruby {
                     children,
-                    ruby: ruby.clone(),
+                    ruby: ruby
+                        .clone()
+                        .into_iter()
+                        .map(|node| inherit_span(node, span))
+                        .collect(),
                     direction: RubyDirection::Right,
                     keep_gaiji_notes_in_base: true,
                 },
-                None => Node::Gaiji {
+                None => NodeKind::Gaiji {
                     description: String::new(),
                     unicode: None,
                     jis_code: Some(jis_code.clone()),
                     had_igeta: false,
                 },
             },
-            RefSpec::Style(style_type) => Node::Style {
+            RefSpec::Style(style_type) => NodeKind::Style {
                 children,
                 style_type: *style_type,
             },
-            RefSpec::Midashi { level, style } => Node::Midashi {
+            RefSpec::Midashi { level, style } => NodeKind::Midashi {
                 children,
                 level: *level,
                 style: *style,
             },
-            RefSpec::FontSize { size_type, level } => Node::FontSize {
+            RefSpec::FontSize { size_type, level } => NodeKind::FontSize {
                 children,
                 size_type: *size_type,
                 level: *level,
             },
-            RefSpec::Inline(inline_kind) => inline_kind.create_node(children),
-            RefSpec::AnnotationRuby { annotation } => Node::Ruby {
+            RefSpec::Inline(inline_kind) => return inline_kind.create_node(children, span),
+            RefSpec::AnnotationRuby { annotation } => NodeKind::Ruby {
                 children,
-                ruby: vec![Node::text(annotation)],
+                ruby: vec![Node::text(annotation, span)],
                 direction: RubyDirection::Right,
                 keep_gaiji_notes_in_base: true,
             },
@@ -104,14 +109,15 @@ impl RefSpec {
                     .take(char_count.max(1))
                     .collect::<Vec<_>>()
                     .join("\u{00a0}");
-                Node::Ruby {
+                NodeKind::Ruby {
                     children,
-                    ruby: vec![Node::text(&repeated)],
+                    ruby: vec![Node::text(&repeated, span)],
                     direction: RubyDirection::Right,
                     keep_gaiji_notes_in_base: true,
                 }
             }
-        }
+        };
+        Node::new(kind, span)
     }
 }
 
@@ -133,17 +139,100 @@ pub enum InlineKind {
 }
 
 impl InlineKind {
-    fn create_node(self, children: Vec<Node>) -> Node {
-        match self {
-            InlineKind::Tcy => Node::Tcy { children },
-            InlineKind::Keigakomi => Node::Keigakomi { children },
-            InlineKind::Yokogumi => Node::Yokogumi { children },
-            InlineKind::Caption => Node::Caption { children },
+    fn create_node(self, children: Vec<Node>, span: Span) -> Node {
+        let kind = match self {
+            InlineKind::Tcy => NodeKind::Tcy { children },
+            InlineKind::Keigakomi => NodeKind::Keigakomi { children },
+            InlineKind::Yokogumi => NodeKind::Yokogumi { children },
+            InlineKind::Caption => NodeKind::Caption { children },
             // 返り点・送り仮名は対象テキストを平文にして sub/sup で包む。
-            InlineKind::Kaeriten => Node::Kaeriten(children.iter().map(|n| n.to_text()).collect()),
+            InlineKind::Kaeriten => {
+                NodeKind::Kaeriten(children.iter().map(|n| n.to_text()).collect())
+            }
             InlineKind::Okurigana => {
-                Node::Okurigana(children.iter().map(|n| n.to_text()).collect())
+                NodeKind::Okurigana(children.iter().map(|n| n.to_text()).collect())
+            }
+        };
+        Node::new(kind, span)
+    }
+}
+
+fn inherit_span(mut node: Node, span: Span) -> Node {
+    node.span = span;
+    match &mut node.kind {
+        NodeKind::Ruby { children, ruby, .. } => {
+            for child in children.iter_mut().chain(ruby) {
+                *child = inherit_span(child.clone(), span);
             }
         }
+        NodeKind::Style { children, .. }
+        | NodeKind::Midashi { children, .. }
+        | NodeKind::Tcy { children }
+        | NodeKind::Keigakomi { children }
+        | NodeKind::Yokogumi { children }
+        | NodeKind::Caption { children }
+        | NodeKind::FontSize { children, .. } => {
+            for child in children {
+                *child = inherit_span(child.clone(), span);
+            }
+        }
+        NodeKind::Warichu { upper, lower } => {
+            for child in upper.iter_mut().chain(lower) {
+                *child = inherit_span(child.clone(), span);
+            }
+        }
+        NodeKind::AnnotationEnd { content, .. } => {
+            for child in content {
+                *child = inherit_span(child.clone(), span);
+            }
+        }
+        _ => {}
+    }
+    node
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_annotation_ruby_inherits_the_reference_span() {
+        let span = Span::new(3, 18);
+        let node = RefSpec::AnnotationRuby {
+            annotation: "ちゅうき".to_string(),
+        }
+        .resolve(vec![Node::text("対象", Span::new(3, 5))], span);
+
+        let NodeKind::Ruby { children, ruby, .. } = node.kind else {
+            panic!("expected ruby");
+        };
+        assert_eq!(node.span, span);
+        assert_eq!(children[0].span, Span::new(3, 5));
+        assert_eq!(ruby[0].span, span);
+    }
+
+    #[test]
+    fn generated_side_note_and_embedded_gaiji_inherit_the_reference_span() {
+        let span = Span::new(4, 22);
+        let side_note = RefSpec::SideNote {
+            annotation: "注".to_string(),
+        }
+        .resolve(vec![Node::text("対象", Span::new(4, 6))], span);
+        let NodeKind::Ruby { ruby, .. } = side_note.kind else {
+            panic!("expected side-note ruby");
+        };
+        assert_eq!(side_note.span, span);
+        assert_eq!(ruby[0].span, span);
+
+        let embedded = RefSpec::EmbeddedGaiji {
+            jis_code: "1-13-25".to_string(),
+            annotation_ruby: Some(vec![Node::text("外字", Span::new(0, 2))]),
+        }
+        .resolve(vec![Node::text("対象", Span::new(4, 6))], span);
+        let NodeKind::Ruby { ruby, .. } = embedded.kind else {
+            panic!("expected embedded-gaiji ruby");
+        };
+        assert_eq!(embedded.span, span);
+        assert_eq!(ruby[0].span, span);
     }
 }

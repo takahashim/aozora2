@@ -75,7 +75,7 @@ pub use document::{
     extract_bibliographical_lines, extract_body_lines, extract_header_info, HeaderInfo,
 };
 pub use node::{
-    BlockParams, BlockType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
+    BlockParams, BlockType, MidashiLevel, MidashiStyle, Node, NodeKind, RubyDirection, StyleType,
 };
 pub use parser::parse;
 pub use token::{Span, Token, TokenKind};

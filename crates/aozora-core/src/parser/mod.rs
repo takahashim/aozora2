@@ -10,8 +10,8 @@ pub mod reference_resolver;
 pub mod ruby_parser;
 mod utils;
 
-use crate::node::{BlockParams, BlockType, InlineKind, Node, RefSpec, RubyDirection};
-use crate::token::{Spanned, Token, TokenKind};
+use crate::node::{BlockParams, BlockType, InlineKind, Node, NodeKind, RefSpec, RubyDirection};
+use crate::token::{Span, Token, TokenKind};
 use crate::tokenizer::tokenize;
 
 pub use command_parser::{parse_command, CommandResult};
@@ -29,8 +29,8 @@ pub struct RawLine {
     /// もとのソース行（くの字点走査などで参照する）
     pub source: String,
     /// この行を忠実にパースした生ノード列（前方参照は未解決）。各ノードには行内 char
-    /// 位置範囲（[`Span`]）が [`Spanned`] として同居する（旧 `nodes`＋並行配列 `spans`）。
-    pub nodes: Vec<Spanned<Node>>,
+    /// 位置範囲（[`Span`]）を各Node自身が保持する。
+    pub nodes: Vec<Node>,
     /// 本文（extract_body_lines 後）における 0 起点の行番号（位置情報）。
     pub line_no: usize,
 }
@@ -49,7 +49,7 @@ pub fn parse_document_raw(lines: &[&str]) -> RawDoc {
         .iter()
         .enumerate()
         .map(|(line_no, line)| {
-            let nodes = parse_raw_nodes_spanned(&tokenize(line));
+            let nodes = parse_raw_nodes(&tokenize(line));
             RawLine {
                 source: (*line).to_string(),
                 nodes,
@@ -72,26 +72,6 @@ pub fn parse_raw_nodes(tokens: &[Token]) -> Vec<Node> {
     nodes
 }
 
-/// `parse_raw_nodes` の span 付き版。各生ノードに、由来トークンの char 位置範囲
-/// （[`Span`]）を [`Spanned`] として添えて返す。1トークンが複数ノードに展開される
-/// 場合、それらは同じトークン span を共有する。
-pub fn parse_raw_nodes_spanned(tokens: &[Token]) -> Vec<Spanned<Node>> {
-    let mut nodes = Vec::new();
-    let mut spans = Vec::new();
-    for (i, token) in tokens.iter().enumerate() {
-        let parsed = parse_token_with_context(token, &nodes, tokens, i);
-        for n in parsed {
-            nodes.push(n);
-            spans.push(token.span);
-        }
-    }
-    nodes
-        .into_iter()
-        .zip(spans)
-        .map(|(node, span)| Spanned::new(node, span))
-        .collect()
-}
-
 /// トークン列をノード列にパースし、行内で完結する前方参照を解決する
 /// （[`parse_raw_nodes`] → [`resolve_references`] の簡便合成）。
 ///
@@ -112,7 +92,7 @@ pub fn parse(tokens: &[Token]) -> Vec<Node> {
 /// 直前のノードがテキストで `（` で終わるかチェック
 fn has_open_paren_before(nodes: &[Node]) -> bool {
     nodes.last().map_or(false, |node| {
-        if let Node::Text(s) = node {
+        if let NodeKind::Text(s) = &node.kind {
             s.ends_with('（')
         } else {
             false
@@ -138,7 +118,8 @@ fn parse_token_with_context(
     tokens: &[Token],
     current_index: usize,
 ) -> Vec<Node> {
-    match &token.kind {
+    let kinds = match &token.kind {
+        TokenKind::Accent { children } => return apply_accent_to_nodes(parse_tokens(children)),
         TokenKind::Command { content } => {
             vec![parse_command_to_node_with_context(
                 content,
@@ -147,20 +128,24 @@ fn parse_token_with_context(
                 current_index,
             )]
         }
-        _ => parse_token(token),
-    }
+        _ => parse_token_kinds(token),
+    };
+    kinds
+        .into_iter()
+        .map(|kind| Node::new(kind, token.span))
+        .collect()
 }
 
 /// 単一のトークンをノード（複数可）に変換
-fn parse_token(token: &Token) -> Vec<Node> {
+fn parse_token_kinds(token: &Token) -> Vec<NodeKind> {
     match &token.kind {
-        TokenKind::Text(text) => vec![Node::Text(text.clone())],
+        TokenKind::Text(text) => vec![NodeKind::Text(text.clone())],
 
         TokenKind::Ruby { children } => {
             // ルビの親文字はここでは未解決
             // 後でreference_resolverで処理される
             let ruby_nodes = parse_tokens(children);
-            vec![Node::Ruby {
+            vec![NodeKind::Ruby {
                 children: vec![],
                 ruby: ruby_nodes,
                 direction: RubyDirection::Right,
@@ -179,11 +164,11 @@ fn parse_token(token: &Token) -> Vec<Node> {
             // 1つ置いて非空にし、参照実装同様に空親文字のルビ（<rb></rb>）にする
             // （例:「一番向｜《むか》」→ 一番向 は本文、親文字は空）。
             let base = if base_nodes.is_empty() {
-                vec![Node::Text(String::new())]
+                vec![Node::text(String::new(), token.span)]
             } else {
                 base_nodes
             };
-            vec![Node::Ruby {
+            vec![NodeKind::Ruby {
                 children: base,
                 ruby: ruby_nodes,
                 direction: RubyDirection::Right,
@@ -198,14 +183,8 @@ fn parse_token(token: &Token) -> Vec<Node> {
             had_igeta,
         } => vec![parse_gaiji_to_node(description, *had_igeta)],
 
-        TokenKind::Accent { children } => {
-            // アクセント内の子ノードを描画する。従来は全子ノードを to_text() で
-            // 平坦化してから parse_accent していたため、内側の外字（※［＃…］）が
-            // 記述文字列に潰れて生テキストとして出ていた（例:〔…au ※［＃ローマ数字
-            // 19、37-下-11］e siècle〕）。テキストノードだけにアクセント変換を掛け、
-            // 外字などテキスト以外のノードはそのまま残す。アクセント列（e＋アクセント）
-            // は同一テキストノード内に収まるので分割して処理しても取りこぼさない。
-            apply_accent_to_nodes(parse_tokens(children))
+        TokenKind::Accent { .. } => {
+            unreachable!("accent tokens are handled before kind conversion")
         }
     }
 }
@@ -217,49 +196,93 @@ fn parse_token(token: &Token) -> Vec<Node> {
 fn apply_accent_to_nodes(nodes: Vec<Node>) -> Vec<Node> {
     use crate::accent::{parse_accent, AccentPart};
     let mut result = Vec::new();
-    for node in nodes {
-        match node {
-            Node::Text(s) => {
+    for Node { kind, span } in nodes {
+        match kind {
+            NodeKind::Text(s) => {
+                let chars: Vec<char> = s.chars().collect();
+                let mut offset = 0;
                 for part in parse_accent(&s) {
                     match part {
-                        AccentPart::Text(t) => result.push(Node::Text(t)),
+                        AccentPart::Text(t) => {
+                            let width = t.chars().count();
+                            result.push(Node::text(t, span_slice(span, offset, width)));
+                            offset += width;
+                        }
                         AccentPart::Accent {
                             jis_code,
                             name,
                             unicode,
-                        } => result.push(Node::Accent {
-                            code: jis_code,
-                            name,
-                            unicode: Some(unicode),
-                        }),
+                        } => {
+                            let width = accent_source_width(&chars[offset..], &unicode);
+                            result.push(Node::new(
+                                NodeKind::Accent {
+                                    code: jis_code,
+                                    name,
+                                    unicode: Some(unicode),
+                                },
+                                span_slice(span, offset, width),
+                            ));
+                            offset += width;
+                        }
                     }
                 }
             }
             // ルビの親文字にも再帰的にアクセント変換を適用する。
-            Node::Ruby {
+            NodeKind::Ruby {
                 children,
                 ruby,
                 direction,
                 keep_gaiji_notes_in_base,
-            } => result.push(Node::Ruby {
-                children: apply_accent_to_nodes(children),
-                ruby,
-                direction,
-                keep_gaiji_notes_in_base,
-            }),
-            other => result.push(other),
+            } => result.push(Node::new(
+                NodeKind::Ruby {
+                    children: apply_accent_to_nodes(children),
+                    ruby,
+                    direction,
+                    keep_gaiji_notes_in_base,
+                },
+                span,
+            )),
+            other => result.push(Node::new(other, span)),
         }
     }
     result
 }
 
+fn span_slice(span: Span, offset: usize, width: usize) -> Span {
+    let (_, suffix) = span.split_at(offset);
+    suffix.split_at(width).0
+}
+
+/// `parse_accent` が 2/3 文字の入力を 1 つのアクセント文字へ畳むときの、
+/// 元入力側の幅を求める。3文字リガチャが優先される規則は `parse_accent` と同じ。
+fn accent_source_width(chars: &[char], unicode: &str) -> usize {
+    for width in [3, 2] {
+        if chars.len() >= width {
+            let candidate: String = chars[..width].iter().collect();
+            if crate::accent::convert_accent(&candidate) == unicode {
+                return width;
+            }
+        }
+    }
+    unreachable!("accent part must correspond to a 2- or 3-char source sequence")
+}
+
 /// トークン列をノード列に変換（再帰用、前方参照解決なし）
 fn parse_tokens(tokens: &[Token]) -> Vec<Node> {
-    tokens.iter().flat_map(parse_token).collect()
+    tokens
+        .iter()
+        .flat_map(|token| match &token.kind {
+            TokenKind::Accent { children } => apply_accent_to_nodes(parse_tokens(children)),
+            _ => parse_token_kinds(token)
+                .into_iter()
+                .map(|kind| Node::new(kind, token.span))
+                .collect(),
+        })
+        .collect()
 }
 
 /// コマンドをノードに変換
-fn parse_command_to_node(content: &str) -> Node {
+fn parse_command_to_node(content: &str) -> NodeKind {
     use command_parser::CommandResult;
 
     match parse_command(content) {
@@ -267,7 +290,7 @@ fn parse_command_to_node(content: &str) -> Node {
             target,
             connector: _,
             style_type,
-        } => Node::UnresolvedReference {
+        } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Style(style_type),
             raw: content.to_string(),
@@ -285,7 +308,7 @@ fn parse_command_to_node(content: &str) -> Node {
                 .and_then(|s| s.strip_prefix('「'))
                 .and_then(|s| s.strip_suffix('」'))
                 .map(|inner| parse(&tokenize(inner)));
-            Node::UnresolvedReference {
+            NodeKind::UnresolvedReference {
                 target,
                 // KutenGaiji は句点コードが取れたときだけ作られるので必ず Some
                 spec: RefSpec::EmbeddedGaiji {
@@ -300,7 +323,7 @@ fn parse_command_to_node(content: &str) -> Node {
             target,
             level,
             style,
-        } => Node::UnresolvedReference {
+        } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Midashi { level, style },
             raw: content.to_string(),
@@ -310,26 +333,28 @@ fn parse_command_to_node(content: &str) -> Node {
             target,
             size_type,
             level,
-        } => Node::UnresolvedReference {
+        } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::FontSize { size_type, level },
             raw: content.to_string(),
         },
 
-        CommandResult::BlockStart { block_type, params } => Node::BlockStart { block_type, params },
+        CommandResult::BlockStart { block_type, params } => {
+            NodeKind::BlockStart { block_type, params }
+        }
 
         CommandResult::BlockEnd {
             block_type,
             explicit,
-        } => Node::BlockEnd {
+        } => NodeKind::BlockEnd {
             block_type,
             params: BlockParams::default(),
             explicit_close: explicit,
         },
 
-        CommandResult::LineIndent { width } => Node::LineJisage { width },
+        CommandResult::LineIndent { width } => NodeKind::LineJisage { width },
 
-        CommandResult::LineChitsuki { width } => Node::BlockStart {
+        CommandResult::LineChitsuki { width } => NodeKind::BlockStart {
             block_type: BlockType::Chitsuki,
             params: BlockParams {
                 width: if width > 0 { Some(width) } else { None },
@@ -337,14 +362,14 @@ fn parse_command_to_node(content: &str) -> Node {
             },
         },
 
-        CommandResult::Note(text) => Node::Note(text),
+        CommandResult::Note(text) => NodeKind::Note(text),
 
         CommandResult::Image {
             filename,
             alt,
             width,
             height,
-        } => Node::Img {
+        } => NodeKind::Img {
             filename,
             // 参照実装 exec_img_command は説明に「写真」が入っていれば写真扱い。
             // CSSクラス名の選択はレンダラに委ねる。
@@ -354,27 +379,27 @@ fn parse_command_to_node(content: &str) -> Node {
             height,
         },
 
-        CommandResult::Kaeriten(s) => Node::Kaeriten(s),
+        CommandResult::Kaeriten(s) => NodeKind::Kaeriten(s),
 
-        CommandResult::Okurigana(s) => Node::Okurigana(s),
+        CommandResult::Okurigana(s) => NodeKind::Okurigana(s),
 
-        CommandResult::TcyStart => Node::BlockStart {
+        CommandResult::TcyStart => NodeKind::BlockStart {
             block_type: BlockType::Tcy,
             params: BlockParams::default(),
         },
 
-        CommandResult::TcyEnd => Node::BlockEnd {
+        CommandResult::TcyEnd => NodeKind::BlockEnd {
             block_type: BlockType::Tcy,
             params: BlockParams::default(),
             explicit_close: false,
         },
 
-        CommandResult::WarichuStart => Node::BlockStart {
+        CommandResult::WarichuStart => NodeKind::BlockStart {
             block_type: BlockType::Warichu,
             params: BlockParams::default(),
         },
 
-        CommandResult::WarichuEnd => Node::BlockEnd {
+        CommandResult::WarichuEnd => NodeKind::BlockEnd {
             block_type: BlockType::Warichu,
             params: BlockParams::default(),
             explicit_close: false,
@@ -382,63 +407,63 @@ fn parse_command_to_node(content: &str) -> Node {
 
         CommandResult::LeftRuby { target, ruby } => {
             // Ruby版と同様、左ルビは注記として出力（未実装機能）
-            Node::Note(format!("「{target}」の左に「{ruby}」のルビ"))
+            NodeKind::Note(format!("「{target}」の左に「{ruby}」のルビ"))
         }
 
-        CommandResult::AnnotationRuby { target, annotation } => Node::UnresolvedReference {
+        CommandResult::AnnotationRuby { target, annotation } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::AnnotationRuby { annotation },
             raw: content.to_string(),
         },
 
-        CommandResult::InlineTcy { target } => Node::UnresolvedReference {
+        CommandResult::InlineTcy { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Tcy),
             raw: content.to_string(),
         },
 
-        CommandResult::InlineKeigakomi { target } => Node::UnresolvedReference {
+        CommandResult::InlineKeigakomi { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Keigakomi),
             raw: content.to_string(),
         },
 
-        CommandResult::InlineYokogumi { target } => Node::UnresolvedReference {
+        CommandResult::InlineYokogumi { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Yokogumi),
             raw: content.to_string(),
         },
 
-        CommandResult::InlineCaption { target } => Node::UnresolvedReference {
+        CommandResult::InlineCaption { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Caption),
             raw: content.to_string(),
         },
 
-        CommandResult::InlineKaeriten { target } => Node::UnresolvedReference {
+        CommandResult::InlineKaeriten { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Kaeriten),
             raw: content.to_string(),
         },
 
-        CommandResult::InlineOkurigana { target } => Node::UnresolvedReference {
+        CommandResult::InlineOkurigana { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Okurigana),
             raw: content.to_string(),
         },
 
-        CommandResult::CaptionStart => Node::BlockStart {
+        CommandResult::CaptionStart => NodeKind::BlockStart {
             block_type: BlockType::Caption,
             params: BlockParams::default(),
         },
 
-        CommandResult::CaptionEnd => Node::BlockEnd {
+        CommandResult::CaptionEnd => NodeKind::BlockEnd {
             block_type: BlockType::Caption,
             params: BlockParams::default(),
             explicit_close: false,
         },
 
-        CommandResult::StyleStart { style_type } => Node::BlockStart {
+        CommandResult::StyleStart { style_type } => NodeKind::BlockStart {
             block_type: BlockType::Style,
             params: BlockParams {
                 style_type: Some(style_type),
@@ -446,7 +471,7 @@ fn parse_command_to_node(content: &str) -> Node {
             },
         },
 
-        CommandResult::StyleEnd { style_type } => Node::BlockEnd {
+        CommandResult::StyleEnd { style_type } => NodeKind::BlockEnd {
             block_type: BlockType::Style,
             params: BlockParams {
                 style_type: Some(style_type),
@@ -455,17 +480,17 @@ fn parse_command_to_node(content: &str) -> Node {
             explicit_close: false,
         },
 
-        CommandResult::AnnotationRangeStart => Node::BlockStart {
+        CommandResult::AnnotationRangeStart => NodeKind::BlockStart {
             block_type: BlockType::AnnotationRange,
             params: BlockParams::default(),
         },
 
-        CommandResult::LeftAnnotationRangeStart => Node::BlockStart {
+        CommandResult::LeftAnnotationRangeStart => NodeKind::BlockStart {
             block_type: BlockType::LeftAnnotationRange,
             params: BlockParams::default(),
         },
 
-        CommandResult::AnnotationRangeEnd { annotation } => Node::BlockEnd {
+        CommandResult::AnnotationRangeEnd { annotation } => NodeKind::BlockEnd {
             block_type: BlockType::AnnotationRange,
             params: BlockParams {
                 annotation: Some(annotation),
@@ -474,7 +499,7 @@ fn parse_command_to_node(content: &str) -> Node {
             explicit_close: false,
         },
 
-        CommandResult::LeftAnnotationRangeEnd { annotation } => Node::BlockEnd {
+        CommandResult::LeftAnnotationRangeEnd { annotation } => NodeKind::BlockEnd {
             block_type: BlockType::LeftAnnotationRange,
             params: BlockParams {
                 annotation: Some(annotation),
@@ -483,13 +508,13 @@ fn parse_command_to_node(content: &str) -> Node {
             explicit_close: false,
         },
 
-        CommandResult::SideNote { target, annotation } => Node::UnresolvedReference {
+        CommandResult::SideNote { target, annotation } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::SideNote { annotation },
             raw: content.to_string(),
         },
 
-        CommandResult::Unknown(text) => Node::Note(text),
+        CommandResult::Unknown(text) => NodeKind::Note(text),
     }
 }
 
@@ -499,14 +524,14 @@ fn parse_command_to_node_with_context(
     nodes: &[Node],
     tokens: &[Token],
     current_index: usize,
-) -> Node {
+) -> NodeKind {
     use command_parser::CommandResult;
 
     match parse_command(content) {
         CommandResult::WarichuStart => {
             let mut params = BlockParams::default();
             params.has_open_paren = has_open_paren_before(nodes);
-            Node::BlockStart {
+            NodeKind::BlockStart {
                 block_type: BlockType::Warichu,
                 params,
             }
@@ -515,7 +540,7 @@ fn parse_command_to_node_with_context(
         CommandResult::WarichuEnd => {
             let mut params = BlockParams::default();
             params.has_close_paren = has_close_paren_after(tokens, current_index);
-            Node::BlockEnd {
+            NodeKind::BlockEnd {
                 block_type: BlockType::Warichu,
                 params,
                 explicit_close: false,
@@ -528,34 +553,128 @@ fn parse_command_to_node_with_context(
 }
 
 /// 外字をノードに変換
-fn parse_gaiji_to_node(description: &str, had_igeta: bool) -> Node {
+fn parse_gaiji_to_node(description: &str, had_igeta: bool) -> NodeKind {
     use crate::gaiji::{parse_gaiji, GaijiResult};
 
     match parse_gaiji(description) {
-        GaijiResult::Unicode(s) => Node::Gaiji {
+        GaijiResult::Unicode(s) => NodeKind::Gaiji {
             description: description.to_string(),
             unicode: Some(s),
             jis_code: None,
             had_igeta,
         },
-        GaijiResult::JisConverted { jis_code, unicode } => Node::Gaiji {
+        GaijiResult::JisConverted { jis_code, unicode } => NodeKind::Gaiji {
             description: description.to_string(),
             unicode: Some(unicode),
             jis_code: Some(jis_code),
             had_igeta,
         },
-        GaijiResult::JisImage { jis_code } => Node::Gaiji {
+        GaijiResult::JisImage { jis_code } => NodeKind::Gaiji {
             description: description.to_string(),
             unicode: None,
             jis_code: Some(jis_code),
             had_igeta,
         },
-        GaijiResult::Unconvertible => Node::Gaiji {
+        GaijiResult::Unconvertible => NodeKind::Gaiji {
             description: description.to_string(),
             unicode: None,
             jis_code: None,
             had_igeta,
         },
+    }
+}
+
+#[cfg(test)]
+mod intrinsic_span_tests {
+    use super::*;
+    use crate::token::Span;
+    use crate::tokenizer::tokenize;
+
+    #[test]
+    fn parser_preserves_token_spans_and_ignores_them_for_equality() {
+        let nodes = parse_raw_nodes(&tokenize("本文※［＃「丸印」、U+25CB］"));
+        assert_eq!(nodes[0].span, Span::new(0, 2));
+        assert_eq!(nodes[1].span, Span::new(2, 17));
+        assert!(matches!(nodes[0].kind, NodeKind::Text(ref text) if text == "本文"));
+
+        let left = Node::text("同じ", Span::new(0, 2));
+        let right = Node::text("同じ", Span::new(10, 12));
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn implicit_ruby_unions_base_and_reading_spans() {
+        let mut nodes = parse_raw_nodes(&tokenize("東京《とう》"));
+        resolve_references(&mut nodes);
+        let ruby_node = nodes
+            .iter()
+            .find(|node| matches!(node.kind, NodeKind::Ruby { .. }))
+            .expect("ruby node");
+        assert_eq!(ruby_node.span, Span::new(0, 6));
+        let NodeKind::Ruby { children, ruby, .. } = &ruby_node.kind else {
+            unreachable!();
+        };
+        assert_eq!(children[0].span, Span::new(0, 2));
+        assert_eq!(ruby[0].span, Span::new(3, 5));
+        assert!(ruby_node.span.contains(children[0].span));
+        assert!(ruby_node.span.contains(ruby[0].span));
+    }
+
+    #[test]
+    fn accent_split_nodes_keep_their_source_slices() {
+        let nodes = parse_raw_nodes(&tokenize("〔a e'〕"));
+        assert_eq!(nodes.len(), 2);
+        assert!(matches!(&nodes[0].kind, NodeKind::Text(text) if text == "a "));
+        assert_eq!(nodes[0].span, Span::new(1, 3));
+        assert!(
+            matches!(&nodes[1].kind, NodeKind::Accent { unicode: Some(text), .. } if text == "é")
+        );
+        assert_eq!(nodes[1].span, Span::new(3, 5));
+    }
+
+    #[test]
+    fn front_reference_splits_text_and_unions_the_command_span() {
+        let tokens = tokenize("これは重要［＃「重要」は太字］");
+        let command_span = tokens[1].span;
+        let mut nodes = parse_raw_nodes(&tokens);
+        resolve_references(&mut nodes);
+
+        assert!(matches!(&nodes[0].kind, NodeKind::Text(text) if text == "これは"));
+        assert_eq!(nodes[0].span, Span::new(0, 3));
+        let NodeKind::Style { children, .. } = &nodes[1].kind else {
+            panic!("expected a style node: {nodes:?}");
+        };
+        assert_eq!(children[0].span, Span::new(3, 5));
+        assert_eq!(nodes[1].span, Span::new(3, command_span.end));
+        assert!(nodes[1].span.contains(children[0].span));
+    }
+
+    #[test]
+    fn unresolved_reference_keeps_its_command_span() {
+        let tokens = tokenize("本文［＃「一致しない」は太字］");
+        let command_span = tokens[1].span;
+        let mut nodes = parse_raw_nodes(&tokens);
+        resolve_references(&mut nodes);
+
+        assert!(matches!(&nodes[1].kind, NodeKind::Note(_)));
+        assert_eq!(nodes[1].span, command_span);
+    }
+
+    #[test]
+    fn annotation_range_unions_markers_and_inherits_the_end_marker_span() {
+        let tokens = tokenize("［＃注記付き］本文［＃「注記」の注記付き終わり］");
+        let start_span = tokens[0].span;
+        let end_span = tokens[2].span;
+        let mut nodes = parse_raw_nodes(&tokens);
+        resolve_references(&mut nodes);
+
+        let NodeKind::Ruby { children, ruby, .. } = &nodes[0].kind else {
+            panic!("expected annotation ruby: {nodes:?}");
+        };
+        assert_eq!(nodes[0].span, start_span.union(end_span));
+        assert_eq!(children[0].span, Span::new(start_span.end, end_span.start));
+        assert_eq!(ruby[0].span, end_span);
+        assert!(nodes[0].span.contains(ruby[0].span));
     }
 }
 
@@ -569,17 +688,19 @@ mod tests {
         let tokens = tokenize("こんにちは");
         let nodes = parse(&tokens);
         assert_eq!(nodes.len(), 1);
-        assert!(matches!(&nodes[0], Node::Text(s) if s == "こんにちは"));
+        assert!(matches!(&nodes[0].kind, NodeKind::Text(s) if s == "こんにちは"));
     }
 
     #[test]
     fn test_accent_preserves_inner_gaiji() {
-        // アクセント〔…〕の中の外字 ※［＃…］ は Node::Gaiji として保持され、
+        // アクセント〔…〕の中の外字 ※［＃…］ は NodeKind::Gaiji として保持され、
         // 記述文字列の生テキストに潰れない。従来は to_text() 平坦化で潰れていた。
         let tokens = tokenize("〔a※［＃ローマ数字19、37-下-11］e´〕");
         let nodes = parse(&tokens);
         // どこかに Gaiji ノードが1つ残っていること。
-        let has_gaiji = nodes.iter().any(|n| matches!(n, Node::Gaiji { .. }));
+        let has_gaiji = nodes
+            .iter()
+            .any(|n| matches!(n.kind, NodeKind::Gaiji { .. }));
         assert!(
             has_gaiji,
             "アクセント内の外字が Gaiji ノードとして残っていない: {nodes:?}"
@@ -587,7 +708,7 @@ mod tests {
         // 記述文字列が生テキストとして紛れ込んでいないこと。
         let has_raw_desc = nodes
             .iter()
-            .any(|n| matches!(n, Node::Text(s) if s.contains("37-下-11")));
+            .any(|n| matches!(&n.kind, NodeKind::Text(s) if s.contains("37-下-11")));
         assert!(
             !has_raw_desc,
             "外字の記述が生テキストになっている: {nodes:?}"
@@ -597,14 +718,14 @@ mod tests {
     #[test]
     fn test_accent_applies_to_ruby_base() {
         // アクセントブロック内のプレフィックスルビ親文字（例:〔｜Cafe'《…》〕の
-        // Cafe'）にもアクセント変換を適用し、e´ 等を Node::Accent（外字画像）にする。
+        // Cafe'）にもアクセント変換を適用し、e´ 等を NodeKind::Accent（外字画像）にする。
         let tokens = tokenize("〔｜a`b《ルビ》〕");
         let nodes = parse(&tokens);
         // ルビの親文字の中にアクセントノードがあること。
-        let base_has_accent = nodes.iter().any(|n| match n {
-            Node::Ruby { children, .. } => {
-                children.iter().any(|c| matches!(c, Node::Accent { .. }))
-            }
+        let base_has_accent = nodes.iter().any(|n| match &n.kind {
+            NodeKind::Ruby { children, .. } => children
+                .iter()
+                .any(|c| matches!(c.kind, NodeKind::Accent { .. })),
             _ => false,
         });
         assert!(
@@ -618,15 +739,15 @@ mod tests {
         let tokens = tokenize("｜東京《とうきょう》");
         let nodes = parse(&tokens);
         assert_eq!(nodes.len(), 1);
-        if let Node::Ruby {
+        if let NodeKind::Ruby {
             children,
             ruby,
             direction,
             ..
-        } = &nodes[0]
+        } = &nodes[0].kind
         {
-            assert!(matches!(&children[0], Node::Text(s) if s == "東京"));
-            assert!(matches!(&ruby[0], Node::Text(s) if s == "とうきょう"));
+            assert!(matches!(&children[0].kind, NodeKind::Text(s) if s == "東京"));
+            assert!(matches!(&ruby[0].kind, NodeKind::Text(s) if s == "とうきょう"));
             assert_eq!(*direction, RubyDirection::Right);
         } else {
             panic!("Expected Ruby node");
@@ -642,14 +763,14 @@ mod tests {
         // 「一番向」は本文テキストとして残る（ルビ親文字に取り込まれない）。
         let has_text = nodes
             .iter()
-            .any(|n| matches!(n, Node::Text(s) if s.starts_with("一番向")));
+            .any(|n| matches!(&n.kind, NodeKind::Text(s) if s.starts_with("一番向")));
         assert!(has_text, "一番向 が本文に残っていない: {nodes:?}");
         // 空親文字のルビがある。
         let empty_base_ruby = nodes.iter().any(|n| {
-            matches!(n,
-            Node::Ruby { children, ruby, .. }
-                if ruby.iter().any(|r| matches!(r, Node::Text(s) if s == "むか"))
-                    && children.iter().all(|c| matches!(c, Node::Text(s) if s.is_empty())))
+            matches!(&n.kind,
+            NodeKind::Ruby { children, ruby, .. }
+                if ruby.iter().any(|r| matches!(&r.kind, NodeKind::Text(s) if s == "むか"))
+                    && children.iter().all(|c| matches!(&c.kind, NodeKind::Text(s) if s.is_empty())))
         });
         assert!(empty_base_ruby, "空親文字ルビになっていない: {nodes:?}");
     }
@@ -659,7 +780,7 @@ mod tests {
         let tokens = tokenize("［＃ここから2字下げ］");
         let nodes = parse(&tokens);
         assert_eq!(nodes.len(), 1);
-        if let Node::BlockStart { block_type, params } = &nodes[0] {
+        if let NodeKind::BlockStart { block_type, params } = &nodes[0].kind {
             assert_eq!(*block_type, BlockType::Jisage);
             assert_eq!(params.width, Some(2));
         } else {
@@ -673,8 +794,8 @@ mod tests {
         let nodes = parse(&tokens);
         assert_eq!(nodes.len(), 1);
         assert!(matches!(
-            &nodes[0],
-            Node::BlockEnd {
+            &nodes[0].kind,
+            NodeKind::BlockEnd {
                 block_type: BlockType::Jisage,
                 ..
             }
@@ -686,11 +807,11 @@ mod tests {
         let tokens = tokenize("※［＃「丸印」、U+25CB］");
         let nodes = parse(&tokens);
         assert_eq!(nodes.len(), 1);
-        if let Node::Gaiji {
+        if let NodeKind::Gaiji {
             description,
             unicode,
             ..
-        } = &nodes[0]
+        } = &nodes[0].kind
         {
             assert!(description.contains("丸印"));
             assert_eq!(unicode.as_deref(), Some("○"));
@@ -705,8 +826,7 @@ mod span_tests {
     use super::*;
     use crate::token::Span;
 
-    /// RawLine.nodes の各 Spanned が生ノードの char 位置範囲を正しく表す（行を char で
-    /// 切り出せる）。
+    /// RawLine.nodes の各Nodeが持つ char位置範囲で、元行を切り出せる。
     #[test]
     fn raw_nodes_have_char_spans() {
         let line = "あ※［＃「丸」、U+25CB］い《い》";

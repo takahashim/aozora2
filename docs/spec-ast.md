@@ -23,9 +23,9 @@ source
   │  tokenize
   ▼
 Vec<Token>                     … 字句（各トークン自身が行内 char span を保持）
-  │  parse_raw_nodes / parse_raw_nodes_spanned
+  │  parse_raw_nodes
   ▼
-RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Spanned<Node>>, line_no }> }
+RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Node>, line_no }> }
   │  resolve（前方参照の解決）＋ lower_to_blocks（行→入れ子ブロックへの畳み込み）
   ▼
 Aozora AST : Vec<Block>        … 解決済み・入れ子・型付き
@@ -47,15 +47,14 @@ HTML   /   プレーンテキスト
 ```rust
 /// ソース行内の char 単位の範囲 [start, end)（半開・0 起点）。byte でなく char 数。
 struct Span { start: usize, end: usize }
-/// Token は種別と行内 char 範囲を自前で持つ。
+/// Token と Node は種別と行内 char 範囲を自前で持つ。
 struct Token { kind: TokenKind, span: Span }
-/// Node は段2まで外付けの位置情報を使う。
-struct Spanned<T> { node: T, span: Span }
+struct Node { kind: NodeKind, span: Span }
 ```
 
 - **Token** … `tokenize` は `Vec<Token>` を返す。入れ子を含む全トークンが行内絶対spanを持つ。
-- **RawAST** … `RawLine.nodes[i]` は `Spanned<Node>`。各生ノードに char 精度の位置
-  （`.span`）が同居する（旧: `nodes` と並行配列 `spans` の 1:1 対応）。
+- **RawAST** … `RawLine.nodes[i]` は `Node`。各生ノード自身が char 精度の位置
+  （`.span`）を持つ（旧: `nodes` と並行配列 `spans` の 1:1 対応）。
 - **Aozora AST** … 各 `Block` は由来行番号 `line: usize`（本文 0 起点）を持つ。char 精度の
   範囲は持たない（必要なら RawAST 側の `nodes[i].span` を参照する。エディタ支援
   `analysis` は RawAST の span を使う）。
@@ -72,7 +71,7 @@ struct Spanned<T> { node: T, span: Span }
 struct RawDoc  { lines: Vec<RawLine> }
 struct RawLine {
     source: String,             // もとのソース行（くの字点走査などで参照）
-    nodes:  Vec<Spanned<Node>>, // 生ノード列（前方参照は未解決）＋各ノードの char 位置範囲
+    nodes:  Vec<Node>,          // 生ノード列（前方参照は未解決）。各Nodeが char 位置範囲を持つ
     line_no: usize,             // 本文 0 起点の行番号
 }
 ```

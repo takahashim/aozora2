@@ -2,8 +2,8 @@
 
 作成 2026-07-26（intrinsic 方針で全面改稿）。目的は「ソース位置 span を、トークンから
 Aozora AST の `Inline` まで、**各構文要素が自前で持つ**形で運び、プレビュー↔ソースの
-相互対応・位置精度の高い診断を可能にする」ための設計と段階計画。**この時点では実装しない。
-方針合意のための資料。**
+相互対応・位置精度の高い診断を可能にする」ための設計と段階計画。段1・段2を実装済みで、
+残る対象はInlineのintrinsic化である。
 
 関連: [spec-ast.md](spec-ast.md)、[plan-lsp.md](plan-lsp.md)、[plan-neutral-ast.md](plan-neutral-ast.md)。
 
@@ -11,8 +11,8 @@ Aozora AST の `Inline` まで、**各構文要素が自前で持つ**形で運�
 
 ## 1. 方針転換の要旨
 
-先行実装では位置を外付けの器 `Spanned<T>{node,span}` で持ち、トークン列（`Vec<Spanned<Token>>`）と
-`RawLine.nodes: Vec<Spanned<Node>>` に付けた。しかし「Inline まで（入れ子含む）span を通す」
+先行実装では位置を外付けの器 `Spanned<T>{node,span}` で持ち、トークン列と
+`RawLine.nodes` に付けた。しかし「Inline まで（入れ子含む）span を通す」
 目的には、**位置を各構文要素の intrinsic フィールドにする**方が素直だと判断した。
 
 - **すべてのトークンは入力 char を消費して作られる ⇒ 必ず実在の `[start,end)` を持つ。**
@@ -130,7 +130,7 @@ intrinsic なら「値に付いた span を運びつつ、下記の地点だけ�
   - `tokenize_children` に base offset を導入 → **入れ子含む全トークンが絶対 span**。
   - テストはspanを除いた構造期待値で比較し、span自体は専用テストで検証。
   - 成果: トークン層の位置情報が完成（フロンティア B の土台）。
-- **段2: `Node{kind,span}` へ intrinsic 化**
+- **段2: `Node{kind,span}` へ intrinsic 化（完了）**
   - `parse_raw_nodes` で token span を Node に引き継ぐ。`RawLine` は `nodes: Vec<Node>`
     （`Spanned<Node>` を廃止。span は Node 内）。
   - `resolve_*` を §5 の合併/分割/継承で span 保持対応に（本工事の中心）。

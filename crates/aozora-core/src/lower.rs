@@ -10,7 +10,7 @@
 //! 増やす。未対応のブロック種は暫定でトップレベルに落とす（TODO）。
 
 use crate::ast::{AozoraAst, Block, BlockKind, Break, CloseKind};
-use crate::node::{BlockType, Node};
+use crate::node::{BlockType, Node, NodeKind};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 use crate::parser::RawDoc;
 
@@ -41,7 +41,7 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
     for raw_line in &raw.lines {
         let line_no = raw_line.line_no;
         // 前方参照とルビ親文字を解決してから畳む（旧経路と同順）。span は畳み込みに使わない。
-        let mut nodes: Vec<Node> = raw_line.nodes.iter().map(|sn| sn.node.clone()).collect();
+        let mut nodes = raw_line.nodes.clone();
         resolve_references(&mut nodes);
         resolve_inline_ruby(&mut nodes);
 
@@ -155,8 +155,8 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 // 行末 <br /> を抑制する（同行開閉の横組み等・複数行ブロックの閉じ行）。
                 let has_explicit_close = nodes.iter().any(|n| {
                     matches!(
-                        n,
-                        Node::BlockEnd {
+                        &n.kind,
+                        NodeKind::BlockEnd {
                             explicit_close: true,
                             ..
                         }
@@ -210,14 +210,18 @@ fn strip_leading_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
     // まず LineJisage を1個だけ落とす（参照 apply_jisage の位置除去）。
     if let Some(pos) = nodes
         .iter()
-        .position(|n| matches!(n, Node::LineJisage { .. }))
+        .position(|n| matches!(&n.kind, NodeKind::LineJisage { .. }))
     {
         let mut rest = nodes;
         rest.remove(pos);
         return rest;
     }
     // 先頭が行スコープ BlockStart（is_block=false の Jisage/Chitsuki）なら落とす。
-    if let Some(Node::BlockStart { block_type, params }) = nodes.first() {
+    if let Some(Node {
+        kind: NodeKind::BlockStart { block_type, params },
+        ..
+    }) = nodes.first()
+    {
         if !params.is_block && matches!(block_type, BlockType::Jisage | BlockType::Chitsuki) {
             return nodes.into_iter().skip(1).collect();
         }
@@ -267,33 +271,56 @@ enum LineKind {
 /// それ以外を内容行とみなす。コマンドと同行に本文があるケース・行単位字下げ
 /// （LineJisage）・ぶら下げ per-line 等は今後の段で足す（TODO）。
 fn classify_line(nodes: &[Node]) -> LineKind {
-    if let [Node::BlockStart { block_type, params }] = nodes {
+    if let [Node {
+        kind: NodeKind::BlockStart { block_type, params },
+        ..
+    }] = nodes
+    {
         if params.is_block {
             if let Some(kind) = block_kind_of(block_type, params) {
                 return LineKind::BlockOpen(kind);
             }
         }
     }
-    if let [Node::BlockEnd { explicit_close, .. }] = nodes {
+    if let [Node {
+        kind: NodeKind::BlockEnd { explicit_close, .. },
+        ..
+    }] = nodes
+    {
         return LineKind::BlockClose(*explicit_close);
     }
     // 先頭が BlockEnd で後続に本文がある行（`［＃ここで…終わり］　` 等）。参照は
     // ブロックを閉じ（`</div>` 改行なし）、続く本文をその行に出す（行末 br は
     // BlockEnd が explicit_close なら抑制）。
-    if let Some((Node::BlockEnd { explicit_close, .. }, rest)) = nodes.split_first() {
+    if let Some((
+        Node {
+            kind: NodeKind::BlockEnd { explicit_close, .. },
+            ..
+        },
+        rest,
+    )) = nodes.split_first()
+    {
         if !rest.is_empty() {
             return LineKind::BlockCloseWithTail(*explicit_close);
         }
     }
     // 行単位字下げ ［＃N字下げ］。行にこのマーカーしか無ければ複数行ブロックを開く
     // （参照 apply_jisage の unshift 相当＝ここから字下げと同一）。本文が続けば行包み。
-    if let [Node::LineJisage { width }] = nodes {
+    if let [Node {
+        kind: NodeKind::LineJisage { width },
+        ..
+    }] = nodes
+    {
         return LineKind::BlockOpen(BlockKind::Jisage {
             width: Some(*width),
         });
     }
-    if let Some(Node::LineJisage { width }) =
-        nodes.iter().find(|n| matches!(n, Node::LineJisage { .. }))
+    if let Some(Node {
+        kind: NodeKind::LineJisage { width },
+        ..
+    }) = nodes
+        .iter()
+        .find(|n| matches!(&n.kind, NodeKind::LineJisage { .. }))
     {
         return LineKind::LineWrap(BlockKind::Jisage {
             width: Some(*width),
@@ -301,7 +328,11 @@ fn classify_line(nodes: &[Node]) -> LineKind {
     }
     // 行スコープ地付き／字上げ ［＃地付き］text（先頭が is_block=false の Chitsuki）。
     // 参照 renderer は先頭ノードで判定し、行末でブロックを閉じる（1行包み）。
-    if let Some(Node::BlockStart { block_type, params }) = nodes.first() {
+    if let Some(Node {
+        kind: NodeKind::BlockStart { block_type, params },
+        ..
+    }) = nodes.first()
+    {
         if !params.is_block && *block_type == BlockType::Chitsuki {
             return LineKind::LineWrap(BlockKind::Chitsuki {
                 width: params.width.unwrap_or(0),
