@@ -1,0 +1,83 @@
+name: Release
+
+# タグ push（v0.1.0 など）または手動実行で、各 OS のインストーラをビルドして
+# GitHub Releases（ドラフト）に添付する。バージョンは src-tauri/tauri.conf.json の
+# version（__VERSION__）を使う。
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# tauri-action が GITHUB_TOKEN でリリースを作成/更新するために必要。
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest # Apple Silicon (.dmg)
+            args: ""
+          - os: windows-latest # NSIS インストーラ (.exe)
+            args: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: crates/aozora_farm/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+            ${{ runner.os }}-cargo-gui-
+
+      - name: Install frontend dependencies
+        working-directory: crates/aozora_farm
+        run: npm ci
+
+      # tauri-action が tauri build（beforeBuildCommand=tsc && vite build → src-tauri
+      # コンパイル → バンドル）を実行し、成果物をドラフトリリースに添付する。
+      # 未署名・未公証（署名するには証明書を Secrets に入れて env を足す）。
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: crates/aozora_farm
+          tagName: v__VERSION__
+          releaseName: "青空ファーム v__VERSION__"
+          releaseBody: |
+            各 OS のインストーラをダウンロードしてください。
+
+            ## macOS（.dmg / Apple Silicon）
+            未署名・未公証のため、初回は次のいずれかで開いてください。
+            - `.dmg` をマウント → アプリを「アプリケーション」へコピー → ターミナルで
+              `xattr -dr com.apple.quarantine "/Applications/青空ファーム.app"` → 起動
+            - もしくは アプリを右クリック →「開く」
+
+            ## Windows（.exe / NSIS インストーラ）
+            未署名のため SmartScreen 警告が出ます →「詳細情報」→「実行」。
+            WebView2 ランタイムが必要（Windows 11 は標準搭載）。
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
