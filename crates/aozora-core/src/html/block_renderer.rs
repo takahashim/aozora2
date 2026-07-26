@@ -10,7 +10,7 @@ use crate::gaiji::{parse_gaiji, GaijiResult};
 use crate::node::{FontSizeType, MidashiLevel, RubyDirection};
 use crate::parser::parse;
 use crate::parser::reference_resolver::resolve_inline_ruby;
-use crate::token::Token;
+use crate::token::TokenKind;
 use crate::tokenizer::tokenize;
 
 use super::options::RenderOptions;
@@ -770,11 +770,11 @@ impl<'a> BlockRenderer<'a> {
 
     /// 画像注記 alt 内の外字を外字一覧・表記フラグに登録する（出力に影響しない）。
     fn register_alt_gaiji(&mut self, alt: &str) {
-        for token in tokenize(alt).into_iter().map(|st| st.node) {
-            let Token::Gaiji {
+        for token in tokenize(alt) {
+            let TokenKind::Gaiji {
                 description,
                 had_igeta,
-            } = token
+            } = token.kind
             else {
                 continue;
             };

@@ -67,11 +67,10 @@ impl PartialEq for Token {                        // span を無視（位置は�
 `Node`/`Inline` も同型（`Node{kind:NodeKind,span}` / `Inline{kind:InlineKind,span}`）。
 
 ### なぜ `kind` 委譲の `PartialEq` か
-現行テストは `assert_eq!(tokens, vec![Token::Text("…")])` のように**構造を値比較**する。span を
+トークンテストはspanを除いた構造期待値をヘルパーで比較する。span を
 フィールドに入れると素の derive では span 違いで壊れる。`PartialEq` を `kind` 委譲にすれば、
 `TokenKind` の derive 比較が子 `Vec<Token>` を（span 無視の）`Token::eq` で再帰比較するので、
-**span を無視した構造比較が全階層で成り立つ**。テストの期待値は span を埋めるヘルパー
-（`tok_text("…")` 等）で構築し、比較時は span を見ない。`Hash` は使っていない（`Hash` を
+**span を無視した構造比較が全階層で成り立つ**。テストの構造比較ではspanを見ない。`Hash` は使っていない（`Hash` を
 足す場合は `kind` のみでハッシュして整合を取る）。
 
 代替として「enum を保ったまま各 variant に `span` を足す」案は、構築・match の全面改修に加え
@@ -125,11 +124,11 @@ intrinsic なら「値に付いた span を運びつつ、下記の地点だけ�
 ## 7. 段階計画（各段末でオラクル 17361 とテスト緑を確認）
 
 - **段0（本メモ）**: 方針合意。`Spanned<T>` は intrinsic に置換する前提を確定。
-- **段1: `Token{kind,span}` へ intrinsic 化**
+- **段1: `Token{kind,span}` へ intrinsic 化（完了）**
   - `Token`→`TokenKind`＋`span`、`PartialEq` を kind 委譲。`Spanned<Token>` を廃止し
     `tokenize -> Vec<Token>`（各要素が span を持つ）に。
   - `tokenize_children` に base offset を導入 → **入れ子含む全トークンが絶対 span**。
-  - テストは `tok_*` ヘルパーで期待値構築（span 無視比較）。
+  - テストはspanを除いた構造期待値で比較し、span自体は専用テストで検証。
   - 成果: トークン層の位置情報が完成（フロンティア B の土台）。
 - **段2: `Node{kind,span}` へ intrinsic 化**
   - `parse_raw_nodes` で token span を Node に引き継ぐ。`RawLine` は `nodes: Vec<Node>`

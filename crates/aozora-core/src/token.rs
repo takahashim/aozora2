@@ -1,7 +1,7 @@
 //! 青空文庫形式のトークン型定義
 
 /// ソース行内の**文字（char）単位**の範囲 `[start, end)`（半開区間・0 起点）。
-/// 位置情報として RawAST（`RawLine.nodes[i].span`＝[`Spanned`]）が保持する。byte ではなく
+/// Token と RawAST（`RawLine.nodes[i].span`＝[`Spanned`]）が保持する。byte ではなく
 /// char 数なので、全角文字も1として数える（`line.chars().nth(start)` 等でそのまま使える）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
@@ -28,13 +28,11 @@ impl Span {
 
 /// 値に、それが由来するソース行内の char 位置範囲（[`Span`]）を添えた器。
 ///
-/// 位置情報が意味を持つのは**トップレベルのトークン列・生ノード列**だけ（入れ子の
-/// ルビ内容などは行内位置を持たない）。その境界で値と位置がずれないよう、並行配列や
-/// 生タプルではなく1つの値にまとめる。トークナイザ出力（`Vec<Spanned<Token>>`）と
-/// RawAST の生ノード列（`RawLine.nodes: Vec<Spanned<Node>>`）で使う。
+/// `Node` の intrinsic span 化は次段以降の対象なので、RawAST の生ノード列
+/// （`RawLine.nodes`）では引き続きこの器を使う。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spanned<T> {
-    /// 中身（[`Token`] や [`crate::node::Node`]）。
+    /// 中身（現在は [`crate::node::Node`]）。
     pub node: T,
     /// `node` のソース行内 char 位置範囲。
     pub span: Span,
@@ -47,9 +45,9 @@ impl<T> Spanned<T> {
     }
 }
 
-/// 青空文庫形式のトークン
+/// 青空文庫形式のトークン種別。
 #[derive(Debug, Clone, PartialEq)]
-pub enum Token {
+pub enum TokenKind {
     /// 通常テキスト
     Text(String),
 
@@ -93,10 +91,31 @@ pub enum Token {
     },
 }
 
+/// 青空文庫形式のトークン。全トークンがソース行内の絶対char spanを持つ。
+#[derive(Debug, Clone)]
+pub struct Token {
+    /// トークンの種別と内容。
+    pub kind: TokenKind,
+    /// ソース行内のchar位置範囲。
+    pub span: Span,
+}
+
 impl Token {
-    /// テキストトークンを作成
-    pub fn text(s: impl Into<String>) -> Self {
-        Token::Text(s.into())
+    /// 種別とソース位置からトークンを作成する。
+    pub fn new(kind: TokenKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+
+    /// テキストトークンを作成する。
+    pub fn text(s: impl Into<String>, span: Span) -> Self {
+        Self::new(TokenKind::Text(s.into()), span)
+    }
+}
+
+/// span は位置メタデータであり、構造比較には含めない。
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
     }
 }
 
@@ -106,49 +125,81 @@ mod tests {
 
     #[test]
     fn test_token_text() {
-        let token = Token::text("こんにちは");
-        assert!(matches!(token, Token::Text(s) if s == "こんにちは"));
+        let token = Token::text("こんにちは", Span::new(0, 5));
+        assert!(matches!(token.kind, TokenKind::Text(s) if s == "こんにちは"));
     }
 
     #[test]
     fn test_token_ruby() {
-        let token = Token::Ruby {
-            children: vec![Token::text("かんじ")],
-        };
-        assert!(matches!(token, Token::Ruby { .. }));
+        let token = Token::new(
+            TokenKind::Ruby {
+                children: vec![Token::text("かんじ", Span::new(1, 4))],
+            },
+            Span::new(0, 5),
+        );
+        assert!(matches!(token.kind, TokenKind::Ruby { .. }));
     }
 
     #[test]
     fn test_token_prefixed_ruby() {
-        let token = Token::PrefixedRuby {
-            base_children: vec![Token::text("東京")],
-            ruby_children: vec![Token::text("とうきょう")],
-        };
-        assert!(matches!(token, Token::PrefixedRuby { .. }));
+        let token = Token::new(
+            TokenKind::PrefixedRuby {
+                base_children: vec![Token::text("東京", Span::new(1, 3))],
+                ruby_children: vec![Token::text("とうきょう", Span::new(4, 9))],
+            },
+            Span::new(0, 10),
+        );
+        assert!(matches!(token.kind, TokenKind::PrefixedRuby { .. }));
     }
 
     #[test]
     fn test_token_command() {
-        let token = Token::Command {
-            content: "「である」に傍点".to_string(),
-        };
-        assert!(matches!(token, Token::Command { .. }));
+        let token = Token::new(
+            TokenKind::Command {
+                content: "「である」に傍点".to_string(),
+            },
+            Span::new(0, 10),
+        );
+        assert!(matches!(token.kind, TokenKind::Command { .. }));
     }
 
     #[test]
     fn test_token_gaiji() {
-        let token = Token::Gaiji {
-            description: "「丸印」、U+25CB".to_string(),
-            had_igeta: true,
-        };
-        assert!(matches!(token, Token::Gaiji { .. }));
+        let token = Token::new(
+            TokenKind::Gaiji {
+                description: "「丸印」、U+25CB".to_string(),
+                had_igeta: true,
+            },
+            Span::new(0, 14),
+        );
+        assert!(matches!(token.kind, TokenKind::Gaiji { .. }));
     }
 
     #[test]
     fn test_token_accent() {
-        let token = Token::Accent {
-            children: vec![Token::text("cafe'")],
-        };
-        assert!(matches!(token, Token::Accent { .. }));
+        let token = Token::new(
+            TokenKind::Accent {
+                children: vec![Token::text("cafe'", Span::new(1, 6))],
+            },
+            Span::new(0, 7),
+        );
+        assert!(matches!(token.kind, TokenKind::Accent { .. }));
+    }
+
+    #[test]
+    fn test_token_equality_ignores_span_recursively() {
+        let left = Token::new(
+            TokenKind::Ruby {
+                children: vec![Token::text("かな", Span::new(1, 3))],
+            },
+            Span::new(0, 4),
+        );
+        let right = Token::new(
+            TokenKind::Ruby {
+                children: vec![Token::text("かな", Span::new(11, 13))],
+            },
+            Span::new(10, 14),
+        );
+        assert_eq!(left, right);
     }
 }

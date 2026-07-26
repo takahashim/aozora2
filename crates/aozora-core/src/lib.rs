@@ -78,7 +78,7 @@ pub use node::{
     BlockParams, BlockType, MidashiLevel, MidashiStyle, Node, RubyDirection, StyleType,
 };
 pub use parser::parse;
-pub use token::Token;
+pub use token::{Span, Token, TokenKind};
 pub use tokenizer::{tokenize, Tokenizer};
 
 #[cfg(test)]
@@ -87,14 +87,11 @@ mod tests {
 
     #[test]
     fn test_tokenize() {
-        let tokens: Vec<_> = tokenize("吾輩《わがはい》は猫である")
-            .into_iter()
-            .map(|st| st.node)
-            .collect();
+        let tokens = tokenize("吾輩《わがはい》は猫である");
         assert_eq!(tokens.len(), 3);
-        assert!(matches!(&tokens[0], Token::Text(s) if s == "吾輩"));
-        assert!(matches!(&tokens[1], Token::Ruby { .. }));
-        assert!(matches!(&tokens[2], Token::Text(s) if s == "は猫である"));
+        assert!(matches!(&tokens[0].kind, TokenKind::Text(s) if s == "吾輩"));
+        assert!(matches!(&tokens[1].kind, TokenKind::Ruby { .. }));
+        assert!(matches!(&tokens[2].kind, TokenKind::Text(s) if s == "は猫である"));
     }
 
     #[test]

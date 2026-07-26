@@ -402,15 +402,15 @@ fn extract_plain_text(node: &Node) -> String {
 /// テキストノードと外字ノードの列に変換します。
 fn parse_annotation_text(text: &str) -> Vec<Node> {
     use crate::gaiji::{parse_gaiji, GaijiResult};
-    use crate::token::Token;
+    use crate::token::TokenKind;
 
     let tokens = tokenize(text);
     let mut nodes = Vec::new();
 
-    for st in tokens {
-        match st.node {
-            Token::Text(s) => nodes.push(Node::text(&s)),
-            Token::Gaiji {
+    for token in tokens {
+        match token.kind {
+            TokenKind::Text(s) => nodes.push(Node::text(&s)),
+            TokenKind::Gaiji {
                 description,
                 had_igeta,
             } => {

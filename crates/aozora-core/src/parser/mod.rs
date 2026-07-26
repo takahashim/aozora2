@@ -11,7 +11,7 @@ pub mod ruby_parser;
 mod utils;
 
 use crate::node::{BlockParams, BlockType, InlineKind, Node, RefSpec, RubyDirection};
-use crate::token::{Spanned, Token};
+use crate::token::{Spanned, Token, TokenKind};
 use crate::tokenizer::tokenize;
 
 pub use command_parser::{parse_command, CommandResult};
@@ -75,15 +75,14 @@ pub fn parse_raw_nodes(tokens: &[Token]) -> Vec<Node> {
 /// `parse_raw_nodes` の span 付き版。各生ノードに、由来トークンの char 位置範囲
 /// （[`Span`]）を [`Spanned`] として添えて返す。1トークンが複数ノードに展開される
 /// 場合、それらは同じトークン span を共有する。
-pub fn parse_raw_nodes_spanned(spanned: &[Spanned<Token>]) -> Vec<Spanned<Node>> {
-    let tokens: Vec<Token> = spanned.iter().map(|st| st.node.clone()).collect();
+pub fn parse_raw_nodes_spanned(tokens: &[Token]) -> Vec<Spanned<Node>> {
     let mut nodes = Vec::new();
     let mut spans = Vec::new();
-    for (i, st) in spanned.iter().enumerate() {
-        let parsed = parse_token_with_context(&st.node, &nodes, &tokens, i);
+    for (i, token) in tokens.iter().enumerate() {
+        let parsed = parse_token_with_context(token, &nodes, tokens, i);
         for n in parsed {
             nodes.push(n);
-            spans.push(st.span);
+            spans.push(token.span);
         }
     }
     nodes
@@ -104,10 +103,8 @@ pub fn parse_raw_nodes_spanned(spanned: &[Spanned<Token>]) -> Vec<Spanned<Node>>
 ///
 /// let nodes = parse(&tokenize("東京《とうきょう》"));
 /// ```
-pub fn parse(tokens: &[Spanned<Token>]) -> Vec<Node> {
-    // span は使わないので落として plain 経路へ（余分な spans 確保を避ける）。
-    let toks: Vec<Token> = tokens.iter().map(|st| st.node.clone()).collect();
-    let mut nodes = parse_raw_nodes(&toks);
+pub fn parse(tokens: &[Token]) -> Vec<Node> {
+    let mut nodes = parse_raw_nodes(tokens);
     resolve_references(&mut nodes);
     nodes
 }
@@ -126,7 +123,7 @@ fn has_open_paren_before(nodes: &[Node]) -> bool {
 /// 直後のトークンがテキストで `）` で始まるかチェック
 fn has_close_paren_after(tokens: &[Token], current_index: usize) -> bool {
     tokens.get(current_index + 1).map_or(false, |token| {
-        if let Token::Text(s) = token {
+        if let TokenKind::Text(s) = &token.kind {
             s.starts_with('）')
         } else {
             false
@@ -141,8 +138,8 @@ fn parse_token_with_context(
     tokens: &[Token],
     current_index: usize,
 ) -> Vec<Node> {
-    match token {
-        Token::Command { content } => {
+    match &token.kind {
+        TokenKind::Command { content } => {
             vec![parse_command_to_node_with_context(
                 content,
                 nodes,
@@ -156,10 +153,10 @@ fn parse_token_with_context(
 
 /// 単一のトークンをノード（複数可）に変換
 fn parse_token(token: &Token) -> Vec<Node> {
-    match token {
-        Token::Text(text) => vec![Node::Text(text.clone())],
+    match &token.kind {
+        TokenKind::Text(text) => vec![Node::Text(text.clone())],
 
-        Token::Ruby { children } => {
+        TokenKind::Ruby { children } => {
             // ルビの親文字はここでは未解決
             // 後でreference_resolverで処理される
             let ruby_nodes = parse_tokens(children);
@@ -171,7 +168,7 @@ fn parse_token(token: &Token) -> Vec<Node> {
             }]
         }
 
-        Token::PrefixedRuby {
+        TokenKind::PrefixedRuby {
             base_children,
             ruby_children,
         } => {
@@ -194,14 +191,14 @@ fn parse_token(token: &Token) -> Vec<Node> {
             }]
         }
 
-        Token::Command { content } => vec![parse_command_to_node(content)],
+        TokenKind::Command { content } => vec![parse_command_to_node(content)],
 
-        Token::Gaiji {
+        TokenKind::Gaiji {
             description,
             had_igeta,
         } => vec![parse_gaiji_to_node(description, *had_igeta)],
 
-        Token::Accent { children } => {
+        TokenKind::Accent { children } => {
             // アクセント内の子ノードを描画する。従来は全子ノードを to_text() で
             // 平坦化してから parse_accent していたため、内側の外字（※［＃…］）が
             // 記述文字列に潰れて生テキストとして出ていた（例:〔…au ※［＃ローマ数字

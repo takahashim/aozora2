@@ -1,7 +1,7 @@
 //! 青空文庫形式の字句解析（トークナイザ）
 
 use crate::delimiters::*;
-use crate::token::{Span, Spanned, Token};
+use crate::token::{Span, Token, TokenKind};
 
 /// 1行をトークン列に変換するトークナイザ
 pub struct Tokenizer {
@@ -9,6 +9,8 @@ pub struct Tokenizer {
     chars: Vec<char>,
     /// 現在のchar位置
     pos: usize,
+    /// この入力断片の、元の行における開始charオフセット。
+    base: usize,
     /// 対応する 〕 の無い 〔 を行末までのアクセントブロックとして扱うか。
     /// 参照実装はトップレベル（行）でのみこれを許し、アクセント内容やルビ等の
     /// 入れ子トークナイズでは未閉じ 〔 をリテラルにする（例:54931 の
@@ -22,6 +24,7 @@ impl Tokenizer {
         Self {
             chars: input.chars().collect(),
             pos: 0,
+            base: 0,
             allow_unclosed_accent: false,
         }
     }
@@ -31,35 +34,39 @@ impl Tokenizer {
         Self {
             chars: input.chars().collect(),
             pos: 0,
+            base: 0,
             allow_unclosed_accent: true,
         }
     }
 
-    /// 入力を [`Spanned<Token>`] 列に変換する。各トークンには入力先頭からの char 位置
-    /// 範囲（[`Span`]、`[start, end)`）を付ける。`Tokenizer::new_top_level` の入力（1行）
-    /// に対する位置。span 不要な経路は `.into_iter().map(|st| st.node)` で捨てる。
-    pub fn tokenize(&mut self) -> Vec<Spanned<Token>> {
+    /// 入力を [`Token`] 列に変換する。各トークンには入力行先頭からのchar位置
+    /// 範囲（[`Span`]、`[start, end)`）を付ける。入れ子のトークンも絶対位置を持つ。
+    pub fn tokenize(&mut self) -> Vec<Token> {
         let mut out = Vec::new();
         while !self.is_eof() {
             let start = self.pos;
             let token = self.next_token();
-            out.push(Spanned::new(token, Span::new(start, self.pos)));
+            out.push(Token::new(
+                token,
+                Span::new(self.base + start, self.base + self.pos),
+            ));
         }
         out
     }
 
-    /// 入れ子内容（ルビ・親文字・アクセント内）を span 無しのトークン列にする。
-    /// 子トークンの位置は使わないため span を捨てる。
-    fn tokenize_children(input: &str) -> Vec<Token> {
-        Tokenizer::new(input)
-            .tokenize()
-            .into_iter()
-            .map(|st| st.node)
-            .collect()
+    /// 入れ子内容（ルビ・親文字・アクセント内）を絶対char位置付きでトークナイズする。
+    fn tokenize_children(input: &str, base: usize) -> Vec<Token> {
+        let mut tokenizer = Self {
+            chars: input.chars().collect(),
+            pos: 0,
+            base,
+            allow_unclosed_accent: false,
+        };
+        tokenizer.tokenize()
     }
 
     /// 現在位置から1トークン読む（`tokenize` が使う）。
-    fn next_token(&mut self) -> Token {
+    fn next_token(&mut self) -> TokenKind {
         let ch = self.current_char().unwrap();
         match ch {
             // コマンド ［＃...］ または外字 ※［＃...］の一部
@@ -69,7 +76,7 @@ impl Tokenizer {
                 } else {
                     // ［ だけならテキスト
                     self.skip(1);
-                    Token::Text(ch.to_string())
+                    TokenKind::Text(ch.to_string())
                 }
             }
             // ルビ 《...》
@@ -82,7 +89,7 @@ impl Tokenizer {
                     self.read_gaiji()
                 } else {
                     self.skip(1);
-                    Token::Text(ch.to_string())
+                    TokenKind::Text(ch.to_string())
                 }
             }
             // アクセント 〔...〕
@@ -91,7 +98,7 @@ impl Tokenizer {
                     token
                 } else {
                     self.skip(1);
-                    Token::Text(ch.to_string())
+                    TokenKind::Text(ch.to_string())
                 }
             }
             // その他はテキスト
@@ -102,7 +109,7 @@ impl Tokenizer {
     // --- トークン読み取り ---
 
     /// テキストトークンを読む（デリミタまで）
-    fn read_text(&mut self) -> Token {
+    fn read_text(&mut self) -> TokenKind {
         let start = self.pos;
 
         while self.pos < self.chars.len() {
@@ -120,12 +127,12 @@ impl Tokenizer {
         }
 
         let text: String = self.chars[start..self.pos].iter().collect();
-        Token::Text(text)
+        TokenKind::Text(text)
     }
 
     /// コマンドトークンを読む ［＃...］
     /// ネストに対応（括弧の深さを追跡）
-    fn read_command(&mut self) -> Token {
+    fn read_command(&mut self) -> TokenKind {
         self.skip(2); // ［＃
         let start = self.pos;
 
@@ -133,11 +140,11 @@ impl Tokenizer {
         let content = self.slice_from(start);
         self.skip_if(COMMAND_END);
 
-        Token::Command { content }
+        TokenKind::Command { content }
     }
 
     /// ルビトークンを読む 《...》
-    fn read_ruby(&mut self) -> Token {
+    fn read_ruby(&mut self) -> TokenKind {
         self.skip(1); // 《
         let start = self.pos;
 
@@ -147,13 +154,13 @@ impl Tokenizer {
 
         // 参照実装 apply_ruby は空ルビ（《》）を《》のテキストとして戻す
         if content.is_empty() {
-            return Token::Text("《》".to_string());
+            return TokenKind::Text("《》".to_string());
         }
 
         // ルビ内を再帰的にトークナイズ
-        let children = Self::tokenize_children(&content);
+        let children = Self::tokenize_children(&content, self.base + start);
 
-        Token::Ruby { children }
+        TokenKind::Ruby { children }
     }
 
     /// 明示ルビトークンを読む ｜...《...》
@@ -165,7 +172,7 @@ impl Tokenizer {
     /// → `｜` と `民族観念…悲憤` は本文、親文字は `慷慨` だけ。
     /// よって最初の `｜` の後にトップレベル（コマンド ［…］ の外）でもう一つ `｜` が
     /// あれば、最初の `｜` はリテラル扱いにして内容は再トークナイズに任せる。
-    fn read_prefixed_ruby(&mut self) -> Token {
+    fn read_prefixed_ruby(&mut self) -> TokenKind {
         self.skip(1); // ｜
         let base_start = self.pos;
 
@@ -197,7 +204,7 @@ impl Tokenizer {
                 // 次の ｜ が 《 より先に来た: 最初の ｜ はリテラル。pos は base_start の
                 // ままにして、間の内容と次の ｜ は通常のトークナイズに任せる。
                 self.pos = base_start;
-                return Token::Text(RUBY_PREFIX.to_string());
+                return TokenKind::Text(RUBY_PREFIX.to_string());
             }
             if c == RUBY_BEGIN {
                 break;
@@ -208,7 +215,7 @@ impl Tokenizer {
         // 《 が見つからなければ ｜ をテキストとして返す
         if scan >= n || self.chars[scan] != RUBY_BEGIN {
             self.pos = base_start;
-            return Token::Text(RUBY_PREFIX.to_string());
+            return TokenKind::Text(RUBY_PREFIX.to_string());
         }
 
         let base_content: String = self.chars[base_start..scan].iter().collect();
@@ -220,17 +227,17 @@ impl Tokenizer {
         self.skip_if(RUBY_END);
 
         // 親文字とルビを再帰的にトークナイズ
-        let base_children = Self::tokenize_children(&base_content);
-        let ruby_children = Self::tokenize_children(&ruby_content);
+        let base_children = Self::tokenize_children(&base_content, self.base + base_start);
+        let ruby_children = Self::tokenize_children(&ruby_content, self.base + ruby_start);
 
-        Token::PrefixedRuby {
+        TokenKind::PrefixedRuby {
             base_children,
             ruby_children,
         }
     }
 
     /// 外字トークンを読む ※［...］（＃は任意）
-    fn read_gaiji(&mut self) -> Token {
+    fn read_gaiji(&mut self) -> TokenKind {
         self.skip(2); // ※［
                       // ＃（IGETA）があれば読み捨てて had_igeta を立てる。
         let had_igeta = self.peek_nth(0) == Some(IGETA);
@@ -243,7 +250,7 @@ impl Tokenizer {
         let description = self.slice_from(start);
         self.skip_if(COMMAND_END);
 
-        Token::Gaiji {
+        TokenKind::Gaiji {
             description,
             had_igeta,
         }
@@ -251,7 +258,7 @@ impl Tokenizer {
 
     /// アクセントトークンを試行的に読む 〔...〕
     /// アクセント記号がなければNone（テキストとして扱う）
-    fn try_read_accent(&mut self) -> Option<Token> {
+    fn try_read_accent(&mut self) -> Option<TokenKind> {
         let start = self.pos;
         self.skip(1); // 〔
         let content_start = self.pos;
@@ -281,8 +288,8 @@ impl Tokenizer {
             self.skip(1); // 〕
         }
 
-        let children = Self::tokenize_children(&content);
-        Some(Token::Accent { children })
+        let children = Self::tokenize_children(&content, self.base + content_start);
+        Some(TokenKind::Accent { children })
     }
 
     /// 文字列がアクセント表にある組み合わせを含むか判定
@@ -352,20 +359,103 @@ impl Tokenizer {
     }
 }
 
-/// 文字列を [`Spanned<Token>`] 列に変換するユーティリティ関数。span は入力先頭からの
-/// char オフセット `[start, end)`。span 不要な呼び出しは `.into_iter().map(|st| st.node)`
-/// でトークンだけ取り出す。
-pub fn tokenize(input: &str) -> Vec<Spanned<Token>> {
+/// 文字列を [`Token`] 列に変換するユーティリティ関数。各spanは入力先頭からの
+/// char オフセット `[start, end)`。
+pub fn tokenize(input: &str) -> Vec<Token> {
     Tokenizer::new_top_level(input).tokenize()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::tokenize;
+    use crate::token::{Token as ActualToken, TokenKind};
+
+    /// span を除いてトークン構造を比較するためのテスト用表現。
+    #[derive(Debug, PartialEq)]
+    enum Token {
+        Text(String),
+        Ruby {
+            children: Vec<Token>,
+        },
+        PrefixedRuby {
+            base_children: Vec<Token>,
+            ruby_children: Vec<Token>,
+        },
+        Command {
+            content: String,
+        },
+        Gaiji {
+            description: String,
+            had_igeta: bool,
+        },
+        Accent {
+            children: Vec<Token>,
+        },
+    }
+
+    impl From<ActualToken> for Token {
+        fn from(token: ActualToken) -> Self {
+            match token.kind {
+                TokenKind::Text(text) => Self::Text(text),
+                TokenKind::Ruby { children } => Self::Ruby {
+                    children: children.into_iter().map(Self::from).collect(),
+                },
+                TokenKind::PrefixedRuby {
+                    base_children,
+                    ruby_children,
+                } => Self::PrefixedRuby {
+                    base_children: base_children.into_iter().map(Self::from).collect(),
+                    ruby_children: ruby_children.into_iter().map(Self::from).collect(),
+                },
+                TokenKind::Command { content } => Self::Command { content },
+                TokenKind::Gaiji {
+                    description,
+                    had_igeta,
+                } => Self::Gaiji {
+                    description,
+                    had_igeta,
+                },
+                TokenKind::Accent { children } => Self::Accent {
+                    children: children.into_iter().map(Self::from).collect(),
+                },
+            }
+        }
+    }
 
     /// span を落として Token 列だけを比較するテスト用ヘルパー。
     fn plain(input: &str) -> Vec<Token> {
-        tokenize(input).into_iter().map(|st| st.node).collect()
+        tokenize(input).into_iter().map(Token::from).collect()
+    }
+
+    fn assert_spans_are_well_formed(
+        tokens: &[ActualToken],
+        source_len: usize,
+        parent: Option<crate::token::Span>,
+    ) {
+        let mut previous_end = 0;
+        for token in tokens {
+            assert!(token.span.start <= token.span.end);
+            assert!(token.span.end <= source_len);
+            assert!(token.span.start >= previous_end, "siblings must be ordered");
+            if let Some(parent) = parent {
+                assert!(parent.start <= token.span.start && token.span.end <= parent.end);
+            }
+            previous_end = token.span.end;
+
+            match &token.kind {
+                TokenKind::Ruby { children } | TokenKind::Accent { children } => {
+                    assert_spans_are_well_formed(children, source_len, Some(token.span));
+                }
+                TokenKind::PrefixedRuby {
+                    base_children,
+                    ruby_children,
+                } => {
+                    assert_spans_are_well_formed(base_children, source_len, Some(token.span));
+                    assert_spans_are_well_formed(ruby_children, source_len, Some(token.span));
+                }
+                TokenKind::Text(_) | TokenKind::Command { .. } | TokenKind::Gaiji { .. } => {}
+            }
+        }
     }
 
     #[test]
@@ -612,5 +702,62 @@ mod tests {
                 }
             ]
         );
+    }
+
+    #[test]
+    fn token_spans_are_absolute_for_nested_constructs() {
+        let tokens = tokenize("A《B※［＃x］》C");
+        assert_spans_are_well_formed(&tokens, "A《B※［＃x］》C".chars().count(), None);
+        assert_eq!(tokens[0].span, crate::token::Span::new(0, 1));
+        assert_eq!(tokens[1].span, crate::token::Span::new(1, 9));
+        assert_eq!(tokens[2].span, crate::token::Span::new(9, 10));
+        let TokenKind::Ruby { children } = &tokens[1].kind else {
+            panic!("expected ruby token");
+        };
+        assert_eq!(children[0].span, crate::token::Span::new(2, 3));
+        assert_eq!(children[1].span, crate::token::Span::new(3, 8));
+
+        let tokens = tokenize("｜東京《とう》");
+        assert_spans_are_well_formed(&tokens, "｜東京《とう》".chars().count(), None);
+        assert_eq!(tokens[0].span, crate::token::Span::new(0, 7));
+        let TokenKind::PrefixedRuby {
+            base_children,
+            ruby_children,
+        } = &tokens[0].kind
+        else {
+            panic!("expected prefixed ruby token");
+        };
+        assert_eq!(base_children[0].span, crate::token::Span::new(1, 3));
+        assert_eq!(ruby_children[0].span, crate::token::Span::new(4, 6));
+
+        let tokens = tokenize("〔A《B》e'〕");
+        assert_spans_are_well_formed(&tokens, "〔A《B》e'〕".chars().count(), None);
+        assert_eq!(tokens[0].span, crate::token::Span::new(0, 8));
+        let TokenKind::Accent { children } = &tokens[0].kind else {
+            panic!("expected accent token");
+        };
+        assert_eq!(children[0].span, crate::token::Span::new(1, 2));
+        assert_eq!(children[1].span, crate::token::Span::new(2, 5));
+        assert_eq!(children[2].span, crate::token::Span::new(5, 7));
+        let TokenKind::Ruby { children: ruby } = &children[1].kind else {
+            panic!("expected nested ruby token");
+        };
+        assert_eq!(ruby[0].span, crate::token::Span::new(3, 4));
+    }
+
+    #[test]
+    fn token_spans_cover_empty_ruby_and_unclosed_accent() {
+        let tokens = tokenize("《》");
+        assert_spans_are_well_formed(&tokens, "《》".chars().count(), None);
+        assert!(matches!(&tokens[0].kind, TokenKind::Text(text) if text == "《》"));
+        assert_eq!(tokens[0].span, crate::token::Span::new(0, 2));
+
+        let tokens = tokenize("〔e'");
+        assert_spans_are_well_formed(&tokens, "〔e'".chars().count(), None);
+        assert_eq!(tokens[0].span, crate::token::Span::new(0, 3));
+        let TokenKind::Accent { children } = &tokens[0].kind else {
+            panic!("expected unclosed accent token");
+        };
+        assert_eq!(children[0].span, crate::token::Span::new(1, 3));
     }
 }
