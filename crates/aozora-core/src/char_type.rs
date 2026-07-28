@@ -95,10 +95,11 @@ impl CharType {
         if matches!(c, '々' | '※' | '仝' | '〆' | '〇' | 'ヶ') {
             return CharType::Kanji;
         }
-        // 亜-熙 = JIS X 0208 の漢字 6,355 字。X 0208 の外（NEC/IBM 拡張漢字や
-        // X 0213 の第3・第4水準）は参照では :else になり、ルビ親文字の連なりが
-        // そこで切れる（例:厓 は参照実装では「JIS外字」警告が出て親文字にならない）。
-        if is_x0208_kanji(c) {
+        // 亜-熙 = JIS X 0208 の漢字 6,355 字（所属判定は crate::jis_x0208 が持つ）。
+        // X 0208 の外（NEC/IBM 拡張漢字や X 0213 の第3・第4水準）は参照では :else に
+        // なり、ルビ親文字の連なりがそこで切れる（例:厓 は参照実装では「JIS外字」
+        // 警告が出て親文字にならない）。
+        if crate::jis_x0208::is_kanji(c) {
             return CharType::Kanji;
         }
 
@@ -119,31 +120,6 @@ impl CharType {
     }
 }
 
-/// URO（CJK統合漢字 U+4E00-U+9FFF）の下限。
-const URO_START: u32 = 0x4E00;
-/// URO の上限。
-const URO_END: u32 = 0x9FFF;
-
-/// URO 各符号位置が JIS X 0208 の漢字かを示すビットマップ（1 ビット / 符号位置）。
-/// `build.rs` が `data/jis2ucs.json`（JIS X 0213 面区点 → Unicode）の
-/// 面1 **16-01〜47-51** ＋ **48-01〜84-06** から生成する（計 6,355 字）。
-static X0208_KANJI_BITS: [u8; ((URO_END - URO_START + 1) / 8) as usize] =
-    include!(concat!(env!("OUT_DIR"), "/x0208_kanji_bitmap.rs"));
-
-/// 文字が **JIS X 0208 の漢字**（第1水準＋第2水準の 6,355 字）か。
-///
-/// 参照実装 `REGEX_KANJI = /[亜-熙…]/`（Shift_JIS 範囲）の 亜-熙 に相当する。
-/// X 0208 の漢字は Unicode 上では 4,031 本に散らばるためレンジでは表せないが、
-/// 区点空間では 2 レンジで表せるので、それをビットマップに畳んで O(1) で判定する。
-fn is_x0208_kanji(c: char) -> bool {
-    let cp = c as u32;
-    if !(URO_START..=URO_END).contains(&cp) {
-        return false;
-    }
-    let idx = (cp - URO_START) as usize;
-    X0208_KANJI_BITS[idx / 8] & (1 << (idx % 8)) != 0
-}
-
 /// 文字種別を取得する拡張トレイト
 pub trait CharTypeExt {
     /// 文字種別を取得
@@ -160,57 +136,20 @@ impl CharTypeExt for char {
 mod tests {
     use super::*;
 
-    /// 旧定義（検証用）: Shift_JIS へ符号化して 亜(0x889F)〜熙(0xEAA4) に入るか。
-    /// ビットマップ化の前はこれが漢字判定だった。生成表がこれと完全一致することを
-    /// 下のテストで保証する（一致する限り byte 一致は崩れない）。
-    fn sjis_in_kanji_range_reference(c: char) -> bool {
-        let mut buf = [0u8; 8];
-        let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
-        if had_err {
-            return false;
-        }
-        let b = encoded.as_ref();
-        if b.len() != 2 {
-            return false;
-        }
-        let code = ((b[0] as u16) << 8) | b[1] as u16;
-        (0x889F..=0xEAA4).contains(&code)
-    }
-
     #[test]
-    fn x0208_kanji_bitmap_matches_sjis_definition() {
-        // URO 全域を総当たりし、生成したビットマップが旧定義と 1 文字も違わないことを確認する。
-        let mut count = 0usize;
-        for cp in URO_START..=URO_END {
-            let c = char::from_u32(cp).expect("URO は全て有効なスカラ値");
-            let expected = sjis_in_kanji_range_reference(c);
-            assert_eq!(
-                is_x0208_kanji(c),
-                expected,
-                "U+{cp:04X} ({c}) の判定が旧定義と食い違う"
-            );
-            if expected {
-                count += 1;
-            }
-        }
-        // JIS X 0208-1990/1997/2012 の漢字数（第1水準 2,965 ＋ 第2水準 3,390）。
-        assert_eq!(count, 6355, "JIS X 0208 の漢字数が合わない");
-    }
+    fn kanji_classification_follows_reference() {
+        // JIS X 0208 の漢字（所属判定は crate::jis_x0208 のテストが担保する）。
+        assert_eq!(CharType::classify('亜'), CharType::Kanji);
+        assert_eq!(CharType::classify('熙'), CharType::Kanji);
 
-    #[test]
-    fn x0208_kanji_excludes_extensions() {
-        // 第1水準の先頭（16-01）と第2水準の末尾（84-06、X 0208-1990 で追加）は漢字。
-        assert!(is_x0208_kanji('亜'));
-        assert!(is_x0208_kanji('熙'));
+        // 青空文庫作業マニュアルが「漢字とみなす」と規定する 5 字（＋参照実装の ※）。
+        for c in ['々', '仝', '〆', '〇', 'ヶ', '※'] {
+            assert_eq!(CharType::classify(c), CharType::Kanji, "{c}");
+        }
 
         // NEC/IBM 拡張漢字は X 0208 の外なので漢字にしない（厓・賴）。
-        assert!(!is_x0208_kanji('\u{5393}'));
-        assert!(!is_x0208_kanji('\u{8CF4}'));
         assert_eq!(CharType::classify('\u{5393}'), CharType::Else);
-
-        // 々 等は URO の外なのでビットマップ側では false。classify の明示リストが拾う。
-        assert!(!is_x0208_kanji('々'));
-        assert_eq!(CharType::classify('々'), CharType::Kanji);
+        assert_eq!(CharType::classify('\u{8CF4}'), CharType::Else);
 
         // ヵ (U+30F5) は青空文庫にも参照実装にも規定が無く、どの文字種にも属さない。
         assert_eq!(CharType::classify('ヵ'), CharType::Else);

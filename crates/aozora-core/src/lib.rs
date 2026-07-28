@@ -56,6 +56,7 @@ pub mod encoding;
 pub mod gaiji;
 pub mod html;
 pub mod jis_table;
+mod jis_x0208;
 pub mod lower;
 pub mod node;
 pub mod parser;
