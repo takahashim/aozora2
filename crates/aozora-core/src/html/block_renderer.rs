@@ -303,6 +303,13 @@ impl<'a> BlockRenderer<'a> {
         let (margin, text_indent) = self.burasage_geometry(wrap_width, width);
         for child in children {
             match child {
+                // 見出しで終わる行は包まないが、行末で `</div>` を閉じる。参照実装では
+                // 見出しが indent_stack に :midashi を積むためぶら下げ div の収支がずれ、
+                // 閉じタグが1つ多く出る（旧 is_midashi_line 相当）。`<br />` は付かない。
+                Block::Line { inline, .. } if ends_with_midashi(inline) => {
+                    self.render_inlines(inline, out);
+                    out.push_str("</div>\r\n");
+                }
                 Block::Line { inline, .. } if !has_inline_text(inline) => {
                     // 本文テキストを持たない行は包まず、内容＋素の `<br />`。
                     // 空行はここで内容が空になるので `<br />` だけが出る。
@@ -339,6 +346,18 @@ impl<'a> BlockRenderer<'a> {
 ///
 /// 行全体がブロック div になる行（行スコープの字下げ・地付き）は、そもそも
 /// [`Block::Line`] ではなく [`Block::LineWrap`] になるので、この判定には来ない。
+/// 行が見出しで終わるか（旧 `is_midashi_line`＝出力が `</h3|h4|h5>` で終わる、の AST 版）。
+fn ends_with_midashi(inlines: &[Inline]) -> bool {
+    matches!(
+        inlines.last().map(|i| &i.kind),
+        Some(InlineKind::Midashi { .. })
+            | Some(InlineKind::BlockInline {
+                kind: BlockKind::Midashi { .. },
+                ..
+            })
+    )
+}
+
 fn has_inline_text(inlines: &[Inline]) -> bool {
     inlines.iter().any(|inline| match &inline.kind {
         InlineKind::Text(s) => !s.is_empty(),
@@ -348,7 +367,11 @@ fn has_inline_text(inlines: &[Inline]) -> bool {
         | InlineKind::FontSize { .. }
         | InlineKind::Tcy { .. }
         | InlineKind::Note(_)
-        | InlineKind::Midashi { .. } => false,
+        | InlineKind::Midashi { .. }
+        // 同一行で開閉するブロック形コマンド・行スコープ地付きは、旧経路の
+        // BlockStart/BlockEnd/LineJisage に対応するブロックマーカー。String を残さない。
+        | InlineKind::BlockInline { .. }
+        | InlineKind::ChitsukiInline { .. } => false,
         _ => true,
     })
 }
