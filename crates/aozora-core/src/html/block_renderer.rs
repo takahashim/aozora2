@@ -264,6 +264,8 @@ impl<'a> BlockRenderer<'a> {
     }
 
     /// ぶら下げブロックを per-line で描画する（参照 generate_burasage_start）。
+    ///
+    /// 包むかどうかは [`has_inline_text`] で決める。
     /// 内容行は個別に burasage div で包み（内側 `<br />` なし）、空行は素の `<br />`。
     /// 行以外の子（行スコープ包み・入れ子ブロック・見出し等）は包まずそのまま描画する。
     fn render_burasage(
@@ -284,8 +286,10 @@ impl<'a> BlockRenderer<'a> {
         let text_indent = width.unwrap_or(0) as i32 - wrap_width.unwrap_or(0) as i32;
         for child in children {
             match child {
-                Block::Line { inline, .. } if inline.is_empty() => {
-                    // 空行は burasage で包まず素の `<br />`。
+                Block::Line { inline, .. } if !has_inline_text(inline) => {
+                    // 本文テキストを持たない行は包まず、内容＋素の `<br />`。
+                    // 空行はここで内容が空になるので `<br />` だけが出る。
+                    self.render_inlines(inline, out);
                     out.push_str("<br />\r\n");
                 }
                 Block::Line { inline, .. } => {
@@ -300,7 +304,39 @@ impl<'a> BlockRenderer<'a> {
             }
         }
     }
+}
 
+/// 行が「本文テキスト」を持つか（参照実装 `TextBuffer#blank_type` の否定）。
+///
+/// 参照実装のぶら下げは、バッファに**空でない String** がある行だけを per-line の
+/// burasage div で包む。**Tag オブジェクトだけの行**——対象をタグに取り込んで String を
+/// 残さないもの——は包まれず、内容＋`<br />` になる。
+///
+/// どのノードが String を残すかは参照実装に最小入力を与えて実測した結果:
+///
+/// - **String を残す（包む）**: 平文テキスト、明示形の縦中横 `［＃縦中横］32［＃終わり］`
+///   （32 が Text として残る）、アクセントの後続文字、unicode 化する外字、
+///   装飾等が対象の**外**に平文を持つ行。
+/// - **Tag に取り込む（包まない）**: 画像・ルビ（親文字を取り込む）・装飾（傍点/傍線/
+///   太字/斜体）・文字サイズ・前方参照の縦中横（`「32」は縦中横`）・注記・見出し。
+///
+/// 行全体がブロック div になる行（行スコープの字下げ・地付き）は、そもそも
+/// [`Block::Line`] ではなく [`Block::LineWrap`] になるので、この判定には来ない。
+fn has_inline_text(inlines: &[Inline]) -> bool {
+    inlines.iter().any(|inline| match &inline.kind {
+        InlineKind::Text(s) => !s.is_empty(),
+        InlineKind::Img { .. }
+        | InlineKind::Ruby { .. }
+        | InlineKind::Style { .. }
+        | InlineKind::FontSize { .. }
+        | InlineKind::Tcy { .. }
+        | InlineKind::Note(_)
+        | InlineKind::Midashi { .. } => false,
+        _ => true,
+    })
+}
+
+impl<'a> BlockRenderer<'a> {
     fn render_inlines(&mut self, inlines: &[Inline], out: &mut String) {
         for inline in inlines {
             self.render_inline(inline, out);
