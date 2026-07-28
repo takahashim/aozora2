@@ -5,10 +5,12 @@
 //! のみ）。旧経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ足す。
 //! バックエンドは木を**状態なしに歩く**だけ（BlockManager を持たない）。
 
-use crate::ast::{to_inlines, Block, BlockKind, Break, CloseKind, Inline, InlineKind, OpenKind};
+use crate::ast::{Block, BlockKind, Break, CloseKind, Inline, InlineKind, OpenKind};
 use crate::gaiji::{
     parse_gaiji, split_nested_gaiji, strip_kuten_prefix, GaijiResult, NestedGaijiSegment,
 };
+use crate::lower::break_policy::line_emits_closing_block_tag;
+use crate::lower::inline::to_inlines;
 use crate::node::{FontSizeType, MidashiLevel, RubyDirection};
 use crate::parser::parse;
 use crate::parser::reference_resolver::resolve_inline_ruby;
@@ -291,8 +293,8 @@ impl<'a> BlockRenderer<'a> {
                 // 包まない行のうち `@terprip=false` のもの（見出し行など）は、参照が
                 // `<br />` ではなく `</div>` を出す（general_output の else）。開きが
                 // 無いまま閉じるので div の収支は合わないが、参照がそう出力する。
-                // 行末 `<br />` の抑制と同じ判定なので [`line_is_block_only`] を共有する。
-                Block::Line { inline, .. } if crate::ast::line_is_block_only(inline) => {
+                // 行末 `<br />` の抑制と同じ判定なので [`line_emits_closing_block_tag`] を共有する。
+                Block::Line { inline, .. } if line_emits_closing_block_tag(inline) => {
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
                 }
@@ -851,7 +853,6 @@ impl<'a> BlockRenderer<'a> {
 /// 単一行のインラインHTML（行末 `<br />`/`\r\n` なし）を新経路で描画する。
 /// 旧 `HtmlRenderer::render_line` のAozora AST版（インライン列のみ）。
 pub fn render_line_inline(line: &str, options: &RenderOptions) -> String {
-    use crate::ast::to_inlines;
     use crate::parser::parse;
     use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 

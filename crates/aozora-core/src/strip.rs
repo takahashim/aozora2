@@ -142,7 +142,7 @@ fn render_inlines_plain(inlines: &[crate::ast::Inline], out: &mut String) {
 /// assert_eq!(plain, "吾輩は猫である");
 /// ```
 pub fn convert_line(input: &str) -> String {
-    use crate::ast::to_inlines;
+    use crate::lower::inline::to_inlines;
     use crate::parser::parse;
     use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
     use crate::tokenizer::tokenize;

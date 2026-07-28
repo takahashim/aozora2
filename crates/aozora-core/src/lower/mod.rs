@@ -9,6 +9,12 @@
 //! 旧 BlockManager 経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ
 //! 増やす。未対応のブロック種は暫定でトップレベルに落とす（TODO）。
 
+pub mod break_policy;
+pub mod inline;
+
+use break_policy::line_emits_closing_block_tag;
+use inline::to_inlines;
+
 use crate::ast::{AozoraAst, Block, BlockKind, Break, CloseKind, OpenKind};
 use crate::node::{BlockType, Node, NodeKind};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
@@ -95,15 +101,15 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                         &mut stack,
                         &mut top,
                         Block::Line {
-                            inline: crate::ast::to_inlines(&nodes[..idx]),
+                            inline: to_inlines(&nodes[..idx]),
                             brk: Break::NoNewline,
                             line: line_no,
                         },
                     );
                 }
                 stack.push((kind, Vec::new(), line_no, OpenKind::NoBreak));
-                let inline = crate::ast::to_inlines(&nodes[idx + 1..]);
-                let brk = if crate::ast::line_is_block_only(&inline) {
+                let inline = to_inlines(&nodes[idx + 1..]);
+                let brk = if line_emits_closing_block_tag(&inline) {
                     Break::None
                 } else {
                     Break::Br
@@ -142,8 +148,8 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 let closable = closes.len().min(stack.len());
                 if closable == 0 {
                     let explicit = closes.iter().any(|(_, e)| *e);
-                    let inline = crate::ast::to_inlines(&nodes);
-                    let brk = if explicit || crate::ast::line_is_block_only(&inline) {
+                    let inline = to_inlines(&nodes);
+                    let brk = if explicit || line_emits_closing_block_tag(&inline) {
                         Break::None
                     } else {
                         Break::Br
@@ -163,7 +169,7 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                     for (n, (idx, explicit)) in closes.iter().take(closable).enumerate() {
                         // 閉じタグより前の本文。行末の改行は閉じタグ以降が出す。
                         let segment = (seg_start < *idx).then(|| Block::Line {
-                            inline: crate::ast::to_inlines(&nodes[seg_start..*idx]),
+                            inline: to_inlines(&nodes[seg_start..*idx]),
                             brk: Break::NoNewline,
                             line: line_no,
                         });
@@ -206,8 +212,8 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                     let tail_start = closes[closable - 1].0 + 1;
                     if tail_start < nodes.len() {
                         let explicit = closes.iter().take(closable).any(|(_, e)| *e);
-                        let inline = crate::ast::to_inlines(&nodes[tail_start..]);
-                        let brk = if explicit || crate::ast::line_is_block_only(&inline) {
+                        let inline = to_inlines(&nodes[tail_start..]);
+                        let brk = if explicit || line_emits_closing_block_tag(&inline) {
                             Break::None
                         } else {
                             Break::Br
@@ -230,7 +236,7 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 // 行スコープ BlockStart）だけを取り除き、残りは to_inlines に渡す
                 // （行内の見出しコマンド範囲などはそちらが畳む）。
                 let rest = strip_leading_line_scope_marker(nodes);
-                let inline = crate::ast::to_inlines(&rest);
+                let inline = to_inlines(&rest);
                 push_block(
                     &mut stack,
                     &mut top,
@@ -253,10 +259,10 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                         }
                     )
                 });
-                let inline = crate::ast::to_inlines(&nodes);
+                let inline = to_inlines(&nodes);
                 // 行末 <br /> の要否を Lower 時に確定（@terprip：ここで…終わり行、
                 // および見出し・ブロックのみ行では抑制）。
-                let brk = if has_explicit_close || crate::ast::line_is_block_only(&inline) {
+                let brk = if has_explicit_close || line_emits_closing_block_tag(&inline) {
                     Break::None
                 } else {
                     Break::Br
@@ -415,7 +421,7 @@ enum LineKind {
 /// 同じ行に対応する開始が無い `BlockEnd` の位置と `explicit_close` を、現れる順に返す。
 ///
 /// 同じ行で開閉する範囲（`［＃ここから太字］…［＃ここで太字終わり］`）の終端は
-/// [`crate::ast::to_inlines`] がインラインに畳むのでここでは拾わない。拾うのは
+/// [`to_inlines`] がインラインに畳むのでここでは拾わない。拾うのは
 /// 前の行から続いているブロックを閉じるものだけ。
 fn find_unmatched_block_ends(nodes: &[Node]) -> Vec<(usize, bool)> {
     let mut open: Vec<&BlockType> = Vec::new();
