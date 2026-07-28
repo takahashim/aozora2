@@ -224,7 +224,8 @@ fn format_bitmap_items(bits: &[u8]) -> String {
     code.push_str(&format!("const BASE: u32 = {URO_START:#X};\n"));
     code.push_str("/// 上限（この符号位置を含む）。\n");
     code.push_str(&format!("const END: u32 = {URO_END:#X};\n"));
-    code.push_str("/// 収録字数（JIS X 0208 第1水準＋第2水準）。\n");
+    code.push_str("/// 収録字数（JIS X 0208 第1水準＋第2水準）。生成表の検証にだけ使う。\n");
+    code.push_str("#[allow(dead_code)] // テストからのみ参照する\n");
     code.push_str(&format!("const COUNT: usize = {X0208_KANJI_COUNT};\n"));
     code.push_str("/// 各符号位置が JIS X 0208 の漢字かを示すビット列。\n");
     code.push_str(&format!("static BITS: [u8; {}] = [\n", bits.len()));
