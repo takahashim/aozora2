@@ -76,6 +76,10 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
             }
             LineKind::BlockClose(explicit) => {
                 // 対応する開きが無ければ何も出さない（旧経路も未マッチ終了は無出力）。
+                // ここは Closes([(0, explicit)]) と同じ処理だが、開きが無いときだけ
+                // 扱いが違う（あちらは空の内容行を積む）。開き無しの「終わり」は参照実装が
+                // エラーで停止する入力なのでオラクルで是非を決められない。捨てる側を
+                // 残しているのは、エディタのプレビューに空行が紛れない方が良いため。
                 stack.close_block(|kind, s| block_close_kind(explicit, kind, s));
             }
             LineKind::Closes(closes) => apply_closes(&mut stack, &nodes, &closes, line_no),
@@ -437,6 +441,13 @@ fn find_unmatched_block_ends(nodes: &[Node]) -> Vec<(usize, bool)> {
     let mut out = Vec::new();
     for (idx, node) in nodes.iter().enumerate() {
         match &node.kind {
+            // 行途中の地付き（is_block=false の Chitsuki）は参照 close_inline_blocks が
+            // 行末で閉じるので、同じ行の `［＃ここで地付き終わり］` はこれではなく
+            // 前の行から続く複数行の地付きを閉じる。開きとして数えない。
+            NodeKind::BlockStart {
+                block_type: BlockType::Chitsuki,
+                params,
+            } if !params.is_block => {}
             NodeKind::BlockStart { block_type, .. } => open.push(block_type),
             NodeKind::BlockEnd {
                 block_type,
@@ -508,6 +519,10 @@ fn classify_line(nodes: &[Node]) -> LineKind {
             unreachable!("position で BlockStart を選んでいる")
         };
         let has_tail = idx + 1 < nodes.len();
+        // 「同じ行で閉じているか」を、種類を問わない BlockEnd の有無で見る
+        // （inline.rs の find_matching_end は同種で対応を取る）。両者が食い違うのは
+        // 別種の終わりが混ざる行（`text［＃ここから斜体］text［＃ここで太字終わり］`）
+        // だけで、これは参照実装がエラーで停止する入力なので正解を決められない。
         let no_end_on_line = !nodes[idx + 1..]
             .iter()
             .any(|n| matches!(n.kind, NodeKind::BlockEnd { .. }));
@@ -799,6 +814,34 @@ mod position_tests {
             }
             other => panic!("Nested を期待: {other:?}"),
         }
+    }
+
+    /// 行途中の地付き（is_block=false の Chitsuki）は行末で閉じるので、同じ行の
+    /// `［＃ここで地付き終わり］` は前の行から続く複数行の地付きを閉じる。
+    ///
+    /// 参照実装で実測（`Ａ［＃地付き］Ｂ［＃ここで地付き終わり］` は
+    /// `Ａ<div class="chitsuki_0">Ｂ</div></div>` になる）。
+    #[test]
+    fn inline_chitsuki_does_not_absorb_the_multiline_chitsuki_end() {
+        let lines = vec![
+            "［＃ここから地付き］",
+            "本文",
+            "Ａ［＃地付き］Ｂ［＃ここで地付き終わり］",
+            "後の行",
+        ];
+        let blocks = lower_to_blocks(&parse_document_raw(&lines));
+        match &blocks[0] {
+            Block::Nested { kind, close, .. } => {
+                assert_eq!(*kind, BlockKind::Chitsuki { width: 0 });
+                assert_eq!(*close, CloseKind::Newline, "この行で閉じる");
+            }
+            other => panic!("Nested を期待: {other:?}"),
+        }
+        assert!(
+            matches!(blocks[1], Block::Line { line: 3, .. }),
+            "後の行はブロックの外: {:?}",
+            blocks[1]
+        );
     }
 
     /// 対応する開きが無ければ閉じタグは出さず、通常の内容行として扱う。
