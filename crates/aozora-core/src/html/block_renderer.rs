@@ -274,6 +274,15 @@ impl<'a> BlockRenderer<'a> {
         let (margin, text_indent) = self.burasage_geometry(wrap_width, width);
         for child in children {
             match child {
+                // 参照 general_output と同順で判定する。まず包むか（blank_type==false）、
+                // 次に `<br />` を出すか（terprip）。
+                Block::Line { inline, .. } if has_inline_text(inline) => {
+                    out.push_str(&format!(
+                        "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">"
+                    ));
+                    self.render_inlines(inline, out);
+                    out.push_str("</div>\r\n");
+                }
                 // 見出しで終わる行は包まないが、行末で `</div>` を閉じる。参照実装では
                 // 見出しが indent_stack に :midashi を積むためぶら下げ div の収支がずれ、
                 // 閉じタグが1つ多く出る（旧 is_midashi_line 相当）。`<br />` は付かない。
@@ -281,18 +290,11 @@ impl<'a> BlockRenderer<'a> {
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
                 }
-                Block::Line { inline, .. } if !has_inline_text(inline) => {
+                Block::Line { inline, .. } => {
                     // 本文テキストを持たない行は包まず、内容＋素の `<br />`。
                     // 空行はここで内容が空になるので `<br />` だけが出る。
                     self.render_inlines(inline, out);
                     out.push_str("<br />\r\n");
-                }
-                Block::Line { inline, .. } => {
-                    out.push_str(&format!(
-                        "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">"
-                    ));
-                    self.render_inlines(inline, out);
-                    out.push_str("</div>\r\n");
                 }
                 // 行スコープ字下げ・入れ子ブロック等は burasage で包まない。
                 other => self.render_block(other, out),
@@ -332,6 +334,18 @@ fn ends_with_midashi(inlines: &[Inline]) -> bool {
 fn has_inline_text(inlines: &[Inline]) -> bool {
     inlines.iter().any(|inline| match &inline.kind {
         InlineKind::Text(s) => !s.is_empty(),
+        // 範囲形（`［＃中見出し］…［＃中見出し終わり］`）は中身が参照実装の
+        // バッファに素の String として残るので、中を見て判定する。後方参照形
+        // （`［＃「…」は中見出し］`）は String をタグに取り込むので残さない。
+        InlineKind::Style { children, .. }
+        | InlineKind::FontSize { children, .. }
+        | InlineKind::Tcy { children, .. }
+        | InlineKind::Midashi { children, .. }
+        | InlineKind::BlockInline { children, .. }
+            if inline.range_form =>
+        {
+            has_inline_text(children)
+        }
         InlineKind::Img { .. }
         | InlineKind::Ruby { .. }
         | InlineKind::Style { .. }
@@ -889,6 +903,40 @@ mod tests {
         let new_inner = BlockRenderer::new(&RenderOptions::default()).render_body(&blocks);
 
         assert_eq!(new_inner, old_inner, "\n新:{new_inner:?}\n旧:{old_inner:?}");
+    }
+
+    /// ぶら下げの per-line 包みは、参照 `TextBuffer#blank_type` と同じく
+    /// 「バッファに空でない String が残るか」で決まる。範囲形の注記は中身を素の
+    /// String として残すので**包む**が、後方参照形はタグに取り込むので包まない。
+    ///
+    /// 参照実装で実測（見出し・太字・傍点・縦中横で同じ結果）:
+    /// - `［＃中見出し］abc［＃中見出し終わり］` → `<div class="burasage">…</div>`
+    /// - `abc［＃「abc」は中見出し］`             → 包まず `</h4></div>`
+    #[test]
+    fn burasage_wraps_range_form_notations_but_not_backreferences() {
+        let render = |line: &str| {
+            let lines = vec!["［＃ここから５字下げ、折り返して７字下げ］", line];
+            let blocks = lower_to_blocks(&parse_document_raw(&lines));
+            BlockRenderer::new(&RenderOptions::default()).render_body(&blocks)
+        };
+        for range_form in [
+            "［＃中見出し］abc［＃中見出し終わり］",
+            "［＃ここから太字］abc［＃ここで太字終わり］",
+            "［＃縦中横］32［＃縦中横終わり］",
+        ] {
+            let html = render(range_form);
+            assert!(
+                html.starts_with("<div class=\"burasage\""),
+                "範囲形は包む: {range_form} → {html:?}"
+            );
+        }
+        for backref in ["abc［＃「abc」は中見出し］", "abc［＃「abc」は太字］"] {
+            let html = render(backref);
+            assert!(
+                !html.starts_with("<div class=\"burasage\""),
+                "後方参照形は包まない: {backref} → {html:?}"
+            );
+        }
     }
 
     #[test]

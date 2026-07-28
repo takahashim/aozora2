@@ -190,7 +190,7 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
                 if let Some(end) = find_matching_end(nodes, i, block_type) {
                     if let Some(kind) = crate::lower::block_kind_of(block_type, params) {
                         let inner = to_inlines(&nodes[i + 1..end]);
-                        out.push(Inline::new(
+                        out.push(Inline::from_range(
                             InlineKind::BlockInline {
                                 kind,
                                 children: inner,
@@ -287,7 +287,7 @@ fn wrap_inline_range(
         BlockType::Warigaki => Some(InlineKind::Warigaki { children: inner }),
         _ => None,
     };
-    kind.map(|kind| Inline::new(kind, span))
+    kind.map(|kind| Inline::from_range(kind, span))
 }
 
 /// この行のインライン列を描画すると「ブロックのみ行」になるか（末尾が `</div>` や
@@ -602,12 +602,32 @@ pub struct Inline {
     pub kind: InlineKind,
     /// ソース行内のchar位置範囲。
     pub span: Span,
+    /// 範囲形（`［＃中見出し］…［＃中見出し終わり］`）由来か。後方参照形
+    /// （`［＃「…」は中見出し］`）なら false。
+    ///
+    /// 互換メタデータ。参照実装は範囲形の中身をバッファに**素の String** として
+    /// 残すが、後方参照形は String をタグへ取り込んで消す。この差はぶら下げの
+    /// per-line 包み（`TextBuffer#blank_type`）の判定に効く。
+    pub range_form: bool,
 }
 
 impl Inline {
-    /// 種別とソース位置からインラインを作成する。
+    /// 種別とソース位置からインラインを作成する（後方参照形＝`range_form: false`）。
     pub fn new(kind: InlineKind, span: Span) -> Self {
-        Self { kind, span }
+        Self {
+            kind,
+            span,
+            range_form: false,
+        }
+    }
+
+    /// 範囲形（`［＃…］…［＃…終わり］`）由来として作成する。
+    pub fn from_range(kind: InlineKind, span: Span) -> Self {
+        Self {
+            kind,
+            span,
+            range_form: true,
+        }
     }
 
     /// テキストインラインを作成する。
