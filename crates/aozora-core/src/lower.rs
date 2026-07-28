@@ -85,11 +85,24 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 if let Some((kind, children, open_line)) = stack.pop() {
                     // `ここで…終わり`（explicit）は `</div>\r\n`。bare `…終わり` は
                     // @terprip 維持で `</div><br />\r\n`（memory bare-block-end）。
-                    let close = if explicit {
+                    let mut close = if explicit {
                         CloseKind::Newline
                     } else {
                         CloseKind::BareBreak
                     };
+                    // ぶら下げの直下で装飾系ブロックが閉じる行は、参照が閉じタグを
+                    // String 扱いして per-line の burasage div で包む。包む幅は外側の
+                    // ぶら下げが持つので、ここで畳んで木に載せる（描画器は状態を持たない）。
+                    if is_burasage_wrapped_close(&kind) {
+                        if let Some((BlockKind::Burasage { wrap_width, width }, _, _)) =
+                            stack.last()
+                        {
+                            close = CloseKind::BurasageWrapped {
+                                wrap_width: *wrap_width,
+                                width: *width,
+                            };
+                        }
+                    }
                     let nested = Block::Nested {
                         kind,
                         children,
@@ -227,6 +240,23 @@ fn strip_leading_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
         }
     }
     nodes
+}
+
+/// ぶら下げの中で閉じるとき、閉じタグが per-line の burasage div に包まれる種類か。
+///
+/// 参照実装 `is_decoration_block_close` 相当。字下げ・地付き・ぶら下げ自身・見出しは
+/// 該当しない（それらの閉じは String を残さない）。
+fn is_burasage_wrapped_close(k: &BlockKind) -> bool {
+    matches!(
+        k,
+        BlockKind::Yokogumi
+            | BlockKind::Keigakomi
+            | BlockKind::Caption
+            | BlockKind::FontSize { .. }
+            | BlockKind::Futoji
+            | BlockKind::Shatai
+            | BlockKind::Jizume { .. }
+    )
 }
 
 fn is_jisage_or_burasage(k: &BlockKind) -> bool {

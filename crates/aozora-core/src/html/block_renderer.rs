@@ -240,9 +240,16 @@ impl<'a> BlockRenderer<'a> {
         }
         // 閉じタグの出力形は互換メタデータ（CloseKind）で決める。
         let close_nl = match close {
-            CloseKind::NoBreak => "</div>",
-            CloseKind::Newline => "</div>\r\n",
-            CloseKind::BareBreak => "</div><br />\r\n",
+            CloseKind::NoBreak => "</div>".to_string(),
+            CloseKind::Newline => "</div>\r\n".to_string(),
+            CloseKind::BareBreak => "</div><br />\r\n".to_string(),
+            // 閉じタグを外側ぶら下げの per-line div で包む（Lower 時に確定済み）。
+            CloseKind::BurasageWrapped { wrap_width, width } => {
+                let (margin, text_indent) = self.burasage_geometry(wrap_width, width);
+                format!(
+                    "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\"></div></div>\r\n"
+                )
+            }
         };
         // 開始タグ（旧 tag_generator の block 形と厳密一致）。複数行ブロックは開き
         // 直後に `\r\n` を出す（行スコープ包みとの違い）。None なら div で包まない。
@@ -253,7 +260,7 @@ impl<'a> BlockRenderer<'a> {
                 for child in children {
                     self.render_block(child, out);
                 }
-                out.push_str(close_nl);
+                out.push_str(&close_nl);
             }
             None => {
                 for child in children {
@@ -261,6 +268,24 @@ impl<'a> BlockRenderer<'a> {
                 }
             }
         }
+    }
+
+    /// ぶら下げの `margin-left` と `text-indent`（参照 generate_burasage_start と同じ）。
+    ///
+    /// 折り返し幅が空（コンマなし記法）のとき、参照は `margin-left: em` という不正な
+    /// CSS を出す（Quirk `empty_indent_css`）。オフなら妥当な `0em`。
+    fn burasage_geometry(&self, wrap_width: Option<u32>, width: Option<u32>) -> (String, i32) {
+        let margin = wrap_width.map(|w| w.to_string()).unwrap_or_else(|| {
+            if self.options.quirks.empty_indent_css {
+                String::new()
+            } else {
+                "0".to_string()
+            }
+        });
+        (
+            margin,
+            width.unwrap_or(0) as i32 - wrap_width.unwrap_or(0) as i32,
+        )
     }
 
     /// ぶら下げブロックを per-line で描画する（参照 generate_burasage_start）。
@@ -275,15 +300,7 @@ impl<'a> BlockRenderer<'a> {
         children: &[Block],
         out: &mut String,
     ) {
-        // margin-left は折り返し幅。空（None）のとき参照は空文字（Quirk）／clean で 0。
-        let margin = wrap_width.map(|w| w.to_string()).unwrap_or_else(|| {
-            if self.options.quirks.empty_indent_css {
-                String::new()
-            } else {
-                "0".to_string()
-            }
-        });
-        let text_indent = width.unwrap_or(0) as i32 - wrap_width.unwrap_or(0) as i32;
+        let (margin, text_indent) = self.burasage_geometry(wrap_width, width);
         for child in children {
             match child {
                 Block::Line { inline, .. } if !has_inline_text(inline) => {

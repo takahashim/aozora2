@@ -418,6 +418,19 @@ pub enum CloseKind {
     /// `</div><br />\r\n`。bare `…終わり`（`ここで` 無し）で複数行ブロックを閉じた行。
     /// 参照は @terprip を維持するので行末 `<br />` が付く（memory bare-block-end）。
     BareBreak,
+    /// `<div class="burasage" …></div></div>\r\n`。ぶら下げの直下で装飾系ブロック
+    /// （横組み・罫囲み・キャプション・文字サイズ・太字・斜体・字詰め）が閉じる行。
+    ///
+    /// 参照実装は閉じタグを String としてバッファに積むため blank_type が false になり、
+    /// その行を per-line の burasage div で包む（＝閉じタグが div の中に入る）。
+    /// 包む幅は外側のぶら下げが持つものなので、描画器が状態を持たずに出せるよう
+    /// Lower 時にここへ畳んでおく。
+    BurasageWrapped {
+        /// 外側ぶら下げの折り返し幅（`margin-left`。None は Quirk の空幅）
+        wrap_width: Option<u32>,
+        /// 外側ぶら下げの字下げ幅（`text-indent` の算出に使う）
+        width: Option<u32>,
+    },
 }
 
 /// 入れ子ブロックの種類。`ここから…` で開く複数行ブロックに対応する。
