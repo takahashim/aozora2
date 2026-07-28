@@ -101,15 +101,15 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
     // タグが（前方参照で親文字を取り込んだ状態で）そのまま親文字になる。
     // 例:「公事根源［＃「公事根源」は斜体］《くじこんげん》」→ 親文字は
     // <span class="shatai">公事根源</span>。Note と同じくタグ単独を親文字にする。
-    if matches!(
-        &last_node.kind,
-        NodeKind::Style { .. }
-            | NodeKind::Tcy { .. }
-            | NodeKind::FontSize { .. }
-            | NodeKind::Keigakomi { .. }
-            | NodeKind::Yokogumi { .. }
-            | NodeKind::Caption { .. }
-    ) {
+    //
+    // ただしインラインコンテナのうち、見出し（ブロック相当の <h*>）とルビ自身
+    // （ルビの入れ子になる）は親文字にしない。
+    let is_inline_tag = last_node.kind.inline_container_children().is_some()
+        && !matches!(
+            &last_node.kind,
+            NodeKind::Midashi { .. } | NodeKind::Ruby { .. }
+        );
+    if is_inline_tag {
         let (remaining, base) = nodes.split_at(nodes.len() - 1);
         return Some((remaining.to_vec(), base.to_vec()));
     }

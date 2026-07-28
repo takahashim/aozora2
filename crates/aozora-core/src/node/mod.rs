@@ -201,6 +201,50 @@ pub enum NodeKind {
     },
 }
 
+impl NodeKind {
+    /// インラインコンテナ（前方参照のスパン要素になれるタグ）なら、その**照合対象**の
+    /// 子ノード列を返す。参照実装 aozora2html の `ReferenceMentioned` に相当する。
+    ///
+    /// ルビは親文字（rb）だけを返す。ルビ文字（rt）は前方参照の照合対象ではないため。
+    /// 割注・画像・外字・アクセント・訓点はスパン要素になれないので `None`。
+    ///
+    /// この判定を各所で手書きすると `NodeKind` に variant を足すたび同期漏れが起きる
+    /// ので、「どれがインラインコンテナか」の知識はここ 1 箇所に置く。
+    pub fn inline_container_children(&self) -> Option<&[Node]> {
+        match self {
+            NodeKind::Ruby { children, .. }
+            | NodeKind::Style { children, .. }
+            | NodeKind::FontSize { children, .. }
+            | NodeKind::Tcy { children }
+            | NodeKind::Keigakomi { children }
+            | NodeKind::Yokogumi { children }
+            | NodeKind::Caption { children }
+            | NodeKind::Midashi { children, .. } => Some(children),
+            _ => None,
+        }
+    }
+
+    /// 本文の流れを成す子ノード列を可変で返す（走査・書き換え用）。
+    ///
+    /// [`Self::inline_container_children`] と違い、ルビ文字（rt）と割注の上下段も含む。
+    /// `AnnotationEnd` の中身は注記マーカーの描画内容であって本文ではないので含めない。
+    /// 子を持たないノードでは空になる。
+    pub fn inline_child_lists_mut(&mut self) -> Vec<&mut Vec<Node>> {
+        match self {
+            NodeKind::Ruby { children, ruby, .. } => vec![children, ruby],
+            NodeKind::Warichu { upper, lower } => vec![upper, lower],
+            NodeKind::Style { children, .. }
+            | NodeKind::FontSize { children, .. }
+            | NodeKind::Tcy { children }
+            | NodeKind::Keigakomi { children }
+            | NodeKind::Yokogumi { children }
+            | NodeKind::Caption { children }
+            | NodeKind::Midashi { children, .. } => vec![children],
+            _ => Vec::new(),
+        }
+    }
+}
+
 /// RawASTのノード。各ノードが行内の絶対char spanを自前で持つ。
 #[derive(Debug, Clone)]
 pub struct Node {

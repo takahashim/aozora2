@@ -218,25 +218,8 @@ fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<S
 
 /// コンテナノードの子ノード列に対して前方参照解決を再帰的に適用する。
 fn resolve_style_references_in_children(node: &mut Node) {
-    match &mut node.kind {
-        NodeKind::Ruby { children, ruby, .. } => {
-            resolve_style_references(children);
-            resolve_style_references(ruby);
-        }
-        NodeKind::Style { children, .. }
-        | NodeKind::FontSize { children, .. }
-        | NodeKind::Tcy { children }
-        | NodeKind::Keigakomi { children }
-        | NodeKind::Yokogumi { children }
-        | NodeKind::Caption { children }
-        | NodeKind::Midashi { children, .. } => {
-            resolve_style_references(children);
-        }
-        NodeKind::Warichu { upper, lower } => {
-            resolve_style_references(upper);
-            resolve_style_references(lower);
-        }
-        _ => {}
+    for children in node.kind.inline_child_lists_mut() {
+        resolve_style_references(children);
     }
 }
 
@@ -248,24 +231,6 @@ struct FrontRefMatch {
     prefix: String,
     /// ラップ対象のノード列（古い順）
     children: Vec<Node>,
-}
-
-/// 対象ノードが参照実装 ReferenceMentioned 相当か（スパンの一要素になれるか）。
-/// 対応: ルビ・装飾（Decorate: 傍点/傍線/太字/斜体/上下付き 等）・文字サイズ・
-/// 縦中横（Dir）・罫囲み・横組み・キャプション・見出し。画像/外字/アクセント/
-/// 訓点（送り仮名・返り点）はスパン不可（参照実装で false になる）。
-fn is_reference_mentioned(kind: &NodeKind) -> bool {
-    matches!(
-        kind,
-        NodeKind::Ruby { .. }
-            | NodeKind::Style { .. }
-            | NodeKind::FontSize { .. }
-            | NodeKind::Tcy { .. }
-            | NodeKind::Keigakomi { .. }
-            | NodeKind::Yokogumi { .. }
-            | NodeKind::Caption { .. }
-            | NodeKind::Midashi { .. }
-    )
 }
 
 /// 参照実装 search_front_reference の移植。
@@ -307,7 +272,8 @@ fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Optio
             }
             None
         }
-        kind if is_reference_mentioned(kind) => {
+        // 参照実装 ReferenceMentioned 相当のインラインコンテナ。
+        kind if kind.inline_container_children().is_some() => {
             let node = &nodes[end_idx];
             let inner = extract_plain_text(node);
             if inner.is_empty() {
@@ -362,22 +328,17 @@ fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch,
     *i = annotation_idx;
 }
 
-/// ノードからプレーンテキストを抽出
+/// ノードからプレーンテキストを抽出（前方参照の照合に使う）。
+///
+/// インラインコンテナは照合対象の子（ルビなら親文字のみ）を再帰的にたどる。
+/// それ以外——外字・画像・アクセント・訓点など——は空文字列になり、照合は失敗する。
 fn extract_plain_text(node: &Node) -> String {
     match &node.kind {
         NodeKind::Text(text) => text.clone(),
-        NodeKind::Ruby { children, .. } => {
-            // Rubyノードからは親文字のみ抽出
-            children.iter().map(extract_plain_text).collect()
-        }
-        NodeKind::Style { children, .. } => children.iter().map(extract_plain_text).collect(),
-        NodeKind::FontSize { children, .. } => children.iter().map(extract_plain_text).collect(),
-        NodeKind::Tcy { children } => children.iter().map(extract_plain_text).collect(),
-        NodeKind::Keigakomi { children } => children.iter().map(extract_plain_text).collect(),
-        NodeKind::Yokogumi { children } => children.iter().map(extract_plain_text).collect(),
-        NodeKind::Caption { children } => children.iter().map(extract_plain_text).collect(),
-        NodeKind::Midashi { children, .. } => children.iter().map(extract_plain_text).collect(),
-        _ => String::new(),
+        kind => kind
+            .inline_container_children()
+            .map(|children| children.iter().map(extract_plain_text).collect())
+            .unwrap_or_default(),
     }
 }
 
