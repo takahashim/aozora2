@@ -121,13 +121,9 @@ fn compute_diff_hunks(expected: &[&str], actual: &[&str]) -> Vec<String> {
         let mut context_before: Vec<String> = Vec::new();
 
         // コンテキスト行（前3行）
-        let context_start = if hunk_start_exp >= 3 {
-            hunk_start_exp - 3
-        } else {
-            0
-        };
-        for k in context_start..hunk_start_exp {
-            context_before.push(format!(" {}", truncate(expected[k], 500)));
+        let context_start = hunk_start_exp.saturating_sub(3);
+        for line in &expected[context_start..hunk_start_exp] {
+            context_before.push(format!(" {}", truncate(line, 500)));
         }
 
         // 差分を見つける - 次に一致する行を探す
@@ -139,8 +135,9 @@ fn compute_diff_hunks(expected: &[&str], actual: &[&str]) -> Vec<String> {
         'outer: for look_ahead in 1..=50 {
             // expected[i + look_ahead] が actual のどこかにあるか
             if i + look_ahead < expected.len() {
-                for k in j..actual.len().min(j + look_ahead + 10) {
-                    if expected[i + look_ahead] == actual[k] {
+                let upper = actual.len().min(j + look_ahead + 10);
+                for (k, line) in actual.iter().enumerate().take(upper).skip(j) {
+                    if expected[i + look_ahead] == *line {
                         exp_end = i + look_ahead;
                         act_end = k;
                         found_sync = true;
@@ -150,8 +147,9 @@ fn compute_diff_hunks(expected: &[&str], actual: &[&str]) -> Vec<String> {
             }
             // actual[j + look_ahead] が expected のどこかにあるか
             if j + look_ahead < actual.len() {
-                for k in i..expected.len().min(i + look_ahead + 10) {
-                    if actual[j + look_ahead] == expected[k] {
+                let upper = expected.len().min(i + look_ahead + 10);
+                for (k, line) in expected.iter().enumerate().take(upper).skip(i) {
+                    if actual[j + look_ahead] == *line {
                         exp_end = k;
                         act_end = j + look_ahead;
                         found_sync = true;
@@ -168,20 +166,20 @@ fn compute_diff_hunks(expected: &[&str], actual: &[&str]) -> Vec<String> {
         }
 
         // 削除された行（expected にあって actual にない）
-        for k in i..exp_end {
-            hunk_lines.push(format!("-{}", truncate(expected[k], 500)));
+        for line in &expected[i..exp_end] {
+            hunk_lines.push(format!("-{}", truncate(line, 500)));
         }
 
         // 追加された行（actual にあって expected にない）
-        for k in j..act_end {
-            hunk_lines.push(format!("+{}", truncate(actual[k], 500)));
+        for line in &actual[j..act_end] {
+            hunk_lines.push(format!("+{}", truncate(line, 500)));
         }
 
         // コンテキスト行（後3行）
         let mut context_after: Vec<String> = Vec::new();
         let context_end = (exp_end + 3).min(expected.len());
-        for k in exp_end..context_end {
-            context_after.push(format!(" {}", truncate(expected[k], 500)));
+        for line in &expected[exp_end..context_end] {
+            context_after.push(format!(" {}", truncate(line, 500)));
         }
 
         if !hunk_lines.is_empty() {

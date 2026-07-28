@@ -95,7 +95,7 @@ fn generate_original_title_chars(out_dir: &str) {
 
     // 区点範囲の宣言。各行の kuten がこの範囲に収まっているかを検証するために使う
     // （符号化器を持たずに表の自己整合性を確かめられる）。
-    let ranges: Vec<((u32, u32, u32), (u32, u32, u32))> = table["kuten_ranges"]
+    let ranges: Vec<(MenKuTen, MenKuTen)> = table["kuten_ranges"]
         .as_array()
         .unwrap_or_else(|| panic!("{ORIGINAL_TITLE_CHARS}: kuten_ranges が配列ではありません"))
         .iter()
@@ -285,6 +285,9 @@ fn x0208_kanji_codepoints(entries: &[(String, String)]) -> Vec<u32> {
     }
     out
 }
+
+/// 面区点（面, 区, 点）。順序比較で範囲判定に使えるようタプルのまま扱う。
+type MenKuTen = (u32, u32, u32);
 
 /// `"1-16-01"` 形式のキーを (面, 区, 点) に分解する。形式が違えば `None`。
 fn parse_menkuten(key: &str) -> Option<(u32, u32, u32)> {
