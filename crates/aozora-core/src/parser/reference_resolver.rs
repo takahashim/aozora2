@@ -41,44 +41,41 @@ pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
 fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
-        // 親文字が空のRubyノードを探す
-        if let NodeKind::Ruby {
-            children,
-            ruby,
-            direction: _,
-            ..
-        } = &nodes[i].kind
-        {
-            if children.is_empty() && !ruby.is_empty() {
-                // 直前のノードから親文字を抽出
-                if i > 0 {
-                    let preceding_nodes: Vec<Node> = nodes[..i].to_vec();
-                    if let Some((remaining, base)) = extract_ruby_base_from_nodes(&preceding_nodes)
-                    {
-                        // 直前のノードを更新
-                        let to_remove = i - (preceding_nodes.len() - remaining.len());
-
-                        // 残りのノードで前半を置き換え
-                        nodes.splice(..i, remaining.into_iter());
-
-                        // 新しいインデックスを計算
-                        let new_i = nodes.len() - (nodes.len() - to_remove);
-
-                        // Rubyノードを更新
-                        if let Some(Node {
-                            kind: NodeKind::Ruby { children: c, .. },
-                            span,
-                            ..
-                        }) = nodes.get_mut(new_i)
-                        {
-                            *span = base.iter().fold(*span, |span, node| span.union(node.span));
-                            *c = base;
-                        }
-                    }
-                }
-            }
+        // 親文字が空の Ruby ノードだけが対象。行頭（i == 0）なら取り込む前方が無い。
+        let needs_base = matches!(
+            &nodes[i].kind,
+            NodeKind::Ruby { children, ruby, .. } if children.is_empty() && !ruby.is_empty()
+        );
+        if !needs_base || i == 0 {
+            i += 1;
+            continue;
         }
-        i += 1;
+
+        // 直前のノード列から親文字を抽出する。
+        let Some((remaining, base)) = extract_ruby_base_from_nodes(&nodes[..i]) else {
+            i += 1;
+            continue;
+        };
+
+        // 前半を「親文字を取り除いた残り」で置き換える。ノード列はここで
+        // i - remaining.len() 個縮み、Ruby ノードは remaining.len() の位置へ動く。
+        let ruby_idx = remaining.len();
+        nodes.splice(..i, remaining);
+
+        if let Node {
+            kind: NodeKind::Ruby { children, .. },
+            span,
+            ..
+        } = &mut nodes[ruby_idx]
+        {
+            *span = base.iter().fold(*span, |span, node| span.union(node.span));
+            *children = base;
+        }
+
+        // 縮んだ分を反映して Ruby の次から走査を続ける。旧コードは i をそのまま
+        // 進めていたため、縮んだ個数だけ後続ノードを読み飛ばしていた
+        // （例:「あ《い》《え》」の 2 つ目のルビが未訪問のまま残る）。
+        i = ruby_idx + 1;
     }
 }
 
@@ -541,6 +538,37 @@ mod tests {
             matches!(&ruby[0].kind, NodeKind::Text(s) if s == "くじこんげん"),
             "rt が想定外: {ruby:?}"
         );
+    }
+
+    #[test]
+    fn ruby_base_resolution_does_not_skip_later_rubies() {
+        use crate::parser::parse_raw_nodes;
+        use crate::tokenizer::tokenize;
+
+        // 外字＋漢字がまるごと親文字になると、前半のノード列が 2 個縮む。旧実装は
+        // splice で縮んだ分だけ走査位置を補正せず i += 1 していたため、後続の
+        // 「あ《い》」が未訪問のまま（親文字が空のまま）残っていた。
+        let mut nodes = parse_raw_nodes(&tokenize("※［＃「丸印」、U+25CB］東《とう》あ《い》"));
+        resolve_ruby_bases(&mut nodes);
+
+        assert_eq!(nodes.len(), 2, "ノード数が想定外: {nodes:?}");
+        let NodeKind::Ruby { children, .. } = &nodes[0].kind else {
+            panic!("先頭が Ruby でない: {nodes:?}");
+        };
+        assert_eq!(
+            children.len(),
+            2,
+            "外字＋漢字が親文字になっていない: {nodes:?}"
+        );
+
+        let NodeKind::Ruby { children, ruby, .. } = &nodes[1].kind else {
+            panic!("2つ目が Ruby でない: {nodes:?}");
+        };
+        assert!(
+            matches!(&children[..], [Node { kind: NodeKind::Text(s), .. }] if s == "あ"),
+            "2つ目のルビの親文字が解決されていない: {nodes:?}"
+        );
+        assert!(matches!(&ruby[0].kind, NodeKind::Text(s) if s == "い"));
     }
 
     #[test]
