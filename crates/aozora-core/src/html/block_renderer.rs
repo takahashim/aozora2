@@ -279,14 +279,6 @@ impl<'a> BlockRenderer<'a> {
         let (margin, text_indent) = self.burasage_geometry(wrap_width, width);
         for child in children {
             match child {
-                // ぶら下げが明示的に閉じられる行。参照はこの行を出力する前に
-                // ぶら下げを indent_stack から降ろすので、per-line の包みは効かず、
-                // 行末も出さない（バッファが次の行に持ち越される）。
-                Block::Line {
-                    inline,
-                    brk: Break::NoNewline,
-                    ..
-                } => self.render_inlines(inline, out),
                 // 参照 general_output と同順で判定する。まず包むか（blank_type==false）、
                 // 次に `<br />` を出すか（terprip）。
                 Block::Line { inline, .. } if has_inline_text(inline) => {
@@ -296,10 +288,11 @@ impl<'a> BlockRenderer<'a> {
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
                 }
-                // 見出しで終わる行は包まないが、行末で `</div>` を閉じる。参照実装では
-                // 見出しが indent_stack に :midashi を積むためぶら下げ div の収支がずれ、
-                // 閉じタグが1つ多く出る（旧 is_midashi_line 相当）。`<br />` は付かない。
-                Block::Line { inline, .. } if ends_with_midashi(inline) => {
+                // 包まない行のうち `@terprip=false` のもの（見出し行など）は、参照が
+                // `<br />` ではなく `</div>` を出す（general_output の else）。開きが
+                // 無いまま閉じるので div の収支は合わないが、参照がそう出力する。
+                // 行末 `<br />` の抑制と同じ判定なので [`line_is_block_only`] を共有する。
+                Block::Line { inline, .. } if crate::ast::line_is_block_only(inline) => {
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
                 }
@@ -316,34 +309,20 @@ impl<'a> BlockRenderer<'a> {
     }
 }
 
-/// 行が「本文テキスト」を持つか（参照実装 `TextBuffer#blank_type` の否定）。
+/// 行が「本文テキスト」を持つか（参照実装 `TextBuffer#blank_type == false`）。
 ///
 /// 参照実装のぶら下げは、バッファに**空でない String** がある行だけを per-line の
-/// burasage div で包む。**Tag オブジェクトだけの行**——対象をタグに取り込んで String を
-/// 残さないもの——は包まれず、内容＋`<br />` になる。
+/// burasage div で包む。分かれ目は注記の書き方で、参照実装に最小入力を与えて
+/// 見出し・太字・傍点・縦中横のすべてで実測した:
 ///
-/// どのノードが String を残すかは参照実装に最小入力を与えて実測した結果:
-///
-/// - **String を残す（包む）**: 平文テキスト、明示形の縦中横 `［＃縦中横］32［＃終わり］`
-///   （32 が Text として残る）、アクセントの後続文字、unicode 化する外字、
-///   装飾等が対象の**外**に平文を持つ行。
-/// - **Tag に取り込む（包まない）**: 画像・ルビ（親文字を取り込む）・装飾（傍点/傍線/
-///   太字/斜体）・文字サイズ・前方参照の縦中横（`「32」は縦中横`）・注記・見出し。
+/// - **範囲形**（`［＃中見出し］abc［＃中見出し終わり］`）は中身が String のまま
+///   バッファに残る → **包む**。[`Inline::range_form`] が立つ。
+/// - **後方参照形**（`［＃「abc」は中見出し］`）は String をタグへ取り込んで消す
+///   → **包まない**。画像・ルビ（親文字を取り込む）・注記も同じく残さない。
 ///
 /// 行全体がブロック div になる行（行スコープの字下げ・地付き）は、そもそも
-/// [`Block::Line`] ではなく [`Block::LineWrap`] になるので、この判定には来ない。
-/// 行が見出しで終わるか（旧 `is_midashi_line`＝出力が `</h3|h4|h5>` で終わる、の AST 版）。
-fn ends_with_midashi(inlines: &[Inline]) -> bool {
-    matches!(
-        inlines.last().map(|i| &i.kind),
-        Some(InlineKind::Midashi { .. })
-            | Some(InlineKind::BlockInline {
-                kind: BlockKind::Midashi { .. },
-                ..
-            })
-    )
-}
-
+/// [`Block::Line`] ではなく [`Block::LineWrap`] になるのでこの判定には来ない
+/// （参照の `blank_type == :inline` に相当し、包まず行末は `\r\n` だけ）。
 fn has_inline_text(inlines: &[Inline]) -> bool {
     inlines.iter().any(|inline| match &inline.kind {
         InlineKind::Text(s) => !s.is_empty(),

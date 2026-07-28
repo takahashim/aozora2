@@ -85,8 +85,11 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
             LineKind::BlockOpenWithTail(idx, kind) => {
                 // 開始タグより前の本文は開くブロックの外に出る。改行は開始タグ以降が
                 // 出すので Break::NoNewline。開始タグ直後にも改行は出ない（OpenKind）。
-                // 対象は Shatai/Caption 等で、暗黙閉じ（Jisage/Chitsuki/Burasage）は
-                // 行頭で開く形でしか現れないのでここでは扱わない。
+                //
+                // BlockOpen と違い implicit_close は行わない。暗黙閉じを伴う種類
+                // （Jisage/Chitsuki/Burasage）を行の途中で開く入力は参照実装が
+                // エラーで停止するため（実測）オラクルには現れず、正しい振る舞いを
+                // 決められない。ここでは単に開いておく。
                 if idx > 0 {
                     push_block(
                         &mut stack,
@@ -134,6 +137,8 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 // その順に閉じる（例: `［＃ここで小さな文字終わり］［＃ここで字下げ終わり］`）。
                 // 各閉じの前の本文は、その時点で開いているブロックの内側に出る。
                 // 対応する開きが無ければ閉じタグは出ないので、行をまとめて内容行にする。
+                // 開いている数より「終わり」が多い行（参照実装はエラーで停止する）は
+                // 余りを無視する。余った終わりのマーカーは to_inlines が落とす。
                 let closable = closes.len().min(stack.len());
                 if closable == 0 {
                     let explicit = closes.iter().any(|(_, e)| *e);
@@ -154,21 +159,24 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                     );
                 } else {
                     let mut seg_start = 0usize;
+                    let has_tail = closes[closable - 1].0 + 1 < nodes.len();
                     for (n, (idx, explicit)) in closes.iter().take(closable).enumerate() {
                         // 閉じタグより前の本文。行末の改行は閉じタグ以降が出す。
-                        if seg_start < *idx {
-                            push_block(
-                                &mut stack,
-                                &mut top,
-                                Block::Line {
-                                    inline: crate::ast::to_inlines(&nodes[seg_start..*idx]),
-                                    brk: Break::NoNewline,
-                                    line: line_no,
-                                },
-                            );
+                        let segment = (seg_start < *idx).then(|| Block::Line {
+                            inline: crate::ast::to_inlines(&nodes[seg_start..*idx]),
+                            brk: Break::NoNewline,
+                            line: line_no,
+                        });
+                        // 参照は閉じタグを buffer に積む（＝本文の続き）ので、本文は
+                        // 閉じるブロックの内側に出る。ただしぶら下げだけは閉じで
+                        // indent_stack から降りてしまい per-line の包みが効かなくなるので、
+                        // その行の本文はブロックの外に出す。
+                        let closing_burasage =
+                            matches!(stack.last(), Some((BlockKind::Burasage { .. }, _, _, _)));
+                        if let Some(segment) = segment.clone().filter(|_| !closing_burasage) {
+                            push_block(&mut stack, &mut top, segment);
                         }
                         let is_last = n + 1 == closable;
-                        let has_tail = closes[closable - 1].0 + 1 < nodes.len();
                         let (kind, children, open_line, open) =
                             stack.pop().expect("closable <= stack.len()");
                         // 行末の改行を出すのは最後の閉じだけ。後続本文があるなら
@@ -189,6 +197,9 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                                 line: open_line,
                             },
                         );
+                        if let Some(segment) = segment.filter(|_| closing_burasage) {
+                            push_block(&mut stack, &mut top, segment);
+                        }
                         seg_start = *idx + 1;
                     }
                     // 最後の閉じの後ろに残った本文を同じ行に出す。

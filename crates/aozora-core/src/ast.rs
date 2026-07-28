@@ -205,6 +205,11 @@ pub fn to_inlines(nodes: &[crate::node::Node]) -> Vec<Inline> {
             // 行の途中で開く地付き（is_block=false の Chitsuki）は行末まで包む
             // （参照 close_inline_blocks が行末で閉じる）。行頭のものは classify_line
             // が LineWrap で処理済みなので、ここに来るのは本文の後に続くケース。
+            //
+            // 範囲由来だが `range_form` は立てない。参照でこれは `Tag::OnelineIndent`
+            // で、`blank_type` は String（→包む）と OnelineIndent（→`:inline`）を
+            // 別扱いし、**先に見つかった方**を返す。ここに来る＝先に本文があるので
+            // 参照も String 側＝包む判定になり、`range_form` で中身を見る必要はない。
             if !params.is_block && *block_type == crate::node::BlockType::Chitsuki {
                 let end = find_matching_end(nodes, i, block_type).unwrap_or(nodes.len());
                 let inner = to_inlines(&nodes[i + 1..end.min(nodes.len())]);
