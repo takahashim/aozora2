@@ -23,17 +23,6 @@ pub struct Tokenizer {
 }
 
 impl Tokenizer {
-    /// 新しいトークナイザを作成（入れ子用。未閉じ 〔 はリテラル）
-    pub fn new(input: &str) -> Self {
-        Self {
-            chars: input.chars().collect(),
-            pos: 0,
-            base: 0,
-            allow_unclosed_accent: false,
-            unclosed_accent_spans: Vec::new(),
-        }
-    }
-
     /// トップレベル（行）用トークナイザ。未閉じ 〔 を行末までのアクセントに。
     pub fn new_top_level(input: &str) -> Self {
         Self {
@@ -364,6 +353,9 @@ fn fold_prefixed_ruby(tokens: Vec<Token>) -> Vec<Token> {
 
 /// 文字列を [`Token`] 列に変換するユーティリティ関数。各spanは入力先頭からの
 /// char オフセット `[start, end)`。
+///
+/// **1 行**（改行を含まない文字列）を渡す前提。複数行を渡すと `\n` はただのテキストになり、
+/// 未閉じ `〔` の「行末まで」が「入力末まで」に変わる。
 pub fn tokenize(input: &str) -> Vec<Token> {
     Tokenizer::new_top_level(input).tokenize()
 }
@@ -599,6 +591,47 @@ mod tests {
                 "内側の未閉じ 〔 がリテラルになっていない: {children:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_unclosed_constructs_swallow_to_end_of_line() {
+        // spec-tokenizer.md「未閉じ構文の扱い」: 巻き戻して literal にするのは入れ子の
+        // 〔 だけ。《 ［＃ ※［ はいずれも閉じ記号が無ければ行末まで飲み込む（拒否しない）。
+        assert_eq!(
+            plain("あ《かな"),
+            vec![
+                Token::Text("あ".to_string()),
+                Token::Ruby {
+                    children: vec![Token::Text("かな".to_string())]
+                }
+            ]
+        );
+        assert_eq!(
+            plain("あ［＃注記"),
+            vec![
+                Token::Text("あ".to_string()),
+                Token::Command {
+                    content: "注記".to_string()
+                }
+            ]
+        );
+        assert_eq!(
+            plain("あ※［＃外字"),
+            vec![
+                Token::Text("あ".to_string()),
+                Token::Gaiji {
+                    description: "外字".to_string(),
+                    had_igeta: true
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_closing_delimiters_alone_are_plain_text() {
+        // 閉じ記号は read_text の区切りではないので、単独で現れたらただの本文。
+        assert_eq!(plain("あ》い"), vec![Token::Text("あ》い".to_string())]);
+        assert_eq!(plain("あ〕い"), vec![Token::Text("あ〕い".to_string())]);
     }
 
     #[test]
