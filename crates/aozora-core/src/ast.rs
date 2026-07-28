@@ -303,12 +303,19 @@ pub enum InlineKind {
     },
 }
 
-/// Aozora ASTのインライン要素。各要素が行内の絶対char spanを自前で持つ。
+/// Aozora ASTのインライン要素。各要素が位置範囲を自前で持つ。
+///
+/// span は原則としてソース**行内**の絶対 char 位置だが、例外がある。
+/// [`InlineKind::Note`]/[`InlineKind::Okurigana`] の `content` は注記文字列を
+/// 再パースしたものなので、その中の span は**注記文字列内の相対位置**になる
+/// （合成された注記は行の部分文字列とは限らず、行内絶対位置に写せない）。
+/// 位置として使う側は注記の内側に降りたかどうかを意識すること。
+/// 詳しくは docs/spec-ast.md「span が『実在』でない箇所」。
 #[derive(Debug, Clone)]
 pub struct Inline {
     /// インライン種別と内容。
     pub kind: InlineKind,
-    /// ソース行内のchar位置範囲。
+    /// 位置範囲（原則はソース行内の絶対 char 位置。注記の中身だけ相対＝型の doc 参照）。
     pub span: Span,
     /// 範囲形（`［＃中見出し］…［＃中見出し終わり］`）由来か。後方参照形
     /// （`［＃「…」は中見出し］`）なら false。
@@ -344,10 +351,11 @@ impl Inline {
     }
 }
 
-/// span は位置メタデータであり、構造比較には含めない。
+/// span は位置メタデータなので構造比較に含めない。`range_form` は出力形を変える
+/// 互換メタデータ（[`CloseKind`]/[`OpenKind`] と同類）なので**含める**。
 impl PartialEq for Inline {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind
+        self.kind == other.kind && self.range_form == other.range_form
     }
 }
 
