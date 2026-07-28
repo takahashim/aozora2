@@ -16,6 +16,10 @@ pub struct Tokenizer {
     /// 入れ子トークナイズでは未閉じ 〔 をリテラルにする（例:54931 の
     /// 〔訳者注…〔Beethoven…〕 の内側 〔Beethoven）。
     allow_unclosed_accent: bool,
+    /// 未閉じのまま行末まで延長したアクセント（＝複数行アクセントの1行目）の絶対 span。
+    /// 変換には無関係の**検証用の副産物**。トップレベルでのみ溜まる（入れ子は未閉じ 〔 を
+    /// リテラルにするので発生しない）。診断 `unclosed-accent` や厳格モードが使う。
+    unclosed_accent_spans: Vec<Span>,
 }
 
 impl Tokenizer {
@@ -26,6 +30,7 @@ impl Tokenizer {
             pos: 0,
             base: 0,
             allow_unclosed_accent: false,
+            unclosed_accent_spans: Vec::new(),
         }
     }
 
@@ -36,6 +41,7 @@ impl Tokenizer {
             pos: 0,
             base: 0,
             allow_unclosed_accent: true,
+            unclosed_accent_spans: Vec::new(),
         }
     }
 
@@ -64,6 +70,7 @@ impl Tokenizer {
             pos: 0,
             base,
             allow_unclosed_accent: false,
+            unclosed_accent_spans: Vec::new(),
         };
         tokenizer.tokenize()
     }
@@ -219,6 +226,11 @@ impl Tokenizer {
 
         if found_close {
             self.skip(1); // 〕
+        } else {
+            // 対応する 〕 が同一行に無いまま行末まで延長した（＝複数行アクセントの1行目、
+            // あるいは閉じ忘れ）。変換は参照実装どおり受理するが、検証用に span を控える。
+            self.unclosed_accent_spans
+                .push(Span::new(self.base + start, self.base + self.pos));
         }
 
         let children = Self::tokenize_children(&content, self.base + content_start);
@@ -354,6 +366,17 @@ fn fold_prefixed_ruby(tokens: Vec<Token>) -> Vec<Token> {
 /// char オフセット `[start, end)`。
 pub fn tokenize(input: &str) -> Vec<Token> {
     Tokenizer::new_top_level(input).tokenize()
+}
+
+/// [`tokenize`] と同じトークン列に加え、**未閉じのまま行末まで延長したアクセント**
+/// （＝複数行アクセントの1行目・閉じ忘れ）の絶対 span を返す。
+///
+/// トークン列は [`tokenize`] と完全に同一（byte 一致に無影響）で、span を副産物として
+/// 返すだけ。検証・診断（`unclosed-accent`）・将来の厳格モードが使う。1 行を渡す前提。
+pub fn tokenize_collecting_unclosed_accents(input: &str) -> (Vec<Token>, Vec<Span>) {
+    let mut tokenizer = Tokenizer::new_top_level(input);
+    let tokens = tokenizer.tokenize();
+    (tokens, tokenizer.unclosed_accent_spans)
 }
 
 #[cfg(test)]
