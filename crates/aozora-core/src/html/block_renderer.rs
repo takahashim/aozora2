@@ -119,10 +119,10 @@ impl<'a> BlockRenderer<'a> {
         }
     }
 
-    /// tail セクション（after_text/bibliographical）処理に入る（参照 enter_tail）。
-    /// 以降、外字記号 ※ のプレフィックスを抑制する。
-    pub fn enter_tail(&mut self) {
-        self.in_tail = true;
+    /// tail セクション（after_text/bibliographical）を処理中かを設定する
+    /// （参照 tail_output）。tail では外字記号 ※ のプレフィックスを抑制する。
+    pub fn set_tail(&mut self, in_tail: bool) {
+        self.in_tail = in_tail;
     }
 
     /// 描画の副作用として溜まった「表記について」の材料。
