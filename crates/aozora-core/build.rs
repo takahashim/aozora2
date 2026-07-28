@@ -9,13 +9,15 @@ use std::fs;
 use std::path::Path;
 
 /// ビルド時に読む入力データ。変更されたら再生成する。
-const INPUTS: [&str; 3] = [
+const INPUTS: [&str; 4] = [
     "data/jis2ucs.json",
     "data/accent_table.json",
     "data/accent_names.json",
+    "data/original_title_chars.json",
 ];
 
 const JIS2UCS: &str = "data/jis2ucs.json";
+const ORIGINAL_TITLE_CHARS: &str = "data/original_title_chars.json";
 
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -56,73 +58,100 @@ fn main() {
     // JIS X 0208 の漢字ビットマップ（同じ jis2ucs.json から導出する 2 つ目の生成物）。
     generate_x0208_kanji_bitmap(&out_dir);
 
-    // 原題判定に使う区点範囲の文字集合。
-    generate_x0208_header_chars(&out_dir);
+    // 原題（欧文表題）として扱う文字の一覧。
+    generate_original_title_chars(&out_dir);
 }
 
 // ---------------------------------------------------------------------------
-// 原題判定用の区点範囲テーブル
+// 原題（欧文表題）文字の生成
 // ---------------------------------------------------------------------------
 
-/// 原題（欧文標題）の判定に使う JIS X 0208 面1 の区点範囲。
+/// 原題として扱う文字の一覧を `OUT_DIR/original_title_chars.rs` へ生成する。
 ///
-/// - `1-01〜3-25` … 記号・全角数字（全角英字 3-33 以降は入らない）
-/// - `6-01〜7-81` … ギリシャ文字・キリル文字
+/// 出典は `data/original_title_chars.json`。判定基準はそのデータ自身が持つ——
+/// 参照実装は Shift_JIS のバイト範囲で判定するが、それを Unicode の一覧に書き出して
+/// あるので、**Shift_JIS の対応表を持たない移植先でもこの表だけで再現できる**。
+/// ここは読み出して昇順配列にするだけ。
 ///
-/// 参照実装 `header_element_type` が Shift_JIS バイト値 `8140-8258` / `839f-8491` で
-/// 判定しているものを、区点で表し直したもの（境界は 4 点とも一致する）。
-const HEADER_KUTEN_RANGES: [((u32, u32), (u32, u32)); 2] = [((1, 1), (3, 25)), ((6, 1), (7, 81))];
-
-/// 原題判定が受け付ける文字の集合を `OUT_DIR/x0208_header_chars.rs` へ生成する。
-///
-/// 判定は「その文字を Shift_JIS へ符号化した結果が、ASCII 1 バイトか、上記区点範囲の
-/// 2 バイトに入るか」。**符号化の向きで集める必要がある**——符号化器は複数の Unicode を
-/// 同じ区点へ落とすことがあり（例:`−`(U+2212) と `－`(U+FF0D) はどちらも 1-61）、
-/// 区点から復号して集めると別名側が漏れるため。
-///
-/// なお JIS X 0213 の対応表（`jis2ucs.json`）から作るのも不可。CP932 と JIS で
-/// マッピングが割れる字（`― ＼ ～ ￠ ￡ ￢ ￣ ￥` ＝いわゆる波ダッシュ問題）が
-/// 判定から漏れ、標題領域にそれらを含む作品が 1,010 件ある。
-fn generate_x0208_header_chars(out_dir: &str) {
-    let byte_ranges: Vec<(u16, u16)> = HEADER_KUTEN_RANGES
-        .iter()
-        .map(|&((ku0, ten0), (ku1, ten1))| (sjis_code(ku0, ten0), sjis_code(ku1, ten1)))
-        .collect();
+/// `char` 列は人間が読むための添え物だが、`unicode` 列と食い違っていればビルドを
+/// 止める（表が壊れたまま通らないように）。
+fn generate_original_title_chars(out_dir: &str) {
+    let json = fs::read_to_string(ORIGINAL_TITLE_CHARS)
+        .unwrap_or_else(|_| panic!("{ORIGINAL_TITLE_CHARS} not found"));
+    let table: serde_json::Value = serde_json::from_str(&json)
+        .unwrap_or_else(|e| panic!("{ORIGINAL_TITLE_CHARS}: JSON として読めません: {e}"));
 
     let mut codepoints = Vec::new();
-    for cp in 0..=0x10FFFFu32 {
-        let Some(c) = char::from_u32(cp) else {
-            continue;
-        };
-        let mut buf = [0u8; 8];
-        let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
-        if had_err {
-            continue;
+
+    // ASCII は範囲で書かれている。
+    let ascii = &table["ascii"];
+    let from = parse_codepoint(ascii["from"].as_str().unwrap_or_else(|| {
+        panic!("{ORIGINAL_TITLE_CHARS}: ascii.from がありません");
+    }));
+    let to = parse_codepoint(ascii["to"].as_str().unwrap_or_else(|| {
+        panic!("{ORIGINAL_TITLE_CHARS}: ascii.to がありません");
+    }));
+    codepoints.extend(from..=to);
+
+    // 区点範囲の宣言。各行の kuten がこの範囲に収まっているかを検証するために使う
+    // （符号化器を持たずに表の自己整合性を確かめられる）。
+    let ranges: Vec<((u32, u32, u32), (u32, u32, u32))> = table["kuten_ranges"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{ORIGINAL_TITLE_CHARS}: kuten_ranges が配列ではありません"))
+        .iter()
+        .map(|range| {
+            let bound = |key: &str| {
+                let text = range[key].as_str().unwrap_or_else(|| {
+                    panic!("{ORIGINAL_TITLE_CHARS}: kuten_ranges[].{key} がありません")
+                });
+                parse_menkuten(text).unwrap_or_else(|| {
+                    panic!("{ORIGINAL_TITLE_CHARS}: 面区点の書式ではありません: {text}")
+                })
+            };
+            (bound("from"), bound("to"))
+        })
+        .collect();
+
+    // 残りは 1 文字ずつ列挙されている。
+    let entries = table["chars"].as_array().unwrap_or_else(|| {
+        panic!("{ORIGINAL_TITLE_CHARS}: chars が配列ではありません");
+    });
+    for entry in entries {
+        let text = entry["unicode"].as_str().unwrap_or_else(|| {
+            panic!("{ORIGINAL_TITLE_CHARS}: chars[].unicode がありません");
+        });
+        let cp = parse_codepoint(text);
+        let c = char::from_u32(cp)
+            .unwrap_or_else(|| panic!("{ORIGINAL_TITLE_CHARS}: {text} は有効な文字ではありません"));
+        // char 列は人間向けだが、符号位置と食い違っていたらビルドを止める。
+        if let Some(shown) = entry["char"].as_str() {
+            assert_eq!(
+                c.to_string(),
+                shown,
+                "{ORIGINAL_TITLE_CHARS}: {text} の char 列が符号位置と一致しません"
+            );
         }
-        let accepted = match encoded.as_ref() {
-            [b] => *b <= 0x7f,
-            [hi, lo] => {
-                let code = ((*hi as u16) << 8) | *lo as u16;
-                byte_ranges
-                    .iter()
-                    .any(|&(lo, hi)| (lo..=hi).contains(&code))
-            }
-            _ => false,
-        };
-        if accepted {
-            codepoints.push(cp);
+        // kuten 列も同様。null は Shift_JIS が 1 バイトで表す字（区点を持たない）。
+        if let Some(kuten) = entry["kuten"].as_str() {
+            let cell = parse_menkuten(kuten).unwrap_or_else(|| {
+                panic!("{ORIGINAL_TITLE_CHARS}: 面区点の書式ではありません: {kuten}")
+            });
+            assert!(
+                ranges.iter().any(|&(from, to)| (from..=to).contains(&cell)),
+                "{ORIGINAL_TITLE_CHARS}: {text} の区点 {kuten} が kuten_ranges の外です"
+            );
         }
+        codepoints.push(cp);
     }
 
+    codepoints.sort_unstable();
+    codepoints.dedup();
+
     let mut code = String::new();
-    code.push_str("// build.rs が生成しています。手で編集しないでください。\n");
-    code.push_str("//\n");
-    code.push_str("// 原題判定が受け付ける文字（ASCII と、JIS X 0208 面1 の 区点 1-01〜3-25\n");
-    code.push_str(
-        "// ＝記号・全角数字、6-01〜7-81 ＝ギリシャ・キリル）。昇順＝二分探索で引ける。\n",
-    );
+    code.push_str("// build.rs が data/original_title_chars.json から生成しています。\n");
+    code.push_str("// 手で編集しないでください。昇順なので二分探索で引ける。\n");
     code.push_str(&format!(
-        "static HEADER_CHARS: [u32; {}] = [\n",
+        "static ORIGINAL_TITLE_CHARS: [u32; {}] = [\n",
         codepoints.len()
     ));
     for chunk in codepoints.chunks(8) {
@@ -133,27 +162,15 @@ fn generate_x0208_header_chars(out_dir: &str) {
         code.push('\n');
     }
     code.push_str("];\n");
-    write_generated(out_dir, "x0208_header_chars.rs", &code);
+    write_generated(out_dir, "original_title_chars.rs", &code);
 }
 
-/// 面1 の区点を Shift_JIS の 2 バイト値（上位<<8|下位）へ変換する。
-fn sjis_code(ku: u32, ten: u32) -> u16 {
-    let (c1, c2) = (ku - 1, ten - 1);
-    let hi = if ku <= 62 {
-        0x81 + c1 / 2
-    } else {
-        0xC1 + c1 / 2
-    };
-    let lo = if c1 % 2 == 0 {
-        if c2 < 63 {
-            0x40 + c2
-        } else {
-            0x41 + c2
-        }
-    } else {
-        0x9F + c2
-    };
-    ((hi as u16) << 8) | lo as u16
+/// `"U+XXXX"` 形式を符号位置へ。
+fn parse_codepoint(s: &str) -> u32 {
+    let hex = s
+        .strip_prefix("U+")
+        .unwrap_or_else(|| panic!("符号位置の書式が U+XXXX ではありません: {s}"));
+    u32::from_str_radix(hex, 16).unwrap_or_else(|_| panic!("符号位置を読み取れません: {s}"))
 }
 
 // ---------------------------------------------------------------------------

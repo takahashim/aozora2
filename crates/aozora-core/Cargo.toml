@@ -23,4 +23,3 @@ serde = ["dep:serde"]
 
 [build-dependencies]
 serde_json.workspace = true
-encoding_rs.workspace = true

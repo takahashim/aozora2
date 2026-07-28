@@ -232,16 +232,15 @@ fn is_original_title(s: &str) -> bool {
 
 /// 原題に使える文字か。
 ///
-/// 受け付けるのは ASCII と、JIS X 0208 面1 の 区点 **1-01〜3-25**（記号・全角数字）
-/// および **6-01〜7-81**（ギリシャ・キリル）。参照実装 `header_element_type` は
-/// Shift_JIS のバイト値で判定するが、その範囲を区点で表し直したもの（境界は一致する）。
-/// 表は `build.rs` の `HEADER_KUTEN_RANGES` から生成する。
+/// 受理する文字の一覧は `data/original_title_chars.json` にある（判定基準そのものが
+/// そのデータ。参照実装 `header_element_type` は Shift_JIS のバイト範囲で判定するが、
+/// それを Unicode の一覧に書き出してあるので Shift_JIS の対応表が無くても再現できる）。
 fn is_original_title_char(c: char) -> bool {
-    HEADER_CHARS.binary_search(&(c as u32)).is_ok()
+    ORIGINAL_TITLE_CHARS.binary_search(&(c as u32)).is_ok()
 }
 
-// build.rs が生成した HEADER_CHARS（昇順の符号位置列）を取り込む。
-include!(concat!(env!("OUT_DIR"), "/x0208_header_chars.rs"));
+// build.rs が data/original_title_chars.json から生成した昇順の符号位置列。
+include!(concat!(env!("OUT_DIR"), "/original_title_chars.rs"));
 
 /// 注記セクションの区切りに使われる罫線（`-` だけからなる行）かどうか
 fn is_rule_line(line: &str) -> bool {
