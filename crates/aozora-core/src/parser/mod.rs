@@ -186,6 +186,10 @@ fn parse_token_kinds(token: &Token) -> Vec<NodeKind> {
         TokenKind::Accent { .. } => {
             unreachable!("accent tokens are handled before kind conversion")
         }
+
+        TokenKind::RubyPrefix => {
+            unreachable!("RubyPrefix markers are folded away inside tokenize()")
+        }
     }
 }
 

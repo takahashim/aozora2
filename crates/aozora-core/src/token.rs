@@ -55,6 +55,13 @@ pub enum TokenKind {
         children: Vec<Token>,
     },
 
+    /// 明示ルビ前置記号 ｜ の**一時マーカー**。
+    /// トークナイズ直後に `fold_prefixed_ruby` が直後のルビと畳んで
+    /// [`TokenKind::PrefixedRuby`] にするか、どのルビにも畳まれず余れば
+    /// [`TokenKind::Text`]（"｜"）へ戻す。**`tokenize()` の出力には現れない**
+    /// （トークナイザ内部の中間段階でのみ存在する）。
+    RubyPrefix,
+
     /// 明示ルビ ｜親文字《ルビ》
     PrefixedRuby {
         /// 親文字部分のトークン列
