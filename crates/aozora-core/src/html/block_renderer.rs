@@ -11,7 +11,6 @@ use crate::ast::{
 use crate::gaiji::{
     parse_gaiji, split_nested_gaiji, strip_kuten_prefix, GaijiResult, NestedGaijiSegment,
 };
-use crate::lower::break_policy::line_emits_closing_block_tag;
 use crate::lower::inline::to_inlines;
 use crate::node::{FontSizeType, MidashiLevel, RubyDirection};
 use crate::token::TokenKind;
@@ -289,8 +288,12 @@ impl<'a> BlockRenderer<'a> {
                 // 包まない行のうち `@terprip=false` のもの（見出し行など）は、参照が
                 // `<br />` ではなく `</div>` を出す（general_output の else）。開きが
                 // 無いまま閉じるので div の収支は合わないが、参照がそう出力する。
-                // 行末 `<br />` の抑制と同じ判定なので [`line_emits_closing_block_tag`] を共有する。
-                Block::Line { inline, .. } if line_emits_closing_block_tag(inline) => {
+                // 判定は Lower 時に済んでいるので `brk` を消費する（再導出しない）。
+                Block::Line {
+                    inline,
+                    brk: Break::None,
+                    ..
+                } => {
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
                 }
