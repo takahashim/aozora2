@@ -22,7 +22,7 @@ pub fn resolve_references(nodes: &mut Vec<Node>) {
     resolve_style_references(nodes);
 }
 
-/// ルビ親文字解決の 2 パス目。中身は [`resolve_ruby_bases`] と同一で、呼ぶ位置だけが違う。
+/// ルビ親文字解決の 2 パス目。中身は `resolve_ruby_bases` と同一で、呼ぶ位置だけが違う。
 /// 呼び出し元は [`resolve_references`] の直後にこれを呼ぶ。
 ///
 /// 2 パス必要な理由は両方向ともテストが固定している:
