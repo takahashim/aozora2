@@ -418,6 +418,37 @@ enum LineKind {
     Content,
 }
 
+/// 同じ行に対応する開始が無い最初の `BlockEnd` の位置と `explicit_close` を返す。
+///
+/// 同じ行で開閉する範囲（`［＃ここから太字］…［＃ここで太字終わり］`）の終端は
+/// [`crate::ast::to_inlines`] がインラインに畳むのでここでは拾わない。拾うのは
+/// 前の行から続いているブロックを閉じるものだけ。
+fn find_unmatched_block_end(nodes: &[Node]) -> Option<(usize, bool)> {
+    let mut open: Vec<&BlockType> = Vec::new();
+    for (idx, node) in nodes.iter().enumerate() {
+        match &node.kind {
+            NodeKind::BlockStart { block_type, .. } => open.push(block_type),
+            NodeKind::BlockEnd {
+                block_type,
+                params,
+                explicit_close,
+            } => match open.iter().rposition(|bt| *bt == block_type) {
+                Some(pos) => {
+                    open.truncate(pos);
+                }
+                // 複数行ブロックになれない種類（割り注・縦中横など。開始側が注記
+                // として描画され BlockStart ノードを作らない）は閉じの対象にしない。
+                None if block_kind_of(block_type, params).is_some() => {
+                    return Some((idx, *explicit_close))
+                }
+                None => {}
+            },
+            _ => {}
+        }
+    }
+    None
+}
+
 /// 解決済みノード列から行の種類を判定する。
 ///
 /// **最小核**: 単独の BlockStart(is_block=true) を開始、単独の BlockEnd を終了、
@@ -480,20 +511,11 @@ fn classify_line(nodes: &[Node]) -> LineKind {
             return LineKind::BlockCloseWithTail(*explicit_close);
         }
     }
-    // 本文（素のテキストのみ）の後ろに BlockEnd が現れる行。`［＃「…」は太字終わり］`
-    // 等のインライン範囲終端を巻き込まないよう、前半が Text だけの場合に限る。
-    if let Some(idx) = nodes
-        .iter()
-        .position(|n| matches!(n.kind, NodeKind::BlockEnd { .. }))
-    {
-        if idx > 0
-            && nodes[..idx]
-                .iter()
-                .all(|n| matches!(n.kind, NodeKind::Text(_)))
-        {
-            let NodeKind::BlockEnd { explicit_close, .. } = nodes[idx].kind else {
-                unreachable!("position で BlockEnd を選んでいる")
-            };
+    // 本文の後ろに BlockEnd が現れる行。同じ行で開いた範囲の終端（`［＃ここから
+    // 太字］…［＃ここで太字終わり］`）は `to_inlines` が畳むので、**同じ行に対応する
+    // 開始が無い** BlockEnd＝前の行から続くブロックの閉じ、だけを拾う。
+    if let Some((idx, explicit_close)) = find_unmatched_block_end(nodes) {
+        if idx > 0 {
             return LineKind::BlockCloseWithHead(idx, explicit_close);
         }
     }
@@ -700,6 +722,48 @@ mod position_tests {
         ]));
         assert_eq!(blocks.len(), 1);
         assert!(matches!(blocks[0], Block::Line { .. }));
+    }
+
+    /// 行末クローズの前半は Text だけとは限らない（行途中の地付き・ルビ等）。
+    /// 拾うのは「同じ行に対応する開始が無い BlockEnd」で、同じ行で開閉する範囲形は
+    /// to_inlines がインラインに畳むので対象外。
+    ///
+    /// 例: 001848/59607 の
+    /// `ウェヌス…蒔《ま》かんとする時、［＃地から２字上げ］（ルクレティウス）［＃ここで字下げ終わり］`
+    #[test]
+    fn block_end_closes_even_when_head_has_inline_markers() {
+        let lines = vec![
+            "［＃ここから２字下げ］",
+            "本文《ほんぶん》。［＃地から２字上げ］（出典）［＃ここで字下げ終わり］",
+        ];
+        let blocks = lower_to_blocks(&parse_document_raw(&lines));
+        match &blocks[0] {
+            Block::Nested { kind, close, .. } => {
+                assert_eq!(*kind, BlockKind::Jisage { width: Some(2) });
+                assert_eq!(*close, CloseKind::Newline);
+            }
+            other => panic!("Nested を期待: {other:?}"),
+        }
+    }
+
+    /// 複数行ブロックになれない種類の「終わり」でブロックを閉じない。割り注は
+    /// 開始側が注記として描画され BlockStart ノードを作らないので、素朴に
+    /// 「対応する開始が無い」と見ると外側の字下げを誤って閉じてしまう
+    /// （000284/2227 で実際に起きた）。
+    #[test]
+    fn warichu_end_does_not_close_the_enclosing_block() {
+        let lines = vec![
+            "［＃ここから３字下げ］",
+            "本文。［＃ここから割り注］注［＃ここで割り注終わり］続き",
+            "［＃ここで字下げ終わり］",
+        ];
+        let blocks = lower_to_blocks(&parse_document_raw(&lines));
+        match &blocks[0] {
+            Block::Nested { children, .. } => {
+                assert_eq!(children.len(), 1, "割り注の行は字下げの中に留まる");
+            }
+            other => panic!("Nested を期待: {other:?}"),
+        }
     }
 
     /// 対応する開きが無ければ閉じタグは出さず、通常の内容行として扱う。
