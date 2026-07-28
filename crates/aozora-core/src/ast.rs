@@ -32,7 +32,7 @@ pub type AozoraAst = Vec<Block>;
 /// 青空文庫記法の論理構造は「ブロック ⊃ 行 ⊃ インライン」の3層。
 /// 「ブロックだけの行」（`［＃ここから…］` など）は器（[`Block::Nested`]）に
 /// 吸収され、`<br/>` 特別扱いの多くが構造から自然に従う。
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Block {
     /// 内容の1行。インライン列と、行末の改行制御（互換メタデータ）を持つ。
     Line {
@@ -103,12 +103,28 @@ pub enum CloseKind {
     /// その行を per-line の burasage div で包む（＝閉じタグが div の中に入る）。
     /// 包む幅は外側のぶら下げが持つものなので、描画器が状態を持たずに出せるよう
     /// Lower 時にここへ畳んでおく。
-    BurasageWrapped {
-        /// 外側ぶら下げの折り返し幅（`margin-left`。None は Quirk の空幅）
-        wrap_width: Option<u32>,
-        /// 外側ぶら下げの字下げ幅（`text-indent` の算出に使う）
-        width: Option<u32>,
-    },
+    BurasageWrapped(BurasageGeometry),
+}
+
+/// ぶら下げ（折り返し字下げ）の幅。
+///
+/// [`BlockKind::Burasage`] と、その直下で装飾系ブロックが閉じる行の
+/// [`CloseKind::BurasageWrapped`] が**同じ値**を使う（後者は外側ぶら下げの幅で
+/// 閉じタグを包む）。取り違えないよう1つの型にまとめている。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BurasageGeometry {
+    /// margin-left em（折り返し字下げ幅。参照 wrap_width）。空（コンマなし）のとき
+    /// None → margin-left を空文字（Quirk empty_indent_css）にする。
+    pub wrap_width: Option<u32>,
+    /// 字下げ幅 em（空のとき None＝0 扱い）。
+    pub width: Option<u32>,
+}
+
+impl BurasageGeometry {
+    /// text-indent em（字下げ幅 − 折り返し幅）。空幅はどちらも 0 とみなす。
+    pub fn text_indent(&self) -> i32 {
+        self.width.unwrap_or(0) as i32 - self.wrap_width.unwrap_or(0) as i32
+    }
 }
 
 /// 入れ子ブロックの種類。`ここから…` で開く複数行ブロックに対応する。
@@ -128,13 +144,7 @@ pub enum BlockKind {
     /// ぶら下げ（折り返し字下げ）。参照実装の per-line モデルでは外側 div を作らず、
     /// 各内容行を個別の `<div class="burasage" style="margin-left: {wrap_width}em;
     /// text-indent: {text_indent}em;">` で包む（空行は素の `<br />`）。
-    Burasage {
-        /// margin-left em（折り返し字下げ幅。参照 wrap_width）。空（コンマなし）のとき
-        /// None → margin-left を空文字（Quirk）にする。
-        wrap_width: Option<u32>,
-        /// 字下げ幅 em（空のとき None＝0 扱い）。text-indent = width - wrap_width。
-        width: Option<u32>,
-    },
+    Burasage(BurasageGeometry),
     /// 見出し（後続の行を包む）。
     Midashi {
         level: MidashiLevel,
@@ -250,12 +260,32 @@ pub enum InlineKind {
         size_type: FontSizeType,
         level: u32,
     },
-    /// 返り点
+    /// 返り点（中身は素の文字。参照実装も再パースしない）
     Kaeriten(String),
-    /// 訓点送り仮名
-    Okurigana(String),
-    /// 注記（編集者注 `<span class="notes">［＃…］</span>`）
-    Note(String),
+    /// 訓点送り仮名（`<sup class="okurigana">`）。中身は [`InlineKind::Note`] と
+    /// 同じく解決済み。描画時に外側の `（ ）` を落とす（参照 Tag::Okurigana）。
+    Okurigana {
+        /// 解決済みの中身
+        content: Vec<Inline>,
+        /// 元の注記文字列（診断・エディタ支援用）
+        raw: String,
+    },
+    /// 注記（編集者注 `<span class="notes">［＃…］</span>`）。
+    ///
+    /// 参照実装は注記の中身を別の TagParser に渡して描画する（中のルビ・外字が
+    /// 解決される）。その再パースは Lowerer が一度だけ行い、ここには**解決済みの
+    /// インライン列**が入る（バックエンドがトークナイザ・パーサに依存しないため）。
+    ///
+    /// `content` の各 span は**注記文字列内の相対位置**（`raw` の先頭が 0）。
+    /// 前方参照の解決に失敗した注記など `raw` がソース行の部分文字列でない
+    /// （合成された）ものがあるため、行内の絶対位置には写せない。行内の位置が
+    /// 要るときは注記自身（[`Inline::span`]）を使う。
+    Note {
+        /// 解決済みの中身
+        content: Vec<Inline>,
+        /// 元の注記文字列（診断・エディタ支援用）
+        raw: String,
+    },
     /// 濁点片仮名（面区点 1-7-82〜85）
     DakutenKatakana { num: String },
     /// 行の途中で開く地付き／字上げ（`TEXT［＃地付き］attribution`）。
@@ -318,5 +348,52 @@ impl Inline {
 impl PartialEq for Inline {
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind
+    }
+}
+
+/// 由来行 `line` は位置メタデータであり、構造比較には含めない
+/// （[`Inline`] が span を含めないのと同じ方針）。
+impl PartialEq for Block {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Block::Line { inline, brk, .. },
+                Block::Line {
+                    inline: other_inline,
+                    brk: other_brk,
+                    ..
+                },
+            ) => inline == other_inline && brk == other_brk,
+            (
+                Block::Nested {
+                    kind,
+                    children,
+                    close,
+                    open,
+                    ..
+                },
+                Block::Nested {
+                    kind: other_kind,
+                    children: other_children,
+                    close: other_close,
+                    open: other_open,
+                    ..
+                },
+            ) => {
+                kind == other_kind
+                    && children == other_children
+                    && close == other_close
+                    && open == other_open
+            }
+            (
+                Block::LineWrap { kind, inline, .. },
+                Block::LineWrap {
+                    kind: other_kind,
+                    inline: other_inline,
+                    ..
+                },
+            ) => kind == other_kind && inline == other_inline,
+            _ => false,
+        }
     }
 }

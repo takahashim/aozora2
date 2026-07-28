@@ -121,9 +121,9 @@ fn render_inlines_plain(inlines: &[crate::ast::Inline], out: &mut String) {
                 out.push_str(crate::node::Node::dakuten_katakana_char(num))
             }
             // 注記・返り点・送り仮名・画像・割り注マーカーはコマンド由来なので落とす。
-            InlineKind::Note(_)
+            InlineKind::Note { .. }
             | InlineKind::Kaeriten(_)
-            | InlineKind::Okurigana(_)
+            | InlineKind::Okurigana { .. }
             | InlineKind::Img { .. }
             | InlineKind::Warichu { .. } => {}
         }

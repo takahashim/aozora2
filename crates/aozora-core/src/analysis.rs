@@ -284,7 +284,7 @@ fn block_kind_label(kind: &BlockKind) -> &'static str {
         BlockKind::Jisage { .. } => "字下げ",
         BlockKind::Chitsuki { .. } => "地付き",
         BlockKind::Jizume { .. } => "字詰め",
-        BlockKind::Burasage { .. } => "ぶら下げ",
+        BlockKind::Burasage(_) => "ぶら下げ",
         BlockKind::Midashi { .. } => "見出し",
         BlockKind::Keigakomi => "罫囲み",
         BlockKind::Yokogumi => "横組み",

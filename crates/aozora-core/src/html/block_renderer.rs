@@ -5,15 +5,15 @@
 //! のみ）。旧経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ足す。
 //! バックエンドは木を**状態なしに歩く**だけ（BlockManager を持たない）。
 
-use crate::ast::{Block, BlockKind, Break, CloseKind, Inline, InlineKind, OpenKind};
+use crate::ast::{
+    Block, BlockKind, Break, BurasageGeometry, CloseKind, Inline, InlineKind, OpenKind,
+};
 use crate::gaiji::{
     parse_gaiji, split_nested_gaiji, strip_kuten_prefix, GaijiResult, NestedGaijiSegment,
 };
 use crate::lower::break_policy::line_emits_closing_block_tag;
 use crate::lower::inline::to_inlines;
 use crate::node::{FontSizeType, MidashiLevel, RubyDirection};
-use crate::parser::parse;
-use crate::parser::reference_resolver::resolve_inline_ruby;
 use crate::token::TokenKind;
 use crate::tokenizer::tokenize;
 
@@ -27,8 +27,8 @@ use super::presentation::{
 /// 画像化できない外字を本文中で示す記号
 const GAIJI_MARK: &str = "※";
 
-/// 注記・alt の再帰描画の深さ上限（暴走防止）
-const MAX_NEST_DEPTH: usize = 4;
+/// alt の入れ子外字を展開する深さの上限（暴走防止）
+const MAX_ALT_DEPTH: usize = 4;
 
 /// ブロックの開始タグ（`\r\n` を含まない）。複数行 Nested は末尾に `\r\n` を足し、
 /// 行スコープ包み（[`Block::LineWrap`]）はそのまま内容を続ける。None は div 非包み。
@@ -101,8 +101,6 @@ pub struct BlockRenderer<'a> {
     in_ruby_base: bool,
     /// alt の入れ子外字展開の深さ（暴走防止）
     alt_depth: usize,
-    /// 注記の中身を再帰描画する深さ
-    note_depth: usize,
     /// 見出しアンカー id カウンタ（O=+100, Naka=+10, Ko=+1）
     midashi_id_counter: u32,
 }
@@ -116,7 +114,6 @@ impl<'a> BlockRenderer<'a> {
             in_tail: false,
             in_ruby_base: false,
             alt_depth: 0,
-            note_depth: 0,
             midashi_id_counter: 0,
         }
     }
@@ -194,8 +191,8 @@ impl<'a> BlockRenderer<'a> {
     ) {
         // ぶら下げ（折り返し字下げ）は per-line モデル。外側 div を作らず、各内容行を
         // 個別に burasage div で包む（空行は素の `<br />`）。閉じは何も出さない。
-        if let BlockKind::Burasage { wrap_width, width } = kind {
-            self.render_burasage(*wrap_width, *width, children, out);
+        if let BlockKind::Burasage(geometry) = kind {
+            self.render_burasage(*geometry, children, out);
             return;
         }
         // ブロック形見出し（［＃ここから中見出し］…）。h4/h3/h5 + midashi_anchor で
@@ -219,8 +216,8 @@ impl<'a> BlockRenderer<'a> {
             CloseKind::Newline => "</div>\r\n".to_string(),
             CloseKind::BareBreak => "</div><br />\r\n".to_string(),
             // 閉じタグを外側ぶら下げの per-line div で包む（Lower 時に確定済み）。
-            CloseKind::BurasageWrapped { wrap_width, width } => {
-                let (margin, text_indent) = self.burasage_geometry(wrap_width, width);
+            CloseKind::BurasageWrapped(geometry) => {
+                let (margin, text_indent) = self.burasage_style(geometry);
                 format!(
                     "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\"></div></div>\r\n"
                 )
@@ -252,18 +249,18 @@ impl<'a> BlockRenderer<'a> {
     ///
     /// 折り返し幅が空（コンマなし記法）のとき、参照は `margin-left: em` という不正な
     /// CSS を出す（Quirk `empty_indent_css`）。オフなら妥当な `0em`。
-    fn burasage_geometry(&self, wrap_width: Option<u32>, width: Option<u32>) -> (String, i32) {
-        let margin = wrap_width.map(|w| w.to_string()).unwrap_or_else(|| {
-            if self.options.quirks.empty_indent_css {
-                String::new()
-            } else {
-                "0".to_string()
-            }
-        });
-        (
-            margin,
-            width.unwrap_or(0) as i32 - wrap_width.unwrap_or(0) as i32,
-        )
+    fn burasage_style(&self, geometry: BurasageGeometry) -> (String, i32) {
+        let margin = geometry
+            .wrap_width
+            .map(|w| w.to_string())
+            .unwrap_or_else(|| {
+                if self.options.quirks.empty_indent_css {
+                    String::new()
+                } else {
+                    "0".to_string()
+                }
+            });
+        (margin, geometry.text_indent())
     }
 
     /// ぶら下げブロックを per-line で描画する（参照 generate_burasage_start）。
@@ -273,12 +270,11 @@ impl<'a> BlockRenderer<'a> {
     /// 行以外の子（行スコープ包み・入れ子ブロック・見出し等）は包まずそのまま描画する。
     fn render_burasage(
         &mut self,
-        wrap_width: Option<u32>,
-        width: Option<u32>,
+        geometry: BurasageGeometry,
         children: &[Block],
         out: &mut String,
     ) {
-        let (margin, text_indent) = self.burasage_geometry(wrap_width, width);
+        let (margin, text_indent) = self.burasage_style(geometry);
         for child in children {
             match child {
                 // 参照 general_output と同順で判定する。まず包むか（blank_type==false）、
@@ -345,7 +341,7 @@ fn has_inline_text(inlines: &[Inline]) -> bool {
         | InlineKind::Style { .. }
         | InlineKind::FontSize { .. }
         | InlineKind::Tcy { .. }
-        | InlineKind::Note(_)
+        | InlineKind::Note { .. }
         | InlineKind::Midashi { .. }
         // 同一行で開閉するブロック形コマンド・行スコープ地付きは、旧経路の
         // BlockStart/BlockEnd/LineJisage に対応するブロックマーカー。String を残さない。
@@ -482,9 +478,9 @@ impl<'a> BlockRenderer<'a> {
                 "<sub class=\"kaeriten\">{}</sub>",
                 html_escape(text)
             )),
-            InlineKind::Note(text) => {
+            InlineKind::Note { content, .. } => {
                 self.notation.mark_notes();
-                let inner = self.render_note_content(text);
+                let inner = self.render_note_content(content);
                 out.push_str(&format!("<span class=\"notes\">［＃{inner}］</span>"));
             }
             InlineKind::AnnotationEnd {
@@ -502,9 +498,9 @@ impl<'a> BlockRenderer<'a> {
                     html_escape(suffix)
                 ));
             }
-            InlineKind::Okurigana(text) => {
-                // 参照実装 Tag::Okurigana は注記と同じ再パースを通し、外側 （ ） を除去する。
-                let inner = self.render_note_content(text).replace(['（', '）'], "");
+            InlineKind::Okurigana { content, .. } => {
+                // 参照実装 Tag::Okurigana は注記と同じ描画を通し、外側 （ ） を除去する。
+                let inner = self.render_note_content(content).replace(['（', '）'], "");
                 out.push_str(&format!("<sup class=\"okurigana\">{inner}</sup>"));
             }
             InlineKind::FontSize {
@@ -557,24 +553,16 @@ impl<'a> BlockRenderer<'a> {
         self.midashi_id_counter
     }
 
-    /// 注記/送り仮名の中身を再パースして描画する（参照は別 TagParser で処理し、
-    /// 本文かどうかに関わらず外字記号を出す＝in_tail/in_ruby_base をリセット）。
-    fn render_note_content(&mut self, text: &str) -> String {
-        if self.note_depth >= MAX_NEST_DEPTH {
-            return html_escape(text);
-        }
-        self.note_depth += 1;
+    /// 注記・送り仮名の中身（Lowerer が解決済み）を描画する。参照は別の TagParser で
+    /// 処理するので、本文かどうかに関わらず外字記号 ※ を出す（in_tail/in_ruby_base を
+    /// 一時的に倒す）。中身の深さは Lower 時に制限済み。
+    fn render_note_content(&mut self, content: &[Inline]) -> String {
         let outer_tail = std::mem::replace(&mut self.in_tail, false);
         let outer_ruby_base = std::mem::replace(&mut self.in_ruby_base, false);
-        let tokens = tokenize(text);
-        let mut nodes = parse(&tokens);
-        resolve_inline_ruby(&mut nodes);
-        let inlines = to_inlines(&nodes);
         let mut html = String::new();
-        self.render_inlines(&inlines, &mut html);
+        self.render_inlines(content, &mut html);
         self.in_ruby_base = outer_ruby_base;
         self.in_tail = outer_tail;
-        self.note_depth -= 1;
         html
     }
 
@@ -797,7 +785,7 @@ impl<'a> BlockRenderer<'a> {
     /// `nested_gaiji_in_alt`）。記法の切り分けは [`split_nested_gaiji`] に委ねる。
     fn gaiji_alt(&mut self, description: &str) -> String {
         let stripped = strip_kuten_prefix(description);
-        if !self.options.quirks.nested_gaiji_in_alt || self.alt_depth >= MAX_NEST_DEPTH {
+        if !self.options.quirks.nested_gaiji_in_alt || self.alt_depth >= MAX_ALT_DEPTH {
             return html_escape(&stripped);
         }
         self.alt_depth += 1;

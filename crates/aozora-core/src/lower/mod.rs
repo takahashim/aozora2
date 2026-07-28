@@ -15,7 +15,7 @@ pub mod inline;
 use break_policy::line_emits_closing_block_tag;
 use inline::to_inlines;
 
-use crate::ast::{AozoraAst, Block, BlockKind, Break, CloseKind, OpenKind};
+use crate::ast::{AozoraAst, Block, BlockKind, Break, BurasageGeometry, CloseKind, OpenKind};
 use crate::node::{BlockType, Node, NodeKind};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 use crate::parser::RawDoc;
@@ -371,11 +371,8 @@ fn block_close_kind(
     stack: &[(BlockKind, Vec<Block>, usize, OpenKind)],
 ) -> CloseKind {
     if is_burasage_wrapped_close(kind) {
-        if let Some((BlockKind::Burasage { wrap_width, width }, _, _, _)) = stack.last() {
-            return CloseKind::BurasageWrapped {
-                wrap_width: *wrap_width,
-                width: *width,
-            };
+        if let Some((BlockKind::Burasage(geometry), _, _, _)) = stack.last() {
+            return CloseKind::BurasageWrapped(*geometry);
         }
     }
     if explicit {
@@ -566,10 +563,10 @@ pub(crate) fn block_kind_of(
         }),
         BlockType::Futoji => Some(BlockKind::Futoji),
         BlockType::Shatai => Some(BlockKind::Shatai),
-        BlockType::Burasage => Some(BlockKind::Burasage {
+        BlockType::Burasage => Some(BlockKind::Burasage(BurasageGeometry {
             wrap_width: params.wrap_width,
             width: params.width,
-        }),
+        })),
         BlockType::Midashi => Some(BlockKind::Midashi {
             level: params.level.unwrap_or(crate::node::MidashiLevel::O),
             style: params

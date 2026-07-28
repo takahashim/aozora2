@@ -128,7 +128,7 @@ RawLine を構成する平坦ノード。**入れ子はマーカーで表し**�
 | `Warichu { upper, lower }` | 葉 | 割書き（上段・下段） |
 | `FontSize { children, size_type, level }` | 葉 | 大きな/小さな文字 |
 | `Kaeriten(String)` / `Okurigana(String)` | 葉 | 返り点／訓点送り仮名 |
-| `Note(String)` | 葉 | 編集者注 |
+| `Note(String)` | 葉 | 編集者注（Aozora AST では中身を解決して `Note { content, raw }` にする） |
 | `DakutenKatakana { num }` | 葉 | 濁点片仮名参照 |
 | `LineJisage { width }` | マーカー | 行単位字下げ `［＃N字下げ］` |
 | `BlockStart { block_type, params }` | マーカー | ブロック開始（`ここから…`／範囲開始） |
@@ -198,7 +198,7 @@ enum BlockKind {
     Jisage   { width: Option<u32> },                 // N 字下げ（空幅は None＝Quirk）
     Chitsuki { width: u32 },                          // 地付き／字上げ（右寄せ）
     Jizume   { width: u32 },                          // 字詰め
-    Burasage { wrap_width: Option<u32>, width: Option<u32> }, // ぶら下げ（折り返し字下げ）
+    Burasage(BurasageGeometry),                       // ぶら下げ（折り返し字下げ）
     Midashi  { level: MidashiLevel, style: MidashiStyle },    // 見出し（後続行を包む）
     Keigakomi,                     // 罫囲み（ブロック形）
     Yokogumi,                      // 横組み（ブロック形）
@@ -228,8 +228,9 @@ enum InlineKind {
     Warichu { open: bool, suppress_paren: bool },      // 割り注（開閉マーカー）
     Warigaki { children },                             // 割書
     FontSize { children, size_type, level },
-    Kaeriten(String), Okurigana(String),
-    Note(String),
+    Kaeriten(String),                                  // 返り点（中身は素の文字）
+    Okurigana { content: Vec<Inline>, raw: String },    // 訓点送り仮名（中身は解決済み）
+    Note { content: Vec<Inline>, raw: String },         // 編集者注（中身は解決済み）
     DakutenKatakana { num },
     ChitsukiInline { width, children },                // 行途中で開く地付き（行末で閉じる）
     BlockInline { kind: BlockKind, children },          // 同一行で開閉するブロック形コマンド
@@ -272,7 +273,9 @@ enum CloseKind { NoBreak, Newline, BareBreak } // 入れ子ブロック閉じの
 1. **解決済み**：前方参照は解決され、`UnresolvedReference` は残らない。
 2. **入れ子**：ブロックは `Nested`/`LineWrap` の木。開始/終了マーカーは消える。
 3. **型付き・マーカーレス**：記法は `BlockKind`/`Inline` の型で表され、生の `［＃…］`
-   文字列は残らない（`Note` として明示された編集者注を除く）。
+   文字列は残らない。編集者注の中身も Lowerer が一度だけ解決して `Note { content }`
+   に入れる（`raw` は診断・エディタ支援用に併置するが、描画には使わない）。
+   バックエンドはトークナイザ・パーサに依存しない。
 4. **backend-neutral**：HTML・プレーンテキストどちらも同じ木から状態レスに描画できる。
 5. **行番号を保持**：各ブロックは由来行 `line` を持つ（char 精度は RawAST 側 `nodes[i].span`）。
 

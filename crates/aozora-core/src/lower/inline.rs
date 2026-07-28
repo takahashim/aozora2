@@ -9,13 +9,24 @@
 
 use crate::ast::{Inline, InlineKind};
 use crate::node::{BlockParams, BlockType, Node, NodeKind};
+use crate::parser::parse;
+use crate::parser::reference_resolver::resolve_inline_ruby;
 use crate::token::Span;
+use crate::tokenizer::tokenize;
+
+/// 注記の中身を再パースする深さの上限（注記が注記を含む入れ子の暴走防止）。
+const MAX_NOTE_DEPTH: usize = 4;
 
 /// RawAST の [`Node`] のインライン変種を Aozora AST の [`Inline`] に写す。
 /// ブロック構造マーカーは None を返す（ブロック畳み込みが別途消費する）。
 /// 割り注（apply_warichu）は状態を持たないインライン出力なので、`BlockStart`/
 /// `BlockEnd` の Warichu だけは [`InlineKind::Warichu`] マーカーとして写す。
 pub fn inline_from_node(node: &Node) -> Option<Inline> {
+    inline_from_node_at(node, 0)
+}
+
+/// [`inline_from_node`] の本体。`depth` は注記の中身を再パースした深さ。
+fn inline_from_node_at(node: &Node, depth: usize) -> Option<Inline> {
     let out = match &node.kind {
         NodeKind::Text(s) => InlineKind::Text(s.clone()),
         NodeKind::Ruby {
@@ -24,8 +35,8 @@ pub fn inline_from_node(node: &Node) -> Option<Inline> {
             direction,
             keep_gaiji_notes_in_base,
         } => InlineKind::Ruby {
-            base: to_inlines(children),
-            ruby: to_inlines(ruby),
+            base: to_inlines_at(children, depth),
+            ruby: to_inlines_at(ruby, depth),
             direction: *direction,
             keep_gaiji_notes_in_base: *keep_gaiji_notes_in_base,
         },
@@ -33,7 +44,7 @@ pub fn inline_from_node(node: &Node) -> Option<Inline> {
             children,
             style_type,
         } => InlineKind::Style {
-            children: to_inlines(children),
+            children: to_inlines_at(children, depth),
             style_type: *style_type,
         },
         NodeKind::Midashi {
@@ -41,7 +52,7 @@ pub fn inline_from_node(node: &Node) -> Option<Inline> {
             level,
             style,
         } => InlineKind::Midashi {
-            children: to_inlines(children),
+            children: to_inlines_at(children, depth),
             level: *level,
             style: *style,
         },
@@ -79,29 +90,35 @@ pub fn inline_from_node(node: &Node) -> Option<Inline> {
             height: *height,
         },
         NodeKind::Tcy { children } => InlineKind::Tcy {
-            children: to_inlines(children),
+            children: to_inlines_at(children, depth),
         },
         NodeKind::Keigakomi { children } => InlineKind::Keigakomi {
-            children: to_inlines(children),
+            children: to_inlines_at(children, depth),
         },
         NodeKind::Yokogumi { children } => InlineKind::Yokogumi {
-            children: to_inlines(children),
+            children: to_inlines_at(children, depth),
         },
         NodeKind::Caption { children } => InlineKind::Caption {
-            children: to_inlines(children),
+            children: to_inlines_at(children, depth),
         },
         NodeKind::FontSize {
             children,
             size_type,
             level,
         } => InlineKind::FontSize {
-            children: to_inlines(children),
+            children: to_inlines_at(children, depth),
             size_type: *size_type,
             level: *level,
         },
         NodeKind::Kaeriten(s) => InlineKind::Kaeriten(s.clone()),
-        NodeKind::Okurigana(s) => InlineKind::Okurigana(s.clone()),
-        NodeKind::Note(s) => InlineKind::Note(s.clone()),
+        NodeKind::Okurigana(s) => InlineKind::Okurigana {
+            content: note_content(s, depth),
+            raw: s.clone(),
+        },
+        NodeKind::Note(s) => InlineKind::Note {
+            content: note_content(s, depth),
+            raw: s.clone(),
+        },
         NodeKind::DakutenKatakana { num } => InlineKind::DakutenKatakana { num: num.clone() },
         NodeKind::AnnotationEnd {
             prefix,
@@ -109,7 +126,7 @@ pub fn inline_from_node(node: &Node) -> Option<Inline> {
             suffix,
         } => InlineKind::AnnotationEnd {
             prefix: prefix.clone(),
-            content: to_inlines(content),
+            content: to_inlines_at(content, depth),
             suffix: suffix.clone(),
         },
         // 割り注は apply_warichu の状態なし出力。開閉をマーカーとして写す。
@@ -145,15 +162,20 @@ pub fn inline_from_node(node: &Node) -> Option<Inline> {
 /// [`Inline`] に畳む（畳めなければ1ノードずつ写す）。畳めないブロックマーカーは
 /// 除外する（ブロック層が消費するか、未対応）。
 pub fn to_inlines(nodes: &[Node]) -> Vec<Inline> {
+    to_inlines_at(nodes, 0)
+}
+
+/// [`to_inlines`] の本体。`depth` は注記の中身を再パースした深さ。
+fn to_inlines_at(nodes: &[Node], depth: usize) -> Vec<Inline> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < nodes.len() {
-        if let Some((inline, next)) = fold_block_start(nodes, i) {
+        if let Some((inline, next)) = fold_block_start(nodes, i, depth) {
             out.push(inline);
             i = next;
             continue;
         }
-        if let Some(inline) = inline_from_node(&nodes[i]) {
+        if let Some(inline) = inline_from_node_at(&nodes[i], depth) {
             out.push(inline);
         }
         i += 1;
@@ -163,13 +185,28 @@ pub fn to_inlines(nodes: &[Node]) -> Vec<Inline> {
 
 /// `nodes[i]` から始まる範囲を1つの [`Inline`] に畳む。
 /// 返り値は畳んだインラインと、走査を再開する添字。
-fn fold_block_start(nodes: &[Node], i: usize) -> Option<(Inline, usize)> {
+fn fold_block_start(nodes: &[Node], i: usize, depth: usize) -> Option<(Inline, usize)> {
     let NodeKind::BlockStart { block_type, params } = &nodes[i].kind else {
         return None;
     };
-    fold_inline_range(nodes, i, block_type, params)
-        .or_else(|| fold_block_inline(nodes, i, block_type, params))
-        .or_else(|| fold_trailing_chitsuki(nodes, i, block_type, params))
+    fold_inline_range(nodes, i, block_type, params, depth)
+        .or_else(|| fold_block_inline(nodes, i, block_type, params, depth))
+        .or_else(|| fold_trailing_chitsuki(nodes, i, block_type, params, depth))
+}
+
+/// 注記・送り仮名の中身（生の注記文字列）を解決済みインライン列に畳む。
+///
+/// 参照実装は注記の中身を別の TagParser に渡して描画するので、ここで同じ
+/// tokenize→parse→ルビ解決を通す（前方参照 `resolve_references` は注記の中では
+/// 走らせない＝参照実装と同じ）。深さ上限に達したら再パースせず素のテキストにする。
+fn note_content(raw: &str, depth: usize) -> Vec<Inline> {
+    let span = Span::new(0, raw.chars().count());
+    if depth >= MAX_NOTE_DEPTH {
+        return vec![Inline::text(raw, span)];
+    }
+    let mut nodes = parse(&tokenize(raw));
+    resolve_inline_ruby(&mut nodes);
+    to_inlines_at(&nodes, depth + 1)
 }
 
 /// 同一行に開閉が揃うインライン範囲コマンド `［＃中見出し］…［＃中見出し終わり］`
@@ -180,12 +217,13 @@ fn fold_inline_range(
     i: usize,
     block_type: &BlockType,
     params: &BlockParams,
+    depth: usize,
 ) -> Option<(Inline, usize)> {
     if params.is_block || !is_inline_range_type(block_type) {
         return None;
     }
     let end = find_matching_end(nodes, i, block_type)?;
-    let inner = to_inlines(&nodes[i + 1..end]);
+    let inner = to_inlines_at(&nodes[i + 1..end], depth);
     let inline = wrap_inline_range(block_type, params, inner, span_for_nodes(&nodes[i..=end]))?;
     Some((inline, end + 1))
 }
@@ -198,13 +236,14 @@ fn fold_block_inline(
     i: usize,
     block_type: &BlockType,
     params: &BlockParams,
+    depth: usize,
 ) -> Option<(Inline, usize)> {
     if !params.is_block {
         return None;
     }
     let end = find_matching_end(nodes, i, block_type)?;
     let kind = super::block_kind_of(block_type, params)?;
-    let children = to_inlines(&nodes[i + 1..end]);
+    let children = to_inlines_at(&nodes[i + 1..end], depth);
     let inline = Inline::from_range(
         InlineKind::BlockInline { kind, children },
         span_for_nodes(&nodes[i..=end]),
@@ -225,6 +264,7 @@ fn fold_trailing_chitsuki(
     i: usize,
     block_type: &BlockType,
     params: &BlockParams,
+    depth: usize,
 ) -> Option<(Inline, usize)> {
     if params.is_block || *block_type != BlockType::Chitsuki {
         return None;
@@ -233,7 +273,7 @@ fn fold_trailing_chitsuki(
     let end = find_matching_end(nodes, i, block_type);
     let content_end = end.unwrap_or(nodes.len());
     let consumed_end = end.map_or(nodes.len(), |end| end + 1);
-    let children = to_inlines(&nodes[i + 1..content_end]);
+    let children = to_inlines_at(&nodes[i + 1..content_end], depth);
     let inline = Inline::new(
         InlineKind::ChitsukiInline {
             width: params.width.unwrap_or(0),
@@ -483,6 +523,68 @@ mod tests {
         assert_eq!(*width, 2);
         assert_eq!(children, &to_inlines(&nodes[2..]));
         assert_eq!(chitsuki.span, span_for_nodes(&nodes[1..]));
+    }
+
+    /// 注記の中身は Lower 時に解決される（参照実装は注記を別の TagParser に渡す）。
+    /// バックエンドが再パースしないための不変条件。
+    #[test]
+    fn note_content_is_resolved_at_lower_time() {
+        let nodes = parse(&tokenize("［＃現代語訳「松籟《しょうらい》を聞く」］"));
+        let inlines = to_inlines(&nodes);
+        let InlineKind::Note { content, raw } = &inlines[0].kind else {
+            panic!("注記にならない: {inlines:?}");
+        };
+        assert_eq!(raw, "現代語訳「松籟《しょうらい》を聞く」");
+        assert!(
+            content
+                .iter()
+                .any(|inline| matches!(inline.kind, InlineKind::Ruby { .. })),
+            "注記の中のルビが解決されていない: {content:?}"
+        );
+    }
+
+    /// 入れ子の注記は上限の深さまで再パースし、その先は素のテキストで残す。
+    /// 中身にルビを置いて、解決されたかどうかで境界を見る。
+    #[test]
+    fn nested_notes_stop_reparsing_at_the_depth_limit() {
+        /// 最も内側の注記の中身を返す。
+        fn innermost_note_content(source: &str) -> Vec<Inline> {
+            let inlines = to_inlines(&parse(&tokenize(source)));
+            let mut content = match &inlines[0].kind {
+                InlineKind::Note { content, .. } => content.clone(),
+                other => panic!("注記にならない: {other:?}"),
+            };
+            while let Some(nested) = content.iter().find_map(|inline| match &inline.kind {
+                InlineKind::Note { content, .. } => Some(content.clone()),
+                _ => None,
+            }) {
+                content = nested;
+            }
+            content
+        }
+
+        let has_ruby = |content: &[Inline]| {
+            content
+                .iter()
+                .any(|i| matches!(i.kind, InlineKind::Ruby { .. }))
+        };
+
+        // 上限の深さ（MAX_NOTE_DEPTH=4）までは中身を解決する。
+        let within = innermost_note_content(
+            "［＃「A」は［＃「B」は［＃「C」は［＃「D」は松《まつ》］］］］",
+        );
+        assert!(has_ruby(&within), "上限内で解決されていない: {within:?}");
+
+        // それより深い注記は再パースせず、素のテキストのまま残す。
+        let beyond = innermost_note_content(
+            "［＃「A」は［＃「B」は［＃「C」は［＃「D」は［＃「E」は松《まつ》］］］］］",
+        );
+        assert!(
+            beyond
+                .iter()
+                .all(|inline| matches!(inline.kind, InlineKind::Text(_))),
+            "深さ上限を超えて再パースしている: {beyond:?}"
+        );
     }
 
     #[test]

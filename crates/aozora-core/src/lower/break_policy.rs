@@ -50,6 +50,6 @@ fn block_kind_emits_closing_tag(kind: &BlockKind) -> bool {
         | BlockKind::Futoji
         | BlockKind::Shatai => true,
         // Burasage は BlockInline には現れない。
-        BlockKind::Burasage { .. } => false,
+        BlockKind::Burasage(_) => false,
     }
 }
