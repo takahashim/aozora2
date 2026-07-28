@@ -20,6 +20,9 @@ static ACCENT_NAME_TABLE: Lazy<HashMap<&'static str, &'static str>> =
 /// `cafe'` → `café` のように、基底文字+アクセント記号を
 /// アクセント付き文字に変換する。
 ///
+/// クレート内に呼び出し元は無い（本文の変換は [`parse_accent`] を通る）。
+/// 素の文字列変換だけが欲しい利用者向けの公開ユーティリティ。
+///
 /// # Examples
 ///
 /// ```
@@ -29,37 +32,13 @@ static ACCENT_NAME_TABLE: Lazy<HashMap<&'static str, &'static str>> =
 /// assert_eq!(convert_accent("A'"), "Á");
 /// ```
 pub fn convert_accent(input: &str) -> String {
-    let chars: Vec<char> = input.chars().collect();
-    let mut result = String::new();
-    let mut i = 0;
-
-    while i < chars.len() {
-        // 3文字のリガチャをチェック (例: "ae&" → æ)
-        if i + 2 < chars.len() && is_accent_mark(chars[i + 2]) {
-            let key = format!("{}{}{}", chars[i], chars[i + 1], chars[i + 2]);
-            if let Some(converted) = lookup_accent(&key) {
-                result.push_str(&converted);
-                i += 3;
-                continue;
-            }
-        }
-
-        // 2文字のアクセントをチェック (例: "e'" → é)
-        if i + 1 < chars.len() && is_accent_mark(chars[i + 1]) {
-            let key = format!("{}{}", chars[i], chars[i + 1]);
-            if let Some(converted) = lookup_accent(&key) {
-                result.push_str(&converted);
-                i += 2;
-                continue;
-            }
-        }
-
-        // マッチしない場合はそのまま出力
-        result.push(chars[i]);
-        i += 1;
-    }
-
-    result
+    parse_accent(input)
+        .iter()
+        .map(|part| match part {
+            AccentPart::Text(text) => text.as_str(),
+            AccentPart::Accent { unicode, .. } => unicode.as_str(),
+        })
+        .collect()
 }
 
 /// 文字がアクセント記号かどうか
@@ -75,29 +54,7 @@ pub fn is_accent_mark(c: char) -> bool {
 /// 記号文字が含まれるだけでは足りない（英文中のカンマなどで誤判定するため）。
 pub fn contains_accent_sequence(s: &str) -> bool {
     let chars: Vec<char> = s.chars().collect();
-    for i in 0..chars.len() {
-        if i + 2 < chars.len()
-            && is_accent_mark(chars[i + 2])
-            && ACCENT_TABLE
-                .contains_key(format!("{}{}{}", chars[i], chars[i + 1], chars[i + 2]).as_str())
-        {
-            return true;
-        }
-        if i + 1 < chars.len()
-            && is_accent_mark(chars[i + 1])
-            && ACCENT_TABLE.contains_key(format!("{}{}", chars[i], chars[i + 1]).as_str())
-        {
-            return true;
-        }
-    }
-    false
-}
-
-/// アクセントテーブルを検索してUnicode文字を返す
-fn lookup_accent(key: &str) -> Option<String> {
-    ACCENT_TABLE
-        .get(key)
-        .and_then(|jis_code| jis_to_unicode(jis_code))
+    (0..chars.len()).any(|i| accent_at(&chars, i).is_some())
 }
 
 /// アクセント変換結果（1文字分）
@@ -113,12 +70,19 @@ pub enum AccentPart {
         name: String,
         /// Unicode文字
         unicode: String,
+        /// この文字が消費した元入力の char 数（3文字リガチャなら 3、他は 2）。
+        ///
+        /// 呼び出し側が元テキスト上の span を切り出すのに要る。ここで持たないと
+        /// 変換結果から幅を逆引きする羽目になる。
+        source_width: usize,
     },
 }
 
 /// アクセント分解記法をパースしてJISコード情報を含む結果を返す
 ///
 /// レンダラーが画像出力を選べるよう、JISコード情報を保持する。
+/// アクセント記法の**唯一の走査**で、[`convert_accent`] も
+/// [`contains_accent_sequence`] もこれ（と [`accent_at`]）を通る。
 pub fn parse_accent(input: &str) -> Vec<AccentPart> {
     let chars: Vec<char> = input.chars().collect();
     let mut result = Vec::new();
@@ -126,42 +90,18 @@ pub fn parse_accent(input: &str) -> Vec<AccentPart> {
     let mut i = 0;
 
     while i < chars.len() {
-        // 3文字のリガチャをチェック (例: "ae&" → æ)
-        if i + 2 < chars.len() && is_accent_mark(chars[i + 2]) {
-            let key = format!("{}{}{}", chars[i], chars[i + 1], chars[i + 2]);
-            if let Some((jis_code, unicode)) = lookup_accent_with_code(&key) {
-                // バッファのテキストを先に出力
-                if !text_buffer.is_empty() {
-                    result.push(AccentPart::Text(std::mem::take(&mut text_buffer)));
-                }
-                result.push(AccentPart::Accent {
-                    jis_code,
-                    name: accent_name(&key),
-                    unicode,
-                });
-                i += 3;
-                continue;
+        if let Some(accent) = accent_at(&chars, i) {
+            let AccentPart::Accent { source_width, .. } = accent else {
+                unreachable!("accent_at は Accent だけを返す")
+            };
+            // バッファのテキストを先に出力
+            if !text_buffer.is_empty() {
+                result.push(AccentPart::Text(std::mem::take(&mut text_buffer)));
             }
+            i += source_width;
+            result.push(accent);
+            continue;
         }
-
-        // 2文字のアクセントをチェック (例: "e'" → é)
-        if i + 1 < chars.len() && is_accent_mark(chars[i + 1]) {
-            let key = format!("{}{}", chars[i], chars[i + 1]);
-            if let Some((jis_code, unicode)) = lookup_accent_with_code(&key) {
-                // バッファのテキストを先に出力
-                if !text_buffer.is_empty() {
-                    result.push(AccentPart::Text(std::mem::take(&mut text_buffer)));
-                }
-                result.push(AccentPart::Accent {
-                    jis_code,
-                    name: accent_name(&key),
-                    unicode,
-                });
-                i += 2;
-                continue;
-            }
-        }
-
         // マッチしない場合はバッファに追加
         text_buffer.push(chars[i]);
         i += 1;
@@ -175,60 +115,49 @@ pub fn parse_accent(input: &str) -> Vec<AccentPart> {
     result
 }
 
+/// `chars[i]` から始まるアクセント文字（無ければ None）。
+///
+/// **アクセント記法の文法はここにだけ置く**: 3文字のリガチャ（`ae&` → æ）を
+/// 2文字のアクセント（`e'` → é）より優先し、末尾がアクセント記号で、かつ
+/// アクセント表に載っていて Unicode に解決できる組み合わせだけを認める。
+fn accent_at(chars: &[char], i: usize) -> Option<AccentPart> {
+    for source_width in [3, 2] {
+        let end = i + source_width;
+        if end > chars.len() || !is_accent_mark(chars[end - 1]) {
+            continue;
+        }
+        let key: String = chars[i..end].iter().collect();
+        if let Some((jis_code, unicode)) = lookup_accent(&key) {
+            return Some(AccentPart::Accent {
+                jis_code,
+                name: accent_name(&key),
+                unicode,
+                source_width,
+            });
+        }
+    }
+    None
+}
+
 /// アクセントテーブルを検索してJISコードとUnicode文字の両方を返す
-fn lookup_accent_with_code(key: &str) -> Option<(String, String)> {
+fn lookup_accent(key: &str) -> Option<(String, String)> {
     ACCENT_TABLE.get(key).and_then(|jis_code| {
         jis_to_unicode(jis_code).map(|unicode| (jis_code.to_string(), unicode))
     })
 }
 
-/// アクセント記号のパターンから説明文字列を生成
+/// アクセント文字の説明文を引く。
+///
+/// 説明文は参照実装 aozora2html の accent_table.yml 由来の表がすべて持っている
+/// （`accent_name_table_covers_every_accent_key` が網羅を固定する）。規則から
+/// 組み立てられない表記（ドイツ語エスツェット、参照実装の表記ゆれ）があるため
+/// 生成はせず表を引くだけにする。キーに直す fallback は表が欠けたときの保険。
 fn accent_name(key: &str) -> String {
-    // 参照実装の表にあればそれを使う
-    if let Some(name) = ACCENT_NAME_TABLE.get(key) {
-        return name.to_string();
-    }
-
-    let chars: Vec<char> = key.chars().collect();
-    if chars.len() == 2 {
-        let base = chars[0];
-        let mark = chars[1];
-        let mark_name = match mark {
-            '\'' => "アキュートアクセント",
-            '`' => "グレーブアクセント",
-            '^' => "サーカムフレックスアクセント",
-            ':' => "ダイエレシス",
-            '~' => "チルダ",
-            '_' => "マクロン",
-            ',' => "セディラ",
-            _ => "アクセント",
-        };
-        // 小文字のみ「小文字」サフィックス付き
-        if base.is_lowercase() {
-            format!("{}付き{}小文字", mark_name, base.to_uppercase())
-        } else {
-            format!("{}付き{}", mark_name, base)
-        }
-    } else if chars.len() == 3 {
-        // リガチャ。参照実装 aozora2html の accent_table.yml に合わせる。
-        // AE の大文字だけ「大文字」が付かない。
-        match key {
-            "AE&" => "リガチャAE".to_string(),
-            "OE&" => "リガチャOE大文字".to_string(),
-            "ae&" => "リガチャAE小文字".to_string(),
-            "oe&" => "リガチャOE小文字".to_string(),
-            _ => {
-                let case = if key.starts_with(|c: char| c.is_uppercase()) {
-                    "大文字"
-                } else {
-                    "小文字"
-                };
-                format!("リガチャ{}{}", key[..2].to_uppercase(), case)
-            }
-        }
-    } else {
-        key.to_string()
-    }
+    ACCENT_NAME_TABLE
+        .get(key)
+        .copied()
+        .unwrap_or(key)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -245,6 +174,65 @@ mod tests {
         assert!(!contains_accent_sequence(
             "欄外 Emil Brunner, Erlebnis, Erkenntnis und Glaube, 1923."
         ));
+    }
+
+    /// 説明文の表がアクセント表を完全に覆っていること。以前は覆えていない場合に
+    /// 備えて規則から説明文を組み立てる分岐を持っていたが、両表は build.rs が
+    /// 同じ data/ から生成していて 1:1 なので到達しなかった。網羅をここで固定して
+    /// 分岐を落としている。
+    #[test]
+    fn accent_name_table_covers_every_accent_key() {
+        for key in ACCENT_TABLE.keys() {
+            assert!(
+                ACCENT_NAME_TABLE.contains_key(key),
+                "説明文の無いアクセントキー: {key}"
+            );
+        }
+    }
+
+    /// 消費した元入力の幅を [`AccentPart::Accent`] 自身が持つ。以前は呼び出し側が
+    /// convert_accent を掛け直して文字列比較で逆引きしていた。
+    #[test]
+    fn accent_parts_carry_their_source_width() {
+        let parts = parse_accent("ae&e'x");
+        assert_eq!(parts.len(), 3);
+        assert!(matches!(
+            parts[0],
+            AccentPart::Accent {
+                source_width: 3,
+                ..
+            }
+        ));
+        assert!(matches!(
+            parts[1],
+            AccentPart::Accent {
+                source_width: 2,
+                ..
+            }
+        ));
+        assert_eq!(parts[2], AccentPart::Text("x".to_string()));
+    }
+
+    /// 3種の入口が同じ走査を通ること（convert_accent と contains_accent_sequence は
+    /// parse_accent の派生）。
+    #[test]
+    fn entry_points_agree_with_parse_accent() {
+        for input in ["cafe'", "ae&", "hello", "z'", "!@", "参考", "pre'lude`"] {
+            let parts = parse_accent(input);
+            let joined: String = parts
+                .iter()
+                .map(|p| match p {
+                    AccentPart::Text(t) => t.as_str(),
+                    AccentPart::Accent { unicode, .. } => unicode.as_str(),
+                })
+                .collect();
+            assert_eq!(convert_accent(input), joined, "convert_accent: {input}");
+            assert_eq!(
+                contains_accent_sequence(input),
+                parts.iter().any(|p| matches!(p, AccentPart::Accent { .. })),
+                "contains_accent_sequence: {input}"
+            );
+        }
     }
 
     /// 説明文は参照実装 aozora2html の accent_table.yml をそのまま使う。

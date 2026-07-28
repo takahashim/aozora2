@@ -8,6 +8,7 @@
 use crate::ast::{
     Block, BlockKind, Break, BurasageGeometry, CloseKind, Inline, InlineKind, OpenKind,
 };
+use crate::delimiters::GAIJI_MARK_STR;
 use crate::gaiji::{
     parse_gaiji, split_nested_gaiji, strip_kuten_prefix, GaijiResult, NestedGaijiSegment,
 };
@@ -22,9 +23,6 @@ use super::presentation::{
     html_escape, jis_code_to_path, midashi_combined_css_class, midashi_html_tag, style_css_class,
     style_html_tag,
 };
-
-/// 画像化できない外字を本文中で示す記号
-const GAIJI_MARK: &str = "※";
 
 /// alt の入れ子外字を展開する深さの上限（暴走防止）
 const MAX_ALT_DEPTH: usize = 4;
@@ -630,12 +628,15 @@ impl<'a> BlockRenderer<'a> {
                 self.options.gaiji_dir,
                 folder,
                 file,
-                html_escape(&self.accent_name(name))
+                html_escape(&self.accent_name_for_alt(name))
             )
         }
     }
 
-    fn accent_name(&self, name: &str) -> String {
+    /// alt に出すアクセント文字の説明文。説明文そのものは
+    /// [`crate::accent`] の表が持つので、ここでは quirk による訂正だけを行う
+    /// （参照実装の表記ゆれ `A^` の字母落ちを、quirk オフなら補う）。
+    fn accent_name_for_alt(&self, name: &str) -> String {
         if !self.options.quirks.accent_name_typos && name == "サーカムフレックスアクセント付き"
         {
             return "サーカムフレックスアクセント付きA".to_string();
@@ -647,7 +648,7 @@ impl<'a> BlockRenderer<'a> {
         if self.in_tail || self.in_ruby_base {
             ""
         } else {
-            GAIJI_MARK
+            GAIJI_MARK_STR
         }
     }
 
@@ -664,7 +665,7 @@ impl<'a> BlockRenderer<'a> {
             if matches!(&inline.kind, InlineKind::Gaiji { .. })
                 && html.starts_with("<span class=\"notes\">")
             {
-                rb.push_str(GAIJI_MARK);
+                rb.push_str(GAIJI_MARK_STR);
                 trailing.push_str(&html);
             } else {
                 rb.push_str(&html);

@@ -217,7 +217,6 @@ fn apply_accent_to_nodes(nodes: Vec<Node>) -> Vec<Node> {
     for Node { kind, span } in nodes {
         match kind {
             NodeKind::Text(s) => {
-                let chars: Vec<char> = s.chars().collect();
                 let mut offset = 0;
                 for part in parse_accent(&s) {
                     match part {
@@ -230,8 +229,8 @@ fn apply_accent_to_nodes(nodes: Vec<Node>) -> Vec<Node> {
                             jis_code,
                             name,
                             unicode,
+                            source_width: width,
                         } => {
-                            let width = accent_source_width(&chars[offset..], &unicode);
                             result.push(Node::new(
                                 NodeKind::Accent {
                                     code: jis_code,
@@ -269,20 +268,6 @@ fn apply_accent_to_nodes(nodes: Vec<Node>) -> Vec<Node> {
 fn span_slice(span: Span, offset: usize, width: usize) -> Span {
     let (_, suffix) = span.split_at(offset);
     suffix.split_at(width).0
-}
-
-/// `parse_accent` が 2/3 文字の入力を 1 つのアクセント文字へ畳むときの、
-/// 元入力側の幅を求める。3文字リガチャが優先される規則は `parse_accent` と同じ。
-fn accent_source_width(chars: &[char], unicode: &str) -> usize {
-    for width in [3, 2] {
-        if chars.len() >= width {
-            let candidate: String = chars[..width].iter().collect();
-            if crate::accent::convert_accent(&candidate) == unicode {
-                return width;
-            }
-        }
-    }
-    unreachable!("accent part must correspond to a 2- or 3-char source sequence")
 }
 
 /// トークン列をノード列に変換（再帰用、前方参照解決なし）

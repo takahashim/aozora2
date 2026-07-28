@@ -23,14 +23,32 @@ pub const IGETA: char = '＃';
 /// 外字マーク ※ (U+203B)
 pub const GAIJI_MARK: char = '※';
 
+/// [`GAIJI_MARK`] の文字列版。`push_str` など `&str` が要る場所で使う
+/// （両者が一致することは `test_gaiji_mark_str_matches_char` が固定する）。
+pub const GAIJI_MARK_STR: &str = "※";
+
 /// アクセント開始 〔 (U+3014)
 pub const ACCENT_BEGIN: char = '〔';
 
 /// アクセント終了 〕 (U+3015)
 pub const ACCENT_END: char = '〕';
 
-/// アクセント記号一覧
-/// ' ` ^ ~ : & _ , / @
+/// アクセント記号一覧。基底文字の**後ろ**に置いて1文字に畳む
+/// （`e'` → é、`ae&` → æ）。どの組み合わせが有効かは記号だけでは決まらず、
+/// アクセント表（`data/accent_table.json`）に載っているものだけが変換される。
+///
+/// | 記号 | 主な意味 |
+/// |---|---|
+/// | `'` | アキュートアクセント |
+/// | `` ` `` | グレーブアクセント |
+/// | `^` | サーカムフレックスアクセント |
+/// | `~` | チルダ |
+/// | `:` | ダイエレシス（ウムラウト） |
+/// | `&` | リガチャ・上リング・エスツェット |
+/// | `_` | マクロン |
+/// | `,` | セディラ |
+/// | `/` | ストローク |
+/// | `@` | 逆転（`!@` → ¡） |
 pub const ACCENT_MARKS: &[char] = &['\'', '`', '^', '~', ':', '&', '_', ',', '/', '@'];
 
 #[cfg(test)]
@@ -48,5 +66,11 @@ mod tests {
         assert_eq!(GAIJI_MARK as u32, 0x203B);
         assert_eq!(ACCENT_BEGIN as u32, 0x3014);
         assert_eq!(ACCENT_END as u32, 0x3015);
+    }
+
+    /// 文字版と文字列版がずれないようにする。
+    #[test]
+    fn test_gaiji_mark_str_matches_char() {
+        assert_eq!(GAIJI_MARK_STR, GAIJI_MARK.to_string());
     }
 }
