@@ -95,6 +95,56 @@ pub fn parse_gaiji(description: &str) -> GaijiResult {
     GaijiResult::Unconvertible
 }
 
+/// 外字説明の中に現れる入れ子の外字記法 `※［＃…］`。
+const NESTED_GAIJI_OPEN: &str = "※［＃";
+/// 外字記法の閉じ
+const GAIJI_CLOSE: char = '］';
+
+/// 外字説明を「素のテキスト」と「入れ子の外字記法」に切り分けた1区間。
+#[derive(Debug, Clone, PartialEq)]
+pub enum NestedGaijiSegment<'a> {
+    /// 外字記法でない素のテキスト
+    Text(&'a str),
+    /// 入れ子の外字記法 `※［＃…］` の中身（デリミタと ＃ を除く）
+    Gaiji(&'a str),
+}
+
+/// 外字説明を入れ子の外字記法 `※［＃…］` の境界で切り分ける。
+///
+/// 参照実装の画像 alt は TagParser の @raw（生文字の蓄積）由来なので、alt に
+/// 入れ子の外字が現れると外字だけが `<img>` に展開され、周りはルビ・注記等を
+/// 解釈しない生文字のまま残る。よってここは tokenize ではなく `※［＃` の
+/// 素の走査で切る（`※［`＝＃無しの外字は参照 PAT_KUTEN の対象外なのでテキスト扱い）。
+///
+/// 閉じ `］` が見つからない `※［＃` は、そこから末尾までを [`NestedGaijiSegment::Text`]
+/// として返して走査を打ち切る。
+pub fn split_nested_gaiji(description: &str) -> Vec<NestedGaijiSegment<'_>> {
+    let mut segments = Vec::new();
+    let mut rest = description;
+    while let Some(pos) = rest.find(NESTED_GAIJI_OPEN) {
+        if pos > 0 {
+            segments.push(NestedGaijiSegment::Text(&rest[..pos]));
+        }
+        let after = &rest[pos + NESTED_GAIJI_OPEN.len()..];
+        let Some(end) = after.find(GAIJI_CLOSE) else {
+            segments.push(NestedGaijiSegment::Text(&rest[pos..]));
+            return segments;
+        };
+        segments.push(NestedGaijiSegment::Gaiji(&after[..end]));
+        rest = &after[end + GAIJI_CLOSE.len_utf8()..];
+    }
+    if !rest.is_empty() {
+        segments.push(NestedGaijiSegment::Text(rest));
+    }
+    segments
+}
+
+/// 外字画像の alt を作る前に除去される前置き（参照 kuten2png の
+/// `PAT_KUTEN = /「※」[は|の]/`）。
+pub fn strip_kuten_prefix(description: &str) -> String {
+    description.replace("「※」は", "").replace("「※」の", "")
+}
+
 /// "U+XXXX" パターンからUnicode文字を抽出
 fn extract_unicode(description: &str) -> Option<char> {
     // "U+XXXX" または "u+XXXX" を探す
@@ -275,5 +325,60 @@ mod tests {
             }
             _ => panic!("Expected JisConverted"),
         }
+    }
+
+    /// 入れ子の外字が無ければ全体が1つの Text。
+    #[test]
+    fn test_split_nested_gaiji_without_nesting() {
+        assert_eq!(
+            split_nested_gaiji("「こざとへん＋井」、U+9631、133-8"),
+            vec![NestedGaijiSegment::Text(
+                "「こざとへん＋井」、U+9631、133-8"
+            )]
+        );
+    }
+
+    /// 入れ子の外字はその中身だけを Gaiji として切り出し、前後は Text で残す。
+    #[test]
+    fn test_split_nested_gaiji_extracts_inner() {
+        assert_eq!(
+            split_nested_gaiji("「姉」の正字、「※［＃第3水準1-85-57］」の「木」に代えて「女」"),
+            vec![
+                NestedGaijiSegment::Text("「姉」の正字、「"),
+                NestedGaijiSegment::Gaiji("第3水準1-85-57"),
+                NestedGaijiSegment::Text("」の「木」に代えて「女」"),
+            ]
+        );
+    }
+
+    /// 閉じ ］ の無い ※［＃ は、そこから末尾までを Text にして走査を打ち切る。
+    #[test]
+    fn test_split_nested_gaiji_unterminated_is_text() {
+        assert_eq!(
+            split_nested_gaiji("前※［＃閉じない"),
+            vec![
+                NestedGaijiSegment::Text("前"),
+                NestedGaijiSegment::Text("※［＃閉じない"),
+            ]
+        );
+    }
+
+    /// ＃無しの ※［ は外字記法として切らない（参照 PAT_KUTEN は ＃ 必須）。
+    #[test]
+    fn test_split_nested_gaiji_ignores_igeta_less_form() {
+        assert_eq!(
+            split_nested_gaiji("前※［中身］後"),
+            vec![NestedGaijiSegment::Text("前※［中身］後")]
+        );
+    }
+
+    /// alt 生成前に「※」は／「※」の を除去する（参照 PAT_KUTEN）。
+    #[test]
+    fn test_strip_kuten_prefix() {
+        assert_eq!(
+            strip_kuten_prefix("「※」は「竹かんむり＋弄」、1-2-3"),
+            "「竹かんむり＋弄」、1-2-3"
+        );
+        assert_eq!(strip_kuten_prefix("「※」の正字"), "正字");
     }
 }

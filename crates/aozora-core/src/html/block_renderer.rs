@@ -6,7 +6,9 @@
 //! バックエンドは木を**状態なしに歩く**だけ（BlockManager を持たない）。
 
 use crate::ast::{to_inlines, Block, BlockKind, Break, CloseKind, Inline, InlineKind};
-use crate::gaiji::{parse_gaiji, GaijiResult};
+use crate::gaiji::{
+    parse_gaiji, split_nested_gaiji, strip_kuten_prefix, GaijiResult, NestedGaijiSegment,
+};
 use crate::node::{FontSizeType, MidashiLevel, RubyDirection};
 use crate::parser::parse;
 use crate::parser::reference_resolver::resolve_inline_ruby;
@@ -23,10 +25,8 @@ use super::presentation::{
 /// 画像化できない外字を本文中で示す記号
 const GAIJI_MARK: &str = "※";
 
-/// 参照実装 kuten2png は alt 生成前に PAT_KUTEN = /「※」[は|の]/ を除去する。
-fn strip_kuten_prefix(description: &str) -> String {
-    description.replace("「※」は", "").replace("「※」の", "")
-}
+/// 注記・alt の再帰描画の深さ上限（暴走防止）
+const MAX_NEST_DEPTH: usize = 4;
 
 /// ブロックの開始タグ（`\r\n` を含まない）。複数行 Nested は末尾に `\r\n` を足し、
 /// 行スコープ包み（[`Block::LineWrap`]）はそのまま内容を続ける。None は div 非包み。
@@ -473,8 +473,7 @@ impl<'a> BlockRenderer<'a> {
     /// 注記/送り仮名の中身を再パースして描画する（参照は別 TagParser で処理し、
     /// 本文かどうかに関わらず外字記号を出す＝in_tail/in_ruby_base をリセット）。
     fn render_note_content(&mut self, text: &str) -> String {
-        const MAX_DEPTH: usize = 4;
-        if self.note_depth >= MAX_DEPTH {
+        if self.note_depth >= MAX_NEST_DEPTH {
             return html_escape(text);
         }
         self.note_depth += 1;
@@ -706,41 +705,37 @@ impl<'a> BlockRenderer<'a> {
         }
     }
 
+    /// 外字画像の alt を作る。alt の中の入れ子外字 `※［＃…］` は、参照実装が
+    /// `<img>` に展開する（属性値の中にタグが入る不正な HTML。Quirk
+    /// `nested_gaiji_in_alt`）。記法の切り分けは [`split_nested_gaiji`] に委ねる。
     fn gaiji_alt(&mut self, description: &str) -> String {
-        const NEST: &str = "※［＃";
         let stripped = strip_kuten_prefix(description);
-        let description = stripped.as_str();
-        if !self.options.quirks.nested_gaiji_in_alt
-            || self.alt_depth >= 4
-            || !description.contains(NEST)
-        {
-            return html_escape(description);
+        if !self.options.quirks.nested_gaiji_in_alt || self.alt_depth >= MAX_NEST_DEPTH {
+            return html_escape(&stripped);
         }
         self.alt_depth += 1;
         let mut out = String::new();
-        let mut rest = description;
-        while let Some(pos) = rest.find(NEST) {
-            out.push_str(&html_escape(&rest[..pos]));
-            let after = &rest[pos + NEST.len()..];
-            match after.find('］') {
-                Some(end) => {
-                    let inner = after[..end].to_string();
-                    out.push_str(&self.render_gaiji(&inner, None, None, true));
-                    rest = &after[end + '］'.len_utf8()..];
-                }
-                None => {
-                    out.push_str(&html_escape(&rest[pos..]));
-                    self.alt_depth -= 1;
-                    return out;
+        for segment in split_nested_gaiji(&stripped) {
+            match segment {
+                NestedGaijiSegment::Text(text) => out.push_str(&html_escape(text)),
+                NestedGaijiSegment::Gaiji(inner) => {
+                    let html = self.render_gaiji(inner, None, None, true);
+                    out.push_str(&html);
                 }
             }
         }
-        out.push_str(&html_escape(rest));
         self.alt_depth -= 1;
         out
     }
 
     /// 画像注記 alt 内の外字を外字一覧・表記フラグに登録する（出力に影響しない）。
+    ///
+    /// alt の**文字列**は生文字（参照 TagParser の @raw）由来なので
+    /// [`Self::gaiji_alt`] が `※［＃` の素の走査で切るのに対し、こちらは alt を
+    /// 読む TagParser が @images を共有する副作用の再現なので、本文と同じ
+    /// [`tokenize`] で拾う（＃無しの `※［...］` も外字として登録される）。
+    /// 2つの経路が違うのは参照実装がこの2つを別物として持っているため
+    /// （docs/workflow.md「画像注記 alt 内の外字を外字一覧に登録」）。
     fn register_alt_gaiji(&mut self, alt: &str) {
         for token in tokenize(alt) {
             let TokenKind::Gaiji {
