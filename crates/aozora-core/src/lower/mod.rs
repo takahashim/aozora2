@@ -5,17 +5,19 @@
 //! 一度だけ計算し、ブロックを部分木に畳み、行末の改行を [`Break`] メタデータへ
 //! 載せる。バックエンドはこの木を状態なしに歩くだけになる。
 //!
-//! **段階実装中**: まず jisage と内容行だけを畳む（垂直スライスの最小核）。
-//! 旧 BlockManager 経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ
-//! 増やす。未対応のブロック種は暫定でトップレベルに落とす（TODO）。
+//! 畳み込みの状態は [`BlockStack`]（開いているブロックのスタック＋トップレベル列）に
+//! 閉じてあり、各行は [`classify_line`] が返す [`LineKind`] ごとにそこへ積む。
+//! [`block_kind_of`] が写せないブロック種はトップレベルに落ちる。
 
 pub mod break_policy;
 pub mod inline;
 
-use break_policy::line_emits_closing_block_tag;
+use break_policy::content_break;
 use inline::to_inlines;
 
-use crate::ast::{AozoraAst, Block, BlockKind, Break, BurasageGeometry, CloseKind, OpenKind};
+use crate::ast::{
+    AozoraAst, Block, BlockKind, Break, BurasageGeometry, CloseKind, Inline, OpenKind,
+};
 use crate::node::{BlockType, Node, NodeKind};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 use crate::parser::RawDoc;
@@ -39,9 +41,7 @@ pub fn lower_to_blocks(raw: &RawDoc) -> AozoraAst {
 /// ブロック）を返す。**Block 出力は `lower_to_blocks` と完全一致**（診断は追加返却のみで
 /// 変換結果には一切影響しない＝オラクル不変）。エディタ支援 `analysis` が使う。
 pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDiagnostic>) {
-    // 開いている Nested ブロックのビルダー（種類・たまった子ブロック列・開いた行番号）。
-    let mut stack: Vec<(BlockKind, Vec<Block>, usize, OpenKind)> = Vec::new();
-    let mut top: AozoraAst = Vec::new();
+    let mut stack = BlockStack::new();
     let mut diags: Vec<LowerDiagnostic> = Vec::new();
 
     for raw_line in &raw.lines {
@@ -69,24 +69,13 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 };
                 // Jisage は1つだけ、Chitsuki/Burasage は続く限り閉じる。
                 let close_once = matches!(kind, BlockKind::Jisage { .. });
-                while stack.last().is_some_and(|(top, _, _, _)| matches_top(top)) {
-                    let (k, children, open_line, open) = stack.pop().expect("top exists");
-                    push_block(
-                        &mut stack,
-                        &mut top,
-                        Block::Nested {
-                            kind: k,
-                            children,
-                            close,
-                            open,
-                            line: open_line,
-                        },
-                    );
+                while stack.innermost().is_some_and(matches_top) {
+                    stack.close_block(|_, _| close);
                     if close_once {
                         break;
                     }
                 }
-                stack.push((kind, Vec::new(), line_no, OpenKind::Newline));
+                stack.open_block(kind, line_no, OpenKind::Newline);
             }
             LineKind::BlockOpenWithTail(idx, kind) => {
                 // 開始タグより前の本文は開くブロックの外に出る。改行は開始タグ以降が
@@ -97,206 +86,124 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 // エラーで停止するため（実測）オラクルには現れず、正しい振る舞いを
                 // 決められない。ここでは単に開いておく。
                 if idx > 0 {
-                    push_block(
-                        &mut stack,
-                        &mut top,
-                        Block::Line {
-                            inline: to_inlines(&nodes[..idx]),
-                            brk: Break::NoNewline,
-                            line: line_no,
-                        },
-                    );
+                    stack.push_line(to_inlines(&nodes[..idx]), Break::NoNewline, line_no);
                 }
-                stack.push((kind, Vec::new(), line_no, OpenKind::NoBreak));
+                stack.open_block(kind, line_no, OpenKind::NoBreak);
                 let inline = to_inlines(&nodes[idx + 1..]);
-                let brk = if line_emits_closing_block_tag(&inline) {
-                    Break::None
-                } else {
-                    Break::Br
-                };
-                push_block(
-                    &mut stack,
-                    &mut top,
-                    Block::Line {
-                        inline,
-                        brk,
-                        line: line_no,
-                    },
-                );
+                let brk = content_break(&inline, false);
+                stack.push_line(inline, brk, line_no);
             }
             LineKind::BlockClose(explicit) => {
-                if let Some((kind, children, open_line, open)) = stack.pop() {
-                    let close = block_close_kind(explicit, &kind, &stack);
-                    let nested = Block::Nested {
-                        kind,
-                        children,
-                        close,
-                        open,
-                        line: open_line,
-                    };
-                    push_block(&mut stack, &mut top, nested);
-                }
-                // 対応する開きが無ければ捨てる（旧経路も未マッチ終了は無出力）。
+                // 対応する開きが無ければ何も出さない（旧経路も未マッチ終了は無出力）。
+                stack.close_block(|kind, s| block_close_kind(explicit, kind, s));
             }
-            LineKind::Closes(closes) => {
-                // 参照は行を逐次出力するので、1行に複数の「終わり」があれば
-                // その順に閉じる（例: `［＃ここで小さな文字終わり］［＃ここで字下げ終わり］`）。
-                // 各閉じの前の本文は、その時点で開いているブロックの内側に出る。
-                // 対応する開きが無ければ閉じタグは出ないので、行をまとめて内容行にする。
-                // 開いている数より「終わり」が多い行（参照実装はエラーで停止する）は
-                // 余りを無視する。余った終わりのマーカーは to_inlines が落とす。
-                let closable = closes.len().min(stack.len());
-                if closable == 0 {
-                    let explicit = closes.iter().any(|(_, e)| *e);
-                    let inline = to_inlines(&nodes);
-                    let brk = if explicit || line_emits_closing_block_tag(&inline) {
-                        Break::None
-                    } else {
-                        Break::Br
-                    };
-                    push_block(
-                        &mut stack,
-                        &mut top,
-                        Block::Line {
-                            inline,
-                            brk,
-                            line: line_no,
-                        },
-                    );
-                } else {
-                    let mut seg_start = 0usize;
-                    let has_tail = closes[closable - 1].0 + 1 < nodes.len();
-                    for (n, (idx, explicit)) in closes.iter().take(closable).enumerate() {
-                        // 閉じタグより前の本文。行末の改行は閉じタグ以降が出す。
-                        let segment = (seg_start < *idx).then(|| Block::Line {
-                            inline: to_inlines(&nodes[seg_start..*idx]),
-                            brk: Break::NoNewline,
-                            line: line_no,
-                        });
-                        // 参照は閉じタグを buffer に積む（＝本文の続き）ので、本文は
-                        // 閉じるブロックの内側に出る。ただしぶら下げだけは閉じで
-                        // indent_stack から降りてしまい per-line の包みが効かなくなるので、
-                        // その行の本文はブロックの外に出す。
-                        let closing_burasage =
-                            matches!(stack.last(), Some((BlockKind::Burasage { .. }, _, _, _)));
-                        if let Some(segment) = segment.clone().filter(|_| !closing_burasage) {
-                            push_block(&mut stack, &mut top, segment);
-                        }
-                        let is_last = n + 1 == closable;
-                        let (kind, children, open_line, open) =
-                            stack.pop().expect("closable <= stack.len()");
-                        // 行末の改行を出すのは最後の閉じだけ。後続本文があるなら
-                        // 改行はその行が出すので `</div>` のみ。
-                        let close = if !is_last || has_tail {
-                            CloseKind::NoBreak
-                        } else {
-                            block_close_kind(*explicit, &kind, &stack)
-                        };
-                        push_block(
-                            &mut stack,
-                            &mut top,
-                            Block::Nested {
-                                kind,
-                                children,
-                                close,
-                                open,
-                                line: open_line,
-                            },
-                        );
-                        if let Some(segment) = segment.filter(|_| closing_burasage) {
-                            push_block(&mut stack, &mut top, segment);
-                        }
-                        seg_start = *idx + 1;
-                    }
-                    // 最後の閉じの後ろに残った本文を同じ行に出す。
-                    let tail_start = closes[closable - 1].0 + 1;
-                    if tail_start < nodes.len() {
-                        let explicit = closes.iter().take(closable).any(|(_, e)| *e);
-                        let inline = to_inlines(&nodes[tail_start..]);
-                        let brk = if explicit || line_emits_closing_block_tag(&inline) {
-                            Break::None
-                        } else {
-                            Break::Br
-                        };
-                        push_block(
-                            &mut stack,
-                            &mut top,
-                            Block::Line {
-                                inline,
-                                brk,
-                                line: line_no,
-                            },
-                        );
-                    }
-                }
-            }
+            LineKind::Closes(closes) => apply_closes(&mut stack, &nodes, &closes, line_no),
             LineKind::LineWrap(kind) => {
                 // ［＃N字下げ］text／行スコープ地付き: 行全体を div で1行に包む。
                 // 先頭の行スコープマーカー1個（LineJisage、または is_block=false の
                 // 行スコープ BlockStart）だけを取り除き、残りは to_inlines に渡す
                 // （行内の見出しコマンド範囲などはそちらが畳む）。
                 let rest = strip_leading_line_scope_marker(nodes);
-                let inline = to_inlines(&rest);
-                push_block(
-                    &mut stack,
-                    &mut top,
-                    Block::LineWrap {
-                        kind,
-                        inline,
-                        line: line_no,
-                    },
-                );
-            }
-            LineKind::Content => {
-                // ［＃ここで…終わり］（explicit_close=true）を含む行は @terprip=false で
-                // 行末 <br /> を抑制する（同行開閉の横組み等・複数行ブロックの閉じ行）。
-                let has_explicit_close = nodes.iter().any(|n| {
-                    matches!(
-                        &n.kind,
-                        NodeKind::BlockEnd {
-                            explicit_close: true,
-                            ..
-                        }
-                    )
-                });
-                let inline = to_inlines(&nodes);
-                // 行末 <br /> の要否を Lower 時に確定（@terprip：ここで…終わり行、
-                // および見出し・ブロックのみ行では抑制）。
-                let brk = if has_explicit_close || line_emits_closing_block_tag(&inline) {
-                    Break::None
-                } else {
-                    Break::Br
-                };
-                let line = Block::Line {
-                    inline,
-                    brk,
+                stack.push(Block::LineWrap {
+                    kind,
+                    inline: to_inlines(&rest),
                     line: line_no,
-                };
-                push_block(&mut stack, &mut top, line);
+                });
             }
+            LineKind::Content => push_content_line(&mut stack, &nodes, line_no),
         }
     }
 
     // 閉じられていないブロックはそのまま閉じる（旧経路の末尾 pop 相当）。
     // 末尾クローズは行を持たないので `</div>\r\n`（Newline）とする。
-    while let Some((kind, children, open_line, open)) = stack.pop() {
+    while let Some(block) = stack.pop_open() {
         // EOF まで対応する「終わり」が現れなかった＝閉じ忘れの可能性。診断に記録する
         // （出力は従来どおり末尾クローズ。診断は追加返却のみで Block 出力は不変）。
         diags.push(LowerDiagnostic {
-            line: open_line,
-            kind: kind.clone(),
+            line: block.line,
+            kind: block.kind.clone(),
         });
-        let nested = Block::Nested {
-            kind,
-            children,
-            line: open_line,
-            close: CloseKind::Newline,
-            open,
-        };
-        push_block(&mut stack, &mut top, nested);
+        stack.push(block.into_nested(CloseKind::Newline));
     }
 
-    (top, diags)
+    (stack.top, diags)
+}
+
+/// 「終わり」を含む行（単独行でないもの）を畳む。
+///
+/// 参照は行を逐次出力するので、1行に複数の「終わり」があればその順に閉じる
+/// （例: `［＃ここで小さな文字終わり］［＃ここで字下げ終わり］`）。各閉じの前の本文は、
+/// その時点で開いているブロックの内側に出る。行末の改行を出すのは最後の閉じだけで、
+/// 後続本文があるならその行が出す。
+///
+/// 開いている数より「終わり」が多い行（参照実装はエラーで停止する）は余りを無視する。
+/// 余った終わりのマーカーは `to_inlines` が落とす。
+fn apply_closes(stack: &mut BlockStack, nodes: &[Node], closes: &[(usize, bool)], line_no: usize) {
+    // 閉じられる開きが1つも無ければ閉じタグは出ないので、行をまとめて内容行にする。
+    let closable = closes.len().min(stack.depth());
+    if closable == 0 {
+        push_content_line(stack, nodes, line_no);
+        return;
+    }
+    let last_close = closes[closable - 1].0;
+    let has_tail = last_close + 1 < nodes.len();
+    let mut seg_start = 0usize;
+
+    for (n, (idx, explicit)) in closes.iter().take(closable).enumerate() {
+        // 閉じタグより前の本文。行末の改行は閉じタグ以降が出す。
+        let segment = (seg_start < *idx).then(|| to_inlines(&nodes[seg_start..*idx]));
+        // 参照は閉じタグを buffer に積む（＝本文の続き）ので、本文は閉じるブロックの
+        // 内側に出る。ただしぶら下げだけは閉じで indent_stack から降りてしまい
+        // per-line の包みが効かなくなるので、その行の本文はブロックの外に出す。
+        let closing_burasage = matches!(stack.innermost(), Some(BlockKind::Burasage(_)));
+        let is_last = n + 1 == closable;
+        // 行末の改行を出すのは最後の閉じだけ。後続本文があるなら `</div>` のみ。
+        let close_kind = |kind: &BlockKind, s: &BlockStack| {
+            if !is_last || has_tail {
+                CloseKind::NoBreak
+            } else {
+                block_close_kind(*explicit, kind, s)
+            }
+        };
+
+        if closing_burasage {
+            stack.close_block(close_kind);
+            if let Some(inline) = segment {
+                stack.push_line(inline, Break::NoNewline, line_no);
+            }
+        } else {
+            if let Some(inline) = segment {
+                stack.push_line(inline, Break::NoNewline, line_no);
+            }
+            stack.close_block(close_kind);
+        }
+        seg_start = *idx + 1;
+    }
+
+    // 最後の閉じの後ろに残った本文を同じ行に出す。
+    if has_tail {
+        let explicit = closes.iter().take(closable).any(|(_, e)| *e);
+        let inline = to_inlines(&nodes[last_close + 1..]);
+        let brk = content_break(&inline, explicit);
+        stack.push_line(inline, brk, line_no);
+    }
+}
+
+/// 内容行として1行を積む。`［＃ここで…終わり］`（explicit_close=true）を含む行は
+/// @terprip=false で行末 `<br />` を抑制する（同行開閉の横組み等・複数行ブロックの閉じ行）。
+fn push_content_line(stack: &mut BlockStack, nodes: &[Node], line_no: usize) {
+    let has_explicit_close = nodes.iter().any(|n| {
+        matches!(
+            &n.kind,
+            NodeKind::BlockEnd {
+                explicit_close: true,
+                ..
+            }
+        )
+    });
+    let inline = to_inlines(nodes);
+    let brk = content_break(&inline, has_explicit_close);
+    stack.push_line(inline, brk, line_no);
 }
 
 /// 行スコープ包みの先頭マーカー1個を取り除いた残りのノード列を返す。
@@ -356,7 +263,6 @@ fn never_matches(_: &BlockKind) -> bool {
     false
 }
 
-/// 現在開いている最上位ブロック（あれば）へ、無ければトップレベルへ block を積む。
 /// 行末で閉じるブロックの閉じタグの出力形。
 ///
 /// `ここで…終わり`（explicit）は `</div>\r\n`。bare `…終わり` は @terprip 維持で
@@ -365,13 +271,9 @@ fn never_matches(_: &BlockKind) -> bool {
 /// ぶら下げの直下で装飾系ブロックが閉じる行は、参照が閉じタグを String 扱いして
 /// per-line の burasage div で包む。包む幅は外側のぶら下げが持つので、ここで畳んで
 /// 木に載せる（描画器は状態を持たない）。
-fn block_close_kind(
-    explicit: bool,
-    kind: &BlockKind,
-    stack: &[(BlockKind, Vec<Block>, usize, OpenKind)],
-) -> CloseKind {
+fn block_close_kind(explicit: bool, kind: &BlockKind, stack: &BlockStack) -> CloseKind {
     if is_burasage_wrapped_close(kind) {
-        if let Some((BlockKind::Burasage(geometry), _, _, _)) = stack.last() {
+        if let Some(BlockKind::Burasage(geometry)) = stack.innermost() {
             return CloseKind::BurasageWrapped(*geometry);
         }
     }
@@ -382,15 +284,90 @@ fn block_close_kind(
     }
 }
 
-fn push_block(
-    stack: &mut [(BlockKind, Vec<Block>, usize, OpenKind)],
-    top: &mut Vec<Block>,
-    block: Block,
-) {
-    if let Some((_, children, _, _)) = stack.last_mut() {
-        children.push(block);
-    } else {
-        top.push(block);
+/// 開いている途中の [`Block::Nested`]（子ブロックを溜めているビルダー）。
+struct OpenBlock {
+    kind: BlockKind,
+    children: Vec<Block>,
+    /// このブロックを開いた本文行（0 起点）。
+    line: usize,
+    open: OpenKind,
+}
+
+impl OpenBlock {
+    /// 閉じ方を決めて [`Block::Nested`] にする。
+    fn into_nested(self, close: CloseKind) -> Block {
+        Block::Nested {
+            kind: self.kind,
+            children: self.children,
+            close,
+            open: self.open,
+            line: self.line,
+        }
+    }
+}
+
+/// 畳み込み中のブロック木。開いているブロックのスタックと、まだどのブロックにも
+/// 属さないトップレベル列を持つ。ブロックを積む・開く・閉じるはすべてここを通す。
+struct BlockStack {
+    open: Vec<OpenBlock>,
+    top: AozoraAst,
+}
+
+impl BlockStack {
+    fn new() -> Self {
+        Self {
+            open: Vec::new(),
+            top: Vec::new(),
+        }
+    }
+
+    /// 開いているブロックの数。
+    fn depth(&self) -> usize {
+        self.open.len()
+    }
+
+    /// 今いちばん内側で開いているブロックの種類。
+    fn innermost(&self) -> Option<&BlockKind> {
+        self.open.last().map(|b| &b.kind)
+    }
+
+    /// いちばん内側の開いているブロックへ、無ければトップレベルへ積む。
+    fn push(&mut self, block: Block) {
+        match self.open.last_mut() {
+            Some(b) => b.children.push(block),
+            None => self.top.push(block),
+        }
+    }
+
+    /// 内容の1行を積む。
+    fn push_line(&mut self, inline: Vec<Inline>, brk: Break, line: usize) {
+        self.push(Block::Line { inline, brk, line });
+    }
+
+    /// ブロックを開く。
+    fn open_block(&mut self, kind: BlockKind, line: usize, open: OpenKind) {
+        self.open.push(OpenBlock {
+            kind,
+            children: Vec::new(),
+            line,
+            open,
+        });
+    }
+
+    /// いちばん内側のブロックを閉じて木に載せる。閉じ方は**ポップ後の**スタックから
+    /// 決める（ぶら下げ直下かの判定に外側が要る）。開いていなければ何もせず false。
+    fn close_block(&mut self, close: impl FnOnce(&BlockKind, &Self) -> CloseKind) -> bool {
+        let Some(block) = self.open.pop() else {
+            return false;
+        };
+        let close = close(&block.kind, self);
+        self.push(block.into_nested(close));
+        true
+    }
+
+    /// 閉じられないまま残ったブロックを内側から順に取り出す（EOF 処理用）。
+    fn pop_open(&mut self) -> Option<OpenBlock> {
+        self.open.pop()
     }
 }
 
@@ -449,9 +426,17 @@ fn find_unmatched_block_ends(nodes: &[Node]) -> Vec<(usize, bool)> {
 
 /// 解決済みノード列から行の種類を判定する。
 ///
-/// **最小核**: 単独の BlockStart(is_block=true) を開始、単独の BlockEnd を終了、
-/// それ以外を内容行とみなす。コマンドと同行に本文があるケース・行単位字下げ
-/// （LineJisage）・ぶら下げ per-line 等は今後の段で足す（TODO）。
+/// **判定順そのものが仕様**なので、上から順に:
+///
+/// 1. 単独の `BlockStart`(is_block=true) → ブロック開始
+/// 2. 単独の `BlockEnd` → ブロック終了
+/// 3. 同じ行に対応する開始が無い `BlockEnd` → 行途中クローズ（[`LineKind::Closes`]）。
+///    開始より先に見るのは、閉じてから開く行で閉じを落とさないため
+/// 4. 行内に `BlockEnd` が無い `BlockStart`(is_block=true) → 行途中オープン。
+///    同じ行で開閉が揃う範囲形は `to_inlines` が `BlockInline` に畳むので除く
+/// 5. `LineJisage` 単独 → ブロック開始 / 行内にあれば行包み
+/// 6. 行頭の行スコープ地付き → 行包み
+/// 7. それ以外 → 内容行
 fn classify_line(nodes: &[Node]) -> LineKind {
     if let [Node {
         kind: NodeKind::BlockStart { block_type, params },

@@ -8,7 +8,7 @@
 //! 判断の中身は参照実装の HTML 出力形に由来するので、backend-neutral な型を置く
 //! [`crate::ast`] ではなく Lowerer 側に置く。
 
-use crate::ast::{BlockKind, Inline, InlineKind};
+use crate::ast::{BlockKind, Break, Inline, InlineKind};
 use crate::node::MidashiStyle;
 
 /// この行のインライン列を描画すると、行末がブロックの閉じタグ（`</div>`/`</hN>`）に
@@ -51,5 +51,17 @@ fn block_kind_emits_closing_tag(kind: &BlockKind) -> bool {
         | BlockKind::Shatai => true,
         // Burasage は BlockInline には現れない。
         BlockKind::Burasage(_) => false,
+    }
+}
+
+/// 内容行の行末改行。
+///
+/// `［＃ここで…終わり］` を含む行（`has_explicit_close`）と、行末がブロックの閉じタグに
+/// なる行では参照が `@terprip` を倒すので `<br />` を出さない。
+pub fn content_break(inline: &[Inline], has_explicit_close: bool) -> Break {
+    if has_explicit_close || line_emits_closing_block_tag(inline) {
+        Break::None
+    } else {
+        Break::Br
     }
 }
