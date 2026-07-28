@@ -227,25 +227,21 @@ fn detect_person_type(s: &str) -> PersonType {
 /// - JIS第1水準記号（全角スペース、句読点等）
 /// - JIS第6〜7水準（ギリシア文字、キリル文字等）
 fn is_original_title(s: &str) -> bool {
-    // 参照実装 header_element_type と同じく Shift_JIS のバイト範囲で判定する。
-    // ASCII（00-7f）、JIS 1-1〜3-25（8140-8258、記号・ラテン・仮名など）、
-    // JIS 6-1〜7-81（839f-8491、ギリシア文字・キリル文字）だけなら原題とみなす。
-    s.chars().all(|c| {
-        let mut buf = [0u8; 8];
-        let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
-        if had_err {
-            return false;
-        }
-        match encoded.as_ref() {
-            [b] => *b <= 0x7f,
-            [hi, lo] => {
-                let code = ((*hi as u16) << 8) | *lo as u16;
-                (0x8140..=0x8258).contains(&code) || (0x839f..=0x8491).contains(&code)
-            }
-            _ => false,
-        }
-    })
+    s.chars().all(is_original_title_char)
 }
+
+/// 原題に使える文字か。
+///
+/// 受け付けるのは ASCII と、JIS X 0208 面1 の 区点 **1-01〜3-25**（記号・全角数字）
+/// および **6-01〜7-81**（ギリシャ・キリル）。参照実装 `header_element_type` は
+/// Shift_JIS のバイト値で判定するが、その範囲を区点で表し直したもの（境界は一致する）。
+/// 表は `build.rs` の `HEADER_KUTEN_RANGES` から生成する。
+fn is_original_title_char(c: char) -> bool {
+    HEADER_CHARS.binary_search(&(c as u32)).is_ok()
+}
+
+// build.rs が生成した HEADER_CHARS（昇順の符号位置列）を取り込む。
+include!(concat!(env!("OUT_DIR"), "/x0208_header_chars.rs"));
 
 /// 注記セクションの区切りに使われる罫線（`-` だけからなる行）かどうか
 fn is_rule_line(line: &str) -> bool {
@@ -372,6 +368,39 @@ pub fn extract_bibliographical_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn original_title_chars_match_sjis_definition() {
+        // 旧定義: Shift_JIS へ符号化し、1 バイトなら <= 0x7f、2 バイトなら
+        // 8140-8258 / 839f-8491 に入るか。区点レンジから生成した表がこれと
+        // 1 文字も違わないことを BMP 全域で確認する。
+        fn sjis_range_reference(c: char) -> bool {
+            let mut buf = [0u8; 8];
+            let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
+            if had_err {
+                return false;
+            }
+            match encoded.as_ref() {
+                [b] => *b <= 0x7f,
+                [hi, lo] => {
+                    let code = ((*hi as u16) << 8) | *lo as u16;
+                    (0x8140..=0x8258).contains(&code) || (0x839f..=0x8491).contains(&code)
+                }
+                _ => false,
+            }
+        }
+
+        for cp in 0..=0xFFFFu32 {
+            let Some(c) = char::from_u32(cp) else {
+                continue;
+            };
+            assert_eq!(
+                super::is_original_title_char(c),
+                sjis_range_reference(c),
+                "U+{cp:04X} ({c:?}) の判定が旧定義と食い違う"
+            );
+        }
+    }
+
     use super::*;
 
     /// 注記セクションがなく本文が直接始まる場合、参照実装 aozora2html は

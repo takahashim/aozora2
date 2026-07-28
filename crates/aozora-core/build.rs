@@ -55,6 +55,105 @@ fn main() {
 
     // JIS X 0208 の漢字ビットマップ（同じ jis2ucs.json から導出する 2 つ目の生成物）。
     generate_x0208_kanji_bitmap(&out_dir);
+
+    // 原題判定に使う区点範囲の文字集合。
+    generate_x0208_header_chars(&out_dir);
+}
+
+// ---------------------------------------------------------------------------
+// 原題判定用の区点範囲テーブル
+// ---------------------------------------------------------------------------
+
+/// 原題（欧文標題）の判定に使う JIS X 0208 面1 の区点範囲。
+///
+/// - `1-01〜3-25` … 記号・全角数字（全角英字 3-33 以降は入らない）
+/// - `6-01〜7-81` … ギリシャ文字・キリル文字
+///
+/// 参照実装 `header_element_type` が Shift_JIS バイト値 `8140-8258` / `839f-8491` で
+/// 判定しているものを、区点で表し直したもの（境界は 4 点とも一致する）。
+const HEADER_KUTEN_RANGES: [((u32, u32), (u32, u32)); 2] = [((1, 1), (3, 25)), ((6, 1), (7, 81))];
+
+/// 原題判定が受け付ける文字の集合を `OUT_DIR/x0208_header_chars.rs` へ生成する。
+///
+/// 判定は「その文字を Shift_JIS へ符号化した結果が、ASCII 1 バイトか、上記区点範囲の
+/// 2 バイトに入るか」。**符号化の向きで集める必要がある**——符号化器は複数の Unicode を
+/// 同じ区点へ落とすことがあり（例:`−`(U+2212) と `－`(U+FF0D) はどちらも 1-61）、
+/// 区点から復号して集めると別名側が漏れるため。
+///
+/// なお JIS X 0213 の対応表（`jis2ucs.json`）から作るのも不可。CP932 と JIS で
+/// マッピングが割れる字（`― ＼ ～ ￠ ￡ ￢ ￣ ￥` ＝いわゆる波ダッシュ問題）が
+/// 判定から漏れ、標題領域にそれらを含む作品が 1,010 件ある。
+fn generate_x0208_header_chars(out_dir: &str) {
+    let byte_ranges: Vec<(u16, u16)> = HEADER_KUTEN_RANGES
+        .iter()
+        .map(|&((ku0, ten0), (ku1, ten1))| (sjis_code(ku0, ten0), sjis_code(ku1, ten1)))
+        .collect();
+
+    let mut codepoints = Vec::new();
+    for cp in 0..=0x10FFFFu32 {
+        let Some(c) = char::from_u32(cp) else {
+            continue;
+        };
+        let mut buf = [0u8; 8];
+        let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
+        if had_err {
+            continue;
+        }
+        let accepted = match encoded.as_ref() {
+            [b] => *b <= 0x7f,
+            [hi, lo] => {
+                let code = ((*hi as u16) << 8) | *lo as u16;
+                byte_ranges
+                    .iter()
+                    .any(|&(lo, hi)| (lo..=hi).contains(&code))
+            }
+            _ => false,
+        };
+        if accepted {
+            codepoints.push(cp);
+        }
+    }
+
+    let mut code = String::new();
+    code.push_str("// build.rs が生成しています。手で編集しないでください。\n");
+    code.push_str("//\n");
+    code.push_str("// 原題判定が受け付ける文字（ASCII と、JIS X 0208 面1 の 区点 1-01〜3-25\n");
+    code.push_str(
+        "// ＝記号・全角数字、6-01〜7-81 ＝ギリシャ・キリル）。昇順＝二分探索で引ける。\n",
+    );
+    code.push_str(&format!(
+        "static HEADER_CHARS: [u32; {}] = [\n",
+        codepoints.len()
+    ));
+    for chunk in codepoints.chunks(8) {
+        code.push_str("    ");
+        for cp in chunk {
+            code.push_str(&format!("{cp:#06x}, "));
+        }
+        code.push('\n');
+    }
+    code.push_str("];\n");
+    write_generated(out_dir, "x0208_header_chars.rs", &code);
+}
+
+/// 面1 の区点を Shift_JIS の 2 バイト値（上位<<8|下位）へ変換する。
+fn sjis_code(ku: u32, ten: u32) -> u16 {
+    let (c1, c2) = (ku - 1, ten - 1);
+    let hi = if ku <= 62 {
+        0x81 + c1 / 2
+    } else {
+        0xC1 + c1 / 2
+    };
+    let lo = if c1 % 2 == 0 {
+        if c2 < 63 {
+            0x40 + c2
+        } else {
+            0x41 + c2
+        }
+    } else {
+        0x9F + c2
+    };
+    ((hi as u16) << 8) | lo as u16
 }
 
 // ---------------------------------------------------------------------------
