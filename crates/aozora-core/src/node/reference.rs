@@ -174,11 +174,6 @@ fn inherit_span(mut node: Node, span: Span) -> Node {
                 *child = inherit_span(child.clone(), span);
             }
         }
-        NodeKind::Warichu { upper, lower } => {
-            for child in upper.iter_mut().chain(lower) {
-                *child = inherit_span(child.clone(), span);
-            }
-        }
         NodeKind::AnnotationEnd { content, .. } => {
             for child in content {
                 *child = inherit_span(child.clone(), span);

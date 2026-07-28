@@ -116,14 +116,6 @@ pub enum NodeKind {
         children: Vec<Node>,
     },
 
-    /// 割書き
-    Warichu {
-        /// 上段のノード列
-        upper: Vec<Node>,
-        /// 下段のノード列
-        lower: Vec<Node>,
-    },
-
     /// フォントサイズ（大きな文字、小さな文字）
     FontSize {
         /// 内容のノード列
@@ -232,7 +224,6 @@ impl NodeKind {
     pub fn inline_child_lists_mut(&mut self) -> Vec<&mut Vec<Node>> {
         match self {
             NodeKind::Ruby { children, ruby, .. } => vec![children, ruby],
-            NodeKind::Warichu { upper, lower } => vec![upper, lower],
             NodeKind::Style { children, .. }
             | NodeKind::FontSize { children, .. }
             | NodeKind::Tcy { children }
@@ -369,11 +360,6 @@ impl Node {
             NodeKind::Keigakomi { children } => children.iter().map(|n| n.to_text()).collect(),
             NodeKind::Yokogumi { children } => children.iter().map(|n| n.to_text()).collect(),
             NodeKind::Caption { children } => children.iter().map(|n| n.to_text()).collect(),
-            NodeKind::Warichu { upper, lower } => {
-                let u: String = upper.iter().map(|n| n.to_text()).collect();
-                let l: String = lower.iter().map(|n| n.to_text()).collect();
-                format!("{u}（{l}）")
-            }
             NodeKind::FontSize { children, .. } => children.iter().map(|n| n.to_text()).collect(),
             NodeKind::Kaeriten(s) => s.clone(),
             NodeKind::Okurigana(s) => s.clone(),

@@ -167,7 +167,7 @@
   - 失敗 → `Note(raw)` に置き換える。
 - 全ノードを処理後、各コンテナの子ノード列へ**再帰**する（`resolve_style_references_in_children`）。
   - 対象: `Ruby`（children と ruby の両方）, `Style`, `FontSize`, `Tcy`, `Keigakomi`,
-    `Yokogumi`, `Caption`, `Midashi`, `Warichu`（upper と lower）。
+    `Yokogumi`, `Caption`, `Midashi`。
   - 再帰は多段（子の子まで）。
 
 ---

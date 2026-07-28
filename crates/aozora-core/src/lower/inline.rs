@@ -145,8 +145,6 @@ fn inline_from_node_at(node: &Node, depth: usize) -> Option<Inline> {
             open: false,
             suppress_paren: params.has_close_paren,
         },
-        // NodeKind::Warichu{upper,lower} は構築箇所ゼロのデッドコード。念のため無視。
-        NodeKind::Warichu { .. } => return None,
         // ブロック構造マーカー・未解決参照はインラインではない（畳み込みが消費）。
         NodeKind::BlockStart { .. }
         | NodeKind::BlockEnd { .. }

@@ -23,8 +23,10 @@ use crate::token::Span;
 
 /// 文書全体の Aozora AST ＝トップレベル [`Block`] の列。
 ///
-/// `lower_to_blocks` の返り値の別名。「文書 1 本＝ブロックの木の列」を表す型名として
-/// 用いる（backend-neutral な正規モデル。旧称「中立AST」）。
+/// 「文書 1 本＝ブロックの木の列」を表す型名（backend-neutral な正規モデル。
+/// 旧称「中立AST」）。**文書 1 本まるごと**を指す値にだけ使う
+/// （[`crate::lower::lower_to_blocks`] の返り値と、それを組み立てる器）。
+/// ブロックの断片＝入れ子の子ブロック列や作業用スタックは素の `Vec<Block>` のまま。
 pub type AozoraAst = Vec<Block>;
 
 /// ブロック（部分木の節、または内容の1行）。

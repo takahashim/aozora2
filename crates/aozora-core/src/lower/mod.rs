@@ -41,7 +41,7 @@ pub fn lower_to_blocks(raw: &RawDoc) -> AozoraAst {
 pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDiagnostic>) {
     // 開いている Nested ブロックのビルダー（種類・たまった子ブロック列・開いた行番号）。
     let mut stack: Vec<(BlockKind, Vec<Block>, usize, OpenKind)> = Vec::new();
-    let mut top: Vec<Block> = Vec::new();
+    let mut top: AozoraAst = Vec::new();
     let mut diags: Vec<LowerDiagnostic> = Vec::new();
 
     for raw_line in &raw.lines {

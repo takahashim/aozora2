@@ -130,7 +130,6 @@ RawLine を構成する平坦ノード。**入れ子はマーカーで表し**�
 | `Img { filename, alt, is_photo, width, height }` | 葉 | 画像（挿絵/写真） |
 | `Tcy { children }` | 葉 | 縦中横 |
 | `Keigakomi / Yokogumi / Caption { children }` | 葉 | 罫囲み/横組み/キャプション（インライン） |
-| `Warichu { upper, lower }` | 葉 | 割書き（上段・下段） |
 | `FontSize { children, size_type, level }` | 葉 | 大きな/小さな文字 |
 | `Kaeriten(String)` / `Okurigana(String)` | 葉 | 返り点／訓点送り仮名 |
 | `Note(String)` | 葉 | 編集者注（Aozora AST では中身を解決して `Note { content, raw }` にする） |
