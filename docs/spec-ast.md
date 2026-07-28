@@ -26,7 +26,8 @@ Vec<Token>                     … 字句（各トークン自身が行内 char 
   │  parse_raw_nodes
   ▼
 RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Node>, line_no }> }
-  │  resolve（前方参照の解決）＋ lower_to_blocks（行→入れ子ブロックへの畳み込み）
+  │  resolve_references → resolve_inline_ruby（前方参照とルビ親文字の解決。2 パス）
+  │  ＋ lower_to_blocks（行→入れ子ブロックへの畳み込み）
   ▼
 Aozora AST : Vec<Block>        … 解決済み・入れ子・型付き
   │  BlockRenderer / plain renderer
@@ -88,6 +89,7 @@ struct RawLine {
 | `Command { content }` | 注記 `［＃…］` |
 | `Gaiji { description, had_igeta }` | 外字 `※［＃…］`（`＃` は任意） |
 | `Accent { children }` | アクセント分解 `〔…〕` |
+| `RubyPrefix` | `｜` の一時マーカー。畳み込みパスで `PrefixedRuby` になるか `Text("｜")` に戻るので、**`tokenize()` の出力には現れない**（[spec-tokenizer.md](spec-tokenizer.md)） |
 
 ### 生ノード（`Node`）
 
@@ -120,9 +122,9 @@ RawLine を構成する平坦ノード。**入れ子はマーカーで表し**�
 - `RubyDirection` = `Right` | `Left`
 - `BlockType`（マーカーの種別）= `Jisage, Chitsuki, Jizume, Keigakomi, Midashi, Yokogumi,
   Futoji, Shatai, FontDai, FontSho, Tcy, Caption, Warigaki, Warichu, Burasage, Style,
-  AnnotationRange, LeftAnnotationRange, …`
+  AnnotationRange, LeftAnnotationRange`（全 18 種）
 - `BlockParams { width, wrap_width, level, midashi_style, font_size, style_type, is_block,
-  has_open_paren, has_close_paren, annotation, … }`（開始/終了タグ生成に必要な素材）
+  has_open_paren, has_close_paren, annotation }`（開始/終了タグ生成に必要な素材。全 10 項目）
 
 ### 前方参照の指定（`RefSpec`）
 
@@ -138,7 +140,8 @@ RawLine を構成する平坦ノード。**入れ子はマーカーで表し**�
 | `SideNote { annotation }` | 傍記（各文字の脇に注記） |
 | `EmbeddedGaiji { jis_code, annotation_ruby }` | 句点コード外字。置換形（`annotation_ruby:None`）／注記形（`Some`） |
 
-`RefSpec::resolve(children)` が対象の子ノードに指定を適用し最終ノードを生む。解決器が
+`RefSpec::resolve(&self, children: Vec<Node>, span: Span)` が対象の子ノードに指定を適用し
+最終ノードを生む（`span` は消費した範囲を覆う）。解決器が
 対象を前方に見つけられなければ `raw`（元の注記文字列）をそのまま `Note` にする（エディタ
 解析 `analysis` はこの未解決を warning 診断にする）。
 
@@ -262,13 +265,16 @@ enum CloseKind { NoBreak, Newline, BareBreak } // 入れ子ブロック閉じの
 `implicit_close` / `@terprip` の逐次モデルを畳み込みで再現する。
 
 - 各行の先頭マーカー（`BlockStart`/`LineJisage`）で入れ子ブロックを開き、`BlockEnd` や
-  競合ブロックの出現で閉じる（`close_conflicting_blocks` 相当）。
+  競合ブロックの出現で閉じる（参照実装 aozora2html の `close_conflicting_blocks` 相当）。
 - 同じ行に本文があるブロックは `LineWrap`、複数行を包むものは `Nested`。
 - 閉じ切られなかったブロックは文末で閉じる（`CloseKind::Newline`）。
 - 行末 `<br />`（`Break`）と閉じの出力形（`CloseKind`）を**この時点で確定**し、以降の描画は
   状態を持たない。
 - `UnresolvedReference` は解決器が対象を前方に探して最終ノードにする（見つからなければ
-  `Note`）。
+  `Note`）。解決は **`resolve_references`（親文字→注記範囲→前方参照）→ `resolve_inline_ruby`
+  （ルビ親文字の 2 パス目）の順に 2 回**走らせる必要がある。前方参照の照合はルビの親文字を
+  見るので親文字解決が先に要り、逆に親文字が装飾タグになる場合は前方参照の解決が先に要る、
+  という相互依存のため。詳細は [spec-reference-resolver.md](spec-reference-resolver.md)。
 
 ## 2 つの AST の使い分け
 
