@@ -366,3 +366,12 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   （convert/RenderOptions）を確認、コード移動のみで出力不変。diverged parser の生マージ
   （両者が大改稿し Frankenstein 化）は避け、私のコードを main レイアウトへ載せる形で end-state
   を達成。main 固有の compatibility テスト/parser 分割は未取り込み（必要なら選択的に可能）。
+
+- 2026-07-28 **span を intrinsic フィールドへ（`Spanned<T>` は撤去）。** 上の 2026-07-26 追記で
+  導入した外付けの器 `Spanned<T>{node,span}` は、入れ子（ルビ内容・アクセント内容）まで位置を
+  通す目的には迂遠だったため、`Token`/`Node`/`Inline` をそれぞれ `kind`＋`span` の構造体にする
+  形へ置き換えた（`PartialEq` は `kind` のみ比較）。入れ子は再トークナイズ時に base offset を
+  渡すので子も行内絶対 span を持つ。これにより、上の 2026-07-25 の記録で「大規模」として
+  見送っていた **Aozora AST `Inline` への per-inline span が実現**している。出力 byte 不変・
+  オラクル 17361。span が「実在」でない箇所（合成ノードの継承・ルビ親文字吸収の合併）は
+  spec-ast.md「共通: 位置情報」に記載。
