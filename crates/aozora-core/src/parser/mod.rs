@@ -89,6 +89,17 @@ pub fn parse(tokens: &[Token]) -> Vec<Node> {
     nodes
 }
 
+/// 割注コマンドが括弧の内側に置かれているか。行内の前後トークンを見ないと決まらない
+/// ので、トークン列を持つ呼び出し元だけが埋められる。既定（子トークンの再帰など、
+/// 行の文脈が無い場合）はどちらも false。
+#[derive(Debug, Clone, Copy, Default)]
+struct ParenContext {
+    /// 直前が `（` で終わるテキストか
+    open_before: bool,
+    /// 直後が `）` で始まるテキストか
+    close_after: bool,
+}
+
 /// 直前のノードがテキストで `（` で終わるかチェック
 fn has_open_paren_before(nodes: &[Node]) -> bool {
     nodes.last().map_or(false, |node| {
@@ -121,12 +132,11 @@ fn parse_token_with_context(
     let kinds = match &token.kind {
         TokenKind::Accent { children } => return apply_accent_to_nodes(parse_tokens(children)),
         TokenKind::Command { content } => {
-            vec![parse_command_to_node_with_context(
-                content,
-                nodes,
-                tokens,
-                current_index,
-            )]
+            let paren = ParenContext {
+                open_before: has_open_paren_before(nodes),
+                close_after: has_close_paren_after(tokens, current_index),
+            };
+            vec![command_to_node_kind(parse_command(content), content, paren)]
         }
         _ => parse_token_kinds(token),
     };
@@ -176,7 +186,11 @@ fn parse_token_kinds(token: &Token) -> Vec<NodeKind> {
             }]
         }
 
-        TokenKind::Command { content } => vec![parse_command_to_node(content)],
+        TokenKind::Command { content } => vec![command_to_node_kind(
+            parse_command(content),
+            content,
+            ParenContext::default(),
+        )],
 
         TokenKind::Gaiji {
             description,
@@ -285,11 +299,12 @@ fn parse_tokens(tokens: &[Token]) -> Vec<Node> {
         .collect()
 }
 
-/// コマンドをノードに変換
-fn parse_command_to_node(content: &str) -> NodeKind {
-    use command_parser::CommandResult;
-
-    match parse_command(content) {
+/// 解析済みコマンド [`CommandResult`] を [`NodeKind`] へ写像する。
+///
+/// ここは**機械的な写像だけ**を行う層で、命令文字列の解釈は `command_parser` 系が
+/// 済ませている。`raw` は解決に失敗した参照を原文のまま注記に戻すために持ち回る。
+fn command_to_node_kind(result: CommandResult, raw: &str, paren: ParenContext) -> NodeKind {
+    match result {
         CommandResult::Style {
             target,
             connector: _,
@@ -297,31 +312,22 @@ fn parse_command_to_node(content: &str) -> NodeKind {
         } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Style(style_type),
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
+        // 注記形の ＜注記＞ は外字＋後続テキストを含みうるのでノード列にする。
         CommandResult::KutenGaiji {
             target,
-            connector: _,
-            spec,
-        } => {
-            // 注記形 `「対象」に「<注記>」の注記` は、<注記>（外字＋後続テキスト）を
-            // パースしてルビにする。置換形 `「5」はローマ数字、1-13-25` は None。
-            let annotation_ruby = spec
-                .strip_suffix("の注記")
-                .and_then(|s| s.strip_prefix('「'))
-                .and_then(|s| s.strip_suffix('」'))
-                .map(|inner| parse(&tokenize(inner)));
-            NodeKind::UnresolvedReference {
-                target,
-                // KutenGaiji は句点コードが取れたときだけ作られるので必ず Some
-                spec: RefSpec::EmbeddedGaiji {
-                    jis_code: utils::parse_kuten_gaiji(&spec).unwrap_or_default(),
-                    annotation_ruby,
-                },
-                raw: content.to_string(),
-            }
-        }
+            jis_code,
+            annotation,
+        } => NodeKind::UnresolvedReference {
+            target,
+            spec: RefSpec::EmbeddedGaiji {
+                jis_code,
+                annotation_ruby: annotation.map(|inner| parse(&tokenize(&inner))),
+            },
+            raw: raw.to_string(),
+        },
 
         CommandResult::Midashi {
             target,
@@ -330,7 +336,7 @@ fn parse_command_to_node(content: &str) -> NodeKind {
         } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Midashi { level, style },
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::FontSize {
@@ -340,7 +346,7 @@ fn parse_command_to_node(content: &str) -> NodeKind {
         } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::FontSize { size_type, level },
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::BlockStart { block_type, params } => {
@@ -371,13 +377,12 @@ fn parse_command_to_node(content: &str) -> NodeKind {
         CommandResult::Image {
             filename,
             alt,
+            is_photo,
             width,
             height,
         } => NodeKind::Img {
             filename,
-            // 参照実装 exec_img_command は説明に「写真」が入っていれば写真扱い。
-            // CSSクラス名の選択はレンダラに委ねる。
-            is_photo: alt.contains("写真"),
+            is_photo,
             alt,
             width,
             height,
@@ -400,12 +405,18 @@ fn parse_command_to_node(content: &str) -> NodeKind {
 
         CommandResult::WarichuStart => NodeKind::BlockStart {
             block_type: BlockType::Warichu,
-            params: BlockParams::default(),
+            params: BlockParams {
+                has_open_paren: paren.open_before,
+                ..Default::default()
+            },
         },
 
         CommandResult::WarichuEnd => NodeKind::BlockEnd {
             block_type: BlockType::Warichu,
-            params: BlockParams::default(),
+            params: BlockParams {
+                has_close_paren: paren.close_after,
+                ..Default::default()
+            },
             explicit_close: false,
         },
 
@@ -417,43 +428,43 @@ fn parse_command_to_node(content: &str) -> NodeKind {
         CommandResult::AnnotationRuby { target, annotation } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::AnnotationRuby { annotation },
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::InlineTcy { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Tcy),
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::InlineKeigakomi { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Keigakomi),
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::InlineYokogumi { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Yokogumi),
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::InlineCaption { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Caption),
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::InlineKaeriten { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Kaeriten),
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::InlineOkurigana { target } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::Inline(InlineKind::Okurigana),
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::CaptionStart => NodeKind::BlockStart {
@@ -515,44 +526,10 @@ fn parse_command_to_node(content: &str) -> NodeKind {
         CommandResult::SideNote { target, annotation } => NodeKind::UnresolvedReference {
             target,
             spec: RefSpec::SideNote { annotation },
-            raw: content.to_string(),
+            raw: raw.to_string(),
         },
 
         CommandResult::Unknown(text) => NodeKind::Note(text),
-    }
-}
-
-/// コマンドをノードに変換（コンテキスト付き）
-fn parse_command_to_node_with_context(
-    content: &str,
-    nodes: &[Node],
-    tokens: &[Token],
-    current_index: usize,
-) -> NodeKind {
-    use command_parser::CommandResult;
-
-    match parse_command(content) {
-        CommandResult::WarichuStart => {
-            let mut params = BlockParams::default();
-            params.has_open_paren = has_open_paren_before(nodes);
-            NodeKind::BlockStart {
-                block_type: BlockType::Warichu,
-                params,
-            }
-        }
-
-        CommandResult::WarichuEnd => {
-            let mut params = BlockParams::default();
-            params.has_close_paren = has_close_paren_after(tokens, current_index);
-            NodeKind::BlockEnd {
-                block_type: BlockType::Warichu,
-                params,
-                explicit_close: false,
-            }
-        }
-
-        // その他のコマンドは通常の処理
-        _ => parse_command_to_node(content),
     }
 }
 

@@ -39,6 +39,8 @@ pub fn try_parse_image(content: &str) -> Option<CommandResult> {
 
     Some(CommandResult::Image {
         filename,
+        // 参照実装 exec_img_command は説明に「写真」が入っていれば写真扱い。
+        is_photo: alt.contains("写真"),
         alt,
         width,
         height,
@@ -202,15 +204,30 @@ mod tests {
         if let Some(CommandResult::Image {
             filename,
             alt,
+            is_photo,
             width,
             height,
         }) = result
         {
             assert_eq!(filename, "fig001.png");
             assert_eq!(alt, "挿絵");
+            assert!(!is_photo);
             assert_eq!(width, Some(100));
             assert_eq!(height, Some(200));
         }
+    }
+
+    /// 参照実装 exec_img_command は説明に「写真」が入っていれば写真扱いにする。
+    /// この判定はコマンド解析側の責務（描画時の CSS クラス選択はレンダラ）。
+    #[test]
+    fn test_try_parse_image_detects_photo() {
+        let Some(CommandResult::Image { is_photo, alt, .. }) =
+            try_parse_image("旅先の写真（fig001.png）入る")
+        else {
+            panic!("画像として解析されなかった");
+        };
+        assert_eq!(alt, "旅先の写真");
+        assert!(is_photo);
     }
 
     #[test]
@@ -234,11 +251,13 @@ mod tests {
             Some(CommandResult::Image {
                 filename,
                 alt,
+                is_photo,
                 width,
                 height,
             }) => {
                 assert_eq!(filename, "fig4206_02.png");
                 assert_eq!(alt, "四分音符ミファレに「ネーヱ」の歌詞の楽譜");
+                assert!(!is_photo);
                 assert_eq!(width, None);
                 assert_eq!(height, None);
             }

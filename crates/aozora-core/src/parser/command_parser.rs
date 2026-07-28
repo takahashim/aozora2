@@ -50,14 +50,10 @@ pub enum CommandResult {
     },
 
     /// 行単位字下げ
-    LineIndent {
-        width: u32,
-    },
+    LineIndent { width: u32 },
 
     /// 行単位地付き/地から
-    LineChitsuki {
-        width: u32,
-    },
+    LineChitsuki { width: u32 },
 
     /// 注記
     Note(String),
@@ -66,6 +62,9 @@ pub enum CommandResult {
     Image {
         filename: String,
         alt: String,
+        /// 写真か（false なら挿絵）。参照実装 exec_img_command は説明に「写真」が
+        /// 入っていれば写真扱いにする。CSSクラス名の選択はレンダラに委ねる。
+        is_photo: bool,
         width: Option<u32>,
         height: Option<u32>,
     },
@@ -89,56 +88,34 @@ pub enum CommandResult {
     WarichuEnd,
 
     /// 装飾開始
-    StyleStart {
-        style_type: StyleType,
-    },
+    StyleStart { style_type: StyleType },
 
     /// 装飾終了
-    StyleEnd {
-        style_type: StyleType,
-    },
+    StyleEnd { style_type: StyleType },
 
     /// 左ルビ指定
-    LeftRuby {
-        target: String,
-        ruby: String,
-    },
+    LeftRuby { target: String, ruby: String },
 
     /// 注記ルビ（「対象」に「注記」の注記）
-    AnnotationRuby {
-        target: String,
-        annotation: String,
-    },
+    AnnotationRuby { target: String, annotation: String },
 
     /// 縦中横（後方参照）
-    InlineTcy {
-        target: String,
-    },
+    InlineTcy { target: String },
 
     /// 罫囲み（後方参照）
-    InlineKeigakomi {
-        target: String,
-    },
+    InlineKeigakomi { target: String },
 
     /// 横組み（後方参照）
-    InlineYokogumi {
-        target: String,
-    },
+    InlineYokogumi { target: String },
 
     /// キャプション（後方参照）
-    InlineCaption {
-        target: String,
-    },
+    InlineCaption { target: String },
 
     /// 返り点（後方参照「対象」は返り点）
-    InlineKaeriten {
-        target: String,
-    },
+    InlineKaeriten { target: String },
 
     /// 訓点送り仮名（後方参照「対象」は訓点送り仮名）
-    InlineOkurigana {
-        target: String,
-    },
+    InlineOkurigana { target: String },
 
     /// キャプション開始
     CaptionStart,
@@ -153,30 +130,25 @@ pub enum CommandResult {
     LeftAnnotationRangeStart,
 
     /// 注記付き範囲終了
-    AnnotationRangeEnd {
-        annotation: String,
-    },
+    AnnotationRangeEnd { annotation: String },
 
     /// 左に注記付き範囲終了
-    LeftAnnotationRangeEnd {
-        annotation: String,
-    },
+    LeftAnnotationRangeEnd { annotation: String },
 
     /// 傍記（工場に「×」の傍記）
-    SideNote {
+    SideNote { target: String, annotation: String },
+
+    /// 句点コード指定による外字画像（「対象」は…、面-区-点）。
+    KutenGaiji {
         target: String,
-        annotation: String,
+        /// 面-区-点（`1-13-25` 形式）
+        jis_code: String,
+        /// 注記形 `「対象」に「＜注記＞」の注記` の ＜注記＞ 部分。対象を外字画像へ
+        /// 置き換える置換形（`「5」はローマ数字、1-13-25`）では `None`。
+        annotation: Option<String>,
     },
 
     /// 未知のコマンド
-    /// 句点コード指定による外字画像（「対象」は…、面-区-点）。
-    /// 対象が見つからなければ注記として元の文字列を出すので spec は原文のまま持つ。
-    KutenGaiji {
-        target: String,
-        connector: String,
-        spec: String,
-    },
-
     Unknown(String),
 }
 
@@ -433,6 +405,30 @@ mod tests {
             parse_command("「爾」は訓点送り仮名"),
             CommandResult::InlineOkurigana {
                 target: "爾".to_string()
+            }
+        );
+    }
+
+    /// 句点コード指定は、句点コードと注記の切り出しまでを解析側で確定させる。
+    /// ノード構築層は受け取った値を写像するだけでよい。
+    #[test]
+    fn test_parse_kuten_gaiji_carries_parsed_values() {
+        // 置換形: 対象を外字画像に置き換える（注記は無い）。
+        assert_eq!(
+            parse_command("「5」はローマ数字、1-13-25"),
+            CommandResult::KutenGaiji {
+                target: "5".to_string(),
+                jis_code: "1-13-25".to_string(),
+                annotation: None,
+            }
+        );
+        // 注記形: ＜注記＞ を取り出す（中身のノード化は後段）。
+        assert_eq!(
+            parse_command("「すはどり」に「※［＃「尸＋鳥」、第4水準2-94-2］」の注記"),
+            CommandResult::KutenGaiji {
+                target: "すはどり".to_string(),
+                jis_code: "2-94-02".to_string(),
+                annotation: Some("※［＃「尸＋鳥」、第4水準2-94-2］".to_string()),
             }
         );
     }

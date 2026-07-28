@@ -114,11 +114,11 @@ fn try_parse_reference_at(content: &str, start: usize) -> Option<CommandResult> 
     let (connector, spec, is_left) = parse_connector(target, rest)?;
 
     // 句点コード指定は他の記法より先に見る（参照実装 exec_style と同じ順序）
-    if super::utils::parse_kuten_gaiji(spec).is_some() {
+    if let Some(jis_code) = super::utils::parse_kuten_gaiji(spec) {
         return Some(CommandResult::KutenGaiji {
             target: target.to_string(),
-            connector: connector.to_string(),
-            spec: spec.to_string(),
+            jis_code,
+            annotation: extract_kuten_annotation(spec),
         });
     }
 
@@ -177,6 +177,18 @@ fn try_parse_reference_at(content: &str, start: usize) -> Option<CommandResult> 
     }
 
     None
+}
+
+/// 句点コード指定のうち、注記形 `「対象」に「＜注記＞」の注記` の ＜注記＞ を取り出す。
+///
+/// 置換形（`「5」はローマ数字、1-13-25` のように対象を外字画像へ差し替えるもの）は
+/// 注記を持たないので `None`。＜注記＞ は外字表記を含みうる文字列で、ノード化は
+/// 呼び出し側（パーサのノード構築層）が行う。
+fn extract_kuten_annotation(spec: &str) -> Option<String> {
+    spec.strip_suffix("の注記")
+        .and_then(|s| s.strip_prefix('「'))
+        .and_then(|s| s.strip_suffix('」'))
+        .map(str::to_string)
 }
 
 /// 注記ルビパターンを解析（「対象」に「注記」の注記）
