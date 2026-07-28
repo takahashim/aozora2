@@ -4,16 +4,6 @@
 
 use crate::node::{MidashiLevel, MidashiStyle, StyleType};
 
-/// 未変換外字情報（フッタ「表記について」用）。
-#[derive(Debug, Clone)]
-pub struct UnconvertedGaiji {
-    /// 外字名（説明の最後の「、」より前の部分）
-    pub gaiji_name: String,
-    /// ページ-行数（説明の最後の「、」より後の部分）。
-    /// 同じ外字が複数回現れた場合は出現箇所を順に並べる。
-    pub page_lines: Vec<String>,
-}
-
 /// StyleType のCSSクラス名を取得
 pub fn style_css_class(style_type: StyleType) -> &'static str {
     match style_type {

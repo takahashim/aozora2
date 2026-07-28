@@ -5,9 +5,9 @@
 
 use crate::document::HeaderInfo;
 
+use super::notation::NotationState;
 use super::options::RenderOptions;
 use super::presentation::html_escape;
-use super::presentation::UnconvertedGaiji;
 
 /// 青空文庫パブリッシャー名
 const AOZORA_BUNKO: &str = "青空文庫";
@@ -199,20 +199,19 @@ impl<'a> DocumentRenderer<'a> {
     }
 
     /// 表記についてセクションを出力
-    pub fn render_notation_notes(
-        &self,
-        output: &mut String,
-        has_notes: bool,
-        has_jisx0213: bool,
-        has_accent: bool,
-        has_kunoji: bool,
-        has_dakuten_kunoji: bool,
-        unconverted_gaiji: &[UnconvertedGaiji],
-    ) {
+    pub fn render_notation_notes(&self, output: &mut String, notation: &NotationState) {
         output.push_str("<div class=\"notation_notes\">\r\n");
         output.push_str("<hr />\r\n");
         output.push_str("<br />\r\n");
         output.push_str("●表記について<br />\r\n");
+        self.render_notation_list(output, notation);
+        self.render_gaiji_table(output, notation);
+        output.push_str("</div>\r\n");
+    }
+
+    /// 「表記について」の箇条書きを出力。どの項目を出すかは使用状況
+    /// （[`NotationState`]）とオプションで決まる。
+    fn render_notation_list(&self, output: &mut String, notation: &NotationState) {
         output.push_str("<ul>\r\n");
 
         // XHTML1.1準拠
@@ -221,69 +220,72 @@ impl<'a> DocumentRenderer<'a> {
         );
 
         // 注記を使用した場合
-        if has_notes {
+        if notation.has_notes() {
             output.push_str("\t<li>［＃…］は、入力者による注を表す記号です。</li>\r\n");
         }
 
         // くの字点を使用した場合
-        if has_kunoji {
-            if has_dakuten_kunoji {
+        if notation.has_kunoji() {
+            if notation.has_dakuten_kunoji() {
                 output.push_str(
                     "\t<li>「くの字点」は「／＼」で、「濁点付きくの字点」は「／″＼」で表しました。</li>\r\n",
                 );
             } else {
                 output.push_str("\t<li>「くの字点」は「／＼」で表しました。</li>\r\n");
             }
-        } else if has_dakuten_kunoji {
+        } else if notation.has_dakuten_kunoji() {
             output.push_str("\t<li>「濁点付きくの字点」は「／″＼」で表しました。</li>\r\n");
         }
 
         // JIS X 0213文字を画像化した場合
-        if has_jisx0213 && !self.options.use_jisx0213 {
+        if notation.has_jisx0213() && !self.options.use_jisx0213 {
             output.push_str("\t<li>「くの字点」をのぞくJIS X 0213にある文字は、画像化して埋め込みました。</li>\r\n");
         }
 
         // アクセント符号を使用した場合
-        if has_accent && !self.options.use_jisx0213 {
+        if notation.has_accent() && !self.options.use_jisx0213 {
             output.push_str(
                 "\t<li>アクセント符号付きラテン文字は、画像化して埋め込みました。</li>\r\n",
             );
         }
 
         // 未変換外字がある場合
-        if !unconverted_gaiji.is_empty() {
+        if !notation.unconverted_gaiji().is_empty() {
             output.push_str("\t<li>この作品には、JIS X 0213にない、以下の文字が用いられています。（数字は、底本中の出現「ページ-行」数。）これらの文字は本文内では「※［＃…］」の形で示しました。</li>\r\n");
         }
 
         output.push_str("</ul>\r\n");
+    }
 
-        // 外字一覧表を出力
-        if !unconverted_gaiji.is_empty() {
-            output.push_str("<br />\r\n");
-            output.push_str("\t\t<table class=\"gaiji_list\">\r\n");
-            for gaiji in unconverted_gaiji {
-                output.push_str("\t\t\t<tr>\r\n");
-
-                let gaiji_name = html_escape(&gaiji.gaiji_name);
-                let page_line = html_escape(&gaiji.page_lines.join("、"));
-
-                output.push_str(&format!(
-                    "\t\t\t\t<td>\r\n\t\t\t\t{}\r\n\t\t\t\t</td>\r\n",
-                    gaiji_name
-                ));
-                output.push_str("\t\t\t\t<td>&nbsp;&nbsp;</td>\r\n");
-                output.push_str(&format!("\t\t\t\t<td>\r\n{}\t\t\t\t</td>\r\n", page_line));
-                // コメント出力
-                output.push_str(&format!(
-                    "\t\t\t\t<!--\r\n\t\t\t\t<td>\r\n\t\t\t\t　　<img src=\"../../../gaiji/others/xxxx.png\" alt=\"{}\" width=32 height=32 />\r\n\t\t\t\t</td>\r\n\t\t\t\t-->\r\n",
-                    gaiji_name
-                ));
-                output.push_str("\t\t\t</tr>\r\n");
-            }
-            output.push_str("\t\t</table>\r\n");
+    /// 画像化できない外字の一覧表を出力（該当が無ければ何も出さない）。
+    fn render_gaiji_table(&self, output: &mut String, notation: &NotationState) {
+        let unconverted_gaiji = notation.unconverted_gaiji();
+        if unconverted_gaiji.is_empty() {
+            return;
         }
 
-        output.push_str("</div>\r\n");
+        output.push_str("<br />\r\n");
+        output.push_str("\t\t<table class=\"gaiji_list\">\r\n");
+        for gaiji in unconverted_gaiji {
+            output.push_str("\t\t\t<tr>\r\n");
+
+            let gaiji_name = html_escape(&gaiji.gaiji_name);
+            let page_line = html_escape(&gaiji.page_lines.join("、"));
+
+            output.push_str(&format!(
+                "\t\t\t\t<td>\r\n\t\t\t\t{}\r\n\t\t\t\t</td>\r\n",
+                gaiji_name
+            ));
+            output.push_str("\t\t\t\t<td>&nbsp;&nbsp;</td>\r\n");
+            output.push_str(&format!("\t\t\t\t<td>\r\n{}\t\t\t\t</td>\r\n", page_line));
+            // コメント出力
+            output.push_str(&format!(
+                "\t\t\t\t<!--\r\n\t\t\t\t<td>\r\n\t\t\t\t　　<img src=\"../../../gaiji/others/xxxx.png\" alt=\"{}\" width=32 height=32 />\r\n\t\t\t\t</td>\r\n\t\t\t\t-->\r\n",
+                gaiji_name
+            ));
+            output.push_str("\t\t\t</tr>\r\n");
+        }
+        output.push_str("\t\t</table>\r\n");
     }
 
     /// 図書カードセクションを出力

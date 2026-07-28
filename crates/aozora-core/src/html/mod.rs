@@ -13,6 +13,7 @@
 
 mod block_renderer;
 mod document_renderer;
+mod notation;
 mod options;
 mod presentation;
 
@@ -132,15 +133,7 @@ pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
         doc.render_bibliographical_footer(&mut output, input.ends_with('\n'));
     }
 
-    doc.render_notation_notes(
-        &mut output,
-        br.has_notes,
-        br.has_jisx0213,
-        br.has_accent,
-        br.has_kunoji,
-        br.has_dakuten_kunoji,
-        &br.unconverted_gaiji,
-    );
+    doc.render_notation_notes(&mut output, br.notation());
     doc.render_card_section(&mut output);
     doc.render_html_foot(&mut output);
     output

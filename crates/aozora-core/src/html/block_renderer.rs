@@ -13,19 +13,15 @@ use crate::parser::reference_resolver::resolve_inline_ruby;
 use crate::token::TokenKind;
 use crate::tokenizer::tokenize;
 
+use super::notation::NotationState;
 use super::options::RenderOptions;
 use super::presentation::{
     html_escape, jis_code_to_path, midashi_combined_css_class, midashi_html_tag, style_css_class,
-    style_html_tag, UnconvertedGaiji,
+    style_html_tag,
 };
 
 /// 画像化できない外字を本文中で示す記号
 const GAIJI_MARK: &str = "※";
-
-/// くの字点（繰り返し記号）の構成文字（フッタ「表記について」の判定用）。
-const KUNOJI_KU: char = '／';
-const KUNOJI_NOJI: char = '＼';
-const KUNOJI_DAKUTEN: char = '″';
 
 /// 参照実装 kuten2png は alt 生成前に PAT_KUTEN = /「※」[は|の]/ を除去する。
 fn strip_kuten_prefix(description: &str) -> String {
@@ -95,20 +91,8 @@ fn font_size_class_style(size_type: FontSizeType, level: u32) -> (String, String
 /// 外字一覧は描画の副作用として蓄積する（参照実装と同じ）。
 pub struct BlockRenderer<'a> {
     options: &'a RenderOptions,
-    /// 注記を使用したか
-    pub has_notes: bool,
-    /// 外字画像を使用したか
-    pub has_gaiji_images: bool,
-    /// アクセント記号を使用したか
-    pub has_accent: bool,
-    /// JIS X 0213 文字を使用したか
-    pub has_jisx0213: bool,
-    /// くの字点を使用したか
-    pub has_kunoji: bool,
-    /// 濁点付きくの字点を使用したか
-    pub has_dakuten_kunoji: bool,
-    /// 未変換外字のリスト（表記について）
-    pub unconverted_gaiji: Vec<UnconvertedGaiji>,
+    /// フッタ「表記について」の材料（描画の副作用として蓄積する）
+    notation: NotationState,
     /// tail セクション（after_text/bibliographical）処理中か
     in_tail: bool,
     /// ルビ親文字を組み立て中か（親文字内では外字記号を個別に出さない）
@@ -126,13 +110,7 @@ impl<'a> BlockRenderer<'a> {
     pub fn new(options: &'a RenderOptions) -> Self {
         Self {
             options,
-            has_notes: false,
-            has_gaiji_images: false,
-            has_accent: false,
-            has_jisx0213: false,
-            has_kunoji: false,
-            has_dakuten_kunoji: false,
-            unconverted_gaiji: Vec::new(),
+            notation: NotationState::default(),
             in_tail: false,
             in_ruby_base: false,
             alt_depth: 0,
@@ -147,25 +125,15 @@ impl<'a> BlockRenderer<'a> {
         self.in_tail = true;
     }
 
+    /// 描画の副作用として溜まった「表記について」の材料。
+    pub fn notation(&self) -> &NotationState {
+        &self.notation
+    }
+
     /// くの字点をフッタ「表記について」用に数える（参照 scan_kunoji）。
     /// 注記の中にも書かれうるので、パース後ではなく生のソース行を渡すこと。
     pub fn scan_kunoji(&mut self, text: &str) {
-        if self.has_kunoji && self.has_dakuten_kunoji {
-            return;
-        }
-        let chars: Vec<char> = text.chars().collect();
-        for (i, c) in chars.iter().enumerate() {
-            if *c != KUNOJI_KU {
-                continue;
-            }
-            match chars.get(i + 1) {
-                Some(&KUNOJI_NOJI) => self.has_kunoji = true,
-                Some(&KUNOJI_DAKUTEN) if chars.get(i + 2) == Some(&KUNOJI_NOJI) => {
-                    self.has_dakuten_kunoji = true
-                }
-                _ => {}
-            }
-        }
+        self.notation.scan_kunoji(text);
     }
 
     /// ブロック列を本文HTML（main_text の内側）に変換する。
@@ -428,7 +396,7 @@ impl<'a> BlockRenderer<'a> {
                 html_escape(text)
             )),
             InlineKind::Note(text) => {
-                self.has_notes = true;
+                self.notation.mark_notes();
                 let inner = self.render_note_content(text);
                 out.push_str(&format!("<span class=\"notes\">［＃{inner}］</span>"));
             }
@@ -437,7 +405,7 @@ impl<'a> BlockRenderer<'a> {
                 content,
                 suffix,
             } => {
-                self.has_notes = true;
+                self.notation.mark_notes();
                 let mut content_html = String::new();
                 self.render_inlines(content, &mut content_html);
                 out.push_str(&format!(
@@ -570,7 +538,7 @@ impl<'a> BlockRenderer<'a> {
 
     /// アクセント文字（外字画像）を描画する。
     fn render_accent(&mut self, code: &str, name: &str, unicode: Option<&str>) -> String {
-        self.has_accent = true;
+        self.notation.mark_accent();
         if self.options.use_jisx0213 || self.options.use_unicode {
             if let Some(u) = unicode {
                 u.chars().map(|c| format!("&#{};", c as u32)).collect()
@@ -578,7 +546,7 @@ impl<'a> BlockRenderer<'a> {
                 String::new()
             }
         } else {
-            self.has_gaiji_images = true;
+            self.notation.mark_gaiji_image();
             let (folder, file) = jis_code_to_path(code);
             format!(
                 "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
@@ -647,11 +615,11 @@ impl<'a> BlockRenderer<'a> {
         let notes_mark = if had_igeta { "＃" } else { "" };
         match (unicode, jis_code) {
             (Some(u), Some(jis)) => {
-                self.has_jisx0213 = true;
+                self.notation.mark_jisx0213();
                 if self.options.use_jisx0213 || self.options.use_unicode {
                     return u.chars().map(|c| format!("&#{};", c as u32)).collect();
                 } else {
-                    self.has_gaiji_images = true;
+                    self.notation.mark_gaiji_image();
                     let (folder, file) = jis_code_to_path(jis);
                     let alt = alt_name(self);
                     return format!(
@@ -664,7 +632,7 @@ impl<'a> BlockRenderer<'a> {
                 if self.options.use_unicode {
                     return u.chars().map(|c| format!("&#{};", c as u32)).collect();
                 }
-                self.add_unconverted_gaiji(description, had_igeta);
+                self.notation.add_unconverted_gaiji(description, had_igeta);
                 return format!(
                     "{}<span class=\"notes\">［{}{}］</span>",
                     self.gaiji_mark_prefix(),
@@ -673,8 +641,8 @@ impl<'a> BlockRenderer<'a> {
                 );
             }
             (None, Some(jis)) => {
-                self.has_jisx0213 = true;
-                self.has_gaiji_images = true;
+                self.notation.mark_jisx0213();
+                self.notation.mark_gaiji_image();
                 let (folder, file) = jis_code_to_path(jis);
                 let alt = alt_name(self);
                 return format!(
@@ -690,7 +658,7 @@ impl<'a> BlockRenderer<'a> {
                 if self.options.use_unicode {
                     s.chars().map(|c| format!("&#{};", c as u32)).collect()
                 } else {
-                    self.add_unconverted_gaiji(description, had_igeta);
+                    self.notation.add_unconverted_gaiji(description, had_igeta);
                     format!(
                         "{}<span class=\"notes\">［{}{}］</span>",
                         self.gaiji_mark_prefix(),
@@ -703,11 +671,11 @@ impl<'a> BlockRenderer<'a> {
                 jis_code: jis,
                 unicode: u,
             } => {
-                self.has_jisx0213 = true;
+                self.notation.mark_jisx0213();
                 if self.options.use_jisx0213 || self.options.use_unicode {
                     u.chars().map(|c| format!("&#{};", c as u32)).collect()
                 } else {
-                    self.has_gaiji_images = true;
+                    self.notation.mark_gaiji_image();
                     let (folder, file) = jis_code_to_path(&jis);
                     let alt = alt_name(self);
                     format!(
@@ -717,8 +685,8 @@ impl<'a> BlockRenderer<'a> {
                 }
             }
             GaijiResult::JisImage { jis_code: jis } => {
-                self.has_jisx0213 = true;
-                self.has_gaiji_images = true;
+                self.notation.mark_jisx0213();
+                self.notation.mark_gaiji_image();
                 let (folder, file) = jis_code_to_path(&jis);
                 let alt = alt_name(self);
                 format!(
@@ -727,7 +695,7 @@ impl<'a> BlockRenderer<'a> {
                 )
             }
             GaijiResult::Unconvertible => {
-                self.add_unconverted_gaiji(description, had_igeta);
+                self.notation.add_unconverted_gaiji(description, had_igeta);
                 format!(
                     "{}<span class=\"notes\">［{}{}］</span>",
                     self.gaiji_mark_prefix(),
@@ -784,45 +752,19 @@ impl<'a> BlockRenderer<'a> {
             };
             match parse_gaiji(&description) {
                 GaijiResult::JisImage { .. } | GaijiResult::JisConverted { .. } => {
-                    self.has_jisx0213 = true;
-                    self.has_gaiji_images = true;
+                    self.notation.mark_jisx0213();
+                    self.notation.mark_gaiji_image();
                 }
                 GaijiResult::Unconvertible => {
-                    self.add_unconverted_gaiji(&description, had_igeta);
+                    self.notation.add_unconverted_gaiji(&description, had_igeta);
                 }
                 GaijiResult::Unicode(_) => {
                     if !self.options.use_unicode {
-                        self.add_unconverted_gaiji(&description, had_igeta);
+                        self.notation.add_unconverted_gaiji(&description, had_igeta);
                     }
                 }
             }
         }
-    }
-
-    fn add_unconverted_gaiji(&mut self, description: &str, had_igeta: bool) {
-        let (gaiji_name, page_line) = if !had_igeta {
-            (String::new(), String::new())
-        } else {
-            match description.rfind('、') {
-                Some(pos) => (
-                    description[..pos].to_string(),
-                    description[pos + '、'.len_utf8()..].to_string(),
-                ),
-                None => (String::new(), String::new()),
-            }
-        };
-        if let Some(existing) = self
-            .unconverted_gaiji
-            .iter_mut()
-            .find(|g| g.gaiji_name == gaiji_name)
-        {
-            existing.page_lines.push(page_line);
-            return;
-        }
-        self.unconverted_gaiji.push(UnconvertedGaiji {
-            gaiji_name,
-            page_lines: vec![page_line],
-        });
     }
 }
 
