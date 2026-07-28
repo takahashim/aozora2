@@ -22,17 +22,12 @@ pub fn resolve_references(nodes: &mut Vec<Node>) {
     resolve_style_references(nodes);
 }
 
-/// ルビ親文字解決の 2 パス目（工程4）。
+/// ルビ親文字解決の 2 パス目。中身は [`resolve_ruby_bases`] と同一で、呼ぶ位置だけが違う。
+/// 呼び出し元は [`resolve_references`] の直後にこれを呼ぶ。
 ///
-/// 中身は工程1 [`resolve_ruby_bases`] と**同一**で、呼ぶ位置だけが違う。
-/// 呼び出し元は `resolve_references`（工程1〜3）の**直後**にこれを呼ぶ。
-///
-/// なぜ 2 回必要か: 工程1の時点でルビの直前が `UnresolvedReference` だと
-/// `last_char_type()` が `None` を返して親文字を取れない。工程3でそれが装飾タグへ
-/// 解決されて初めて「タグ丸ごと 1 個が親文字」を適用できるため、もう一度走らせる。
-/// 逆に工程1を省くこともできない（工程3の `search_front_reference` は
-/// `extract_plain_text(Ruby)`＝親文字を見るので、親文字が空だと照合が失敗する）。
-/// 詳細は docs/spec-reference-resolver.md。
+/// 2 パス必要な理由は両方向ともテストが固定している:
+/// `stage3_needs_ruby_bases_resolved`（前を省けない）/
+/// `stage4_resolves_bases_that_appear_only_after_stage3`（後を省けない）。
 pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
     resolve_ruby_bases(nodes);
 }
@@ -454,6 +449,71 @@ mod tests {
         } else {
             panic!("Expected Ruby node");
         }
+    }
+
+    #[test]
+    fn stage3_needs_ruby_bases_resolved() {
+        // 前方参照の照合は Ruby の内部テキスト＝親文字（children）を見る。親文字が
+        // 空のままでは照合できないので、参照解決より前に親文字解決を走らせる必要がある。
+        let pending = node(NodeKind::Ruby {
+            children: vec![],
+            ruby: vec![text("とうきょう")],
+            direction: RubyDirection::Right,
+            keep_gaiji_notes_in_base: false,
+        });
+        assert!(
+            search_front_reference(&[text("東京"), pending], 1, "東京").is_none(),
+            "親文字が空のルビは照合対象にならない"
+        );
+
+        // 親文字が入っていれば、ルビ 1 ノードを丸ごと対象にできる。
+        let resolved = node(NodeKind::Ruby {
+            children: vec![text("東京")],
+            ruby: vec![text("とうきょう")],
+            direction: RubyDirection::Right,
+            keep_gaiji_notes_in_base: false,
+        });
+        let m =
+            search_front_reference(&[resolved], 0, "東京").expect("親文字が入っていれば照合できる");
+        assert!(matches!(
+            &m.children[..],
+            [Node {
+                kind: NodeKind::Ruby { .. },
+                ..
+            }]
+        ));
+    }
+
+    #[test]
+    fn stage4_resolves_bases_that_appear_only_after_stage3() {
+        use crate::parser::parse_raw_nodes;
+        use crate::tokenizer::tokenize;
+
+        // 直前が未解決参照だと last_char_type() が None を返すため、1 パス目では
+        // 親文字を取れない。参照が装飾タグへ解決されて初めて「タグ 1 ノードが親文字」
+        // の規則が使えるようになる。
+        let mut nodes = parse_raw_nodes(&tokenize(
+            "公事根源［＃「公事根源」は斜体］《くじこんげん》",
+        ));
+        resolve_references(&mut nodes);
+        let NodeKind::Ruby { children, .. } = &nodes[1].kind else {
+            panic!("参照解決後は [Style, Ruby] になるはず: {nodes:?}");
+        };
+        assert!(
+            children.is_empty(),
+            "この時点ではまだ親文字が空（だから 2 パス目が要る）: {nodes:?}"
+        );
+
+        // 2 パス目が、直前に生まれた斜体タグを親文字として取り込む。
+        resolve_inline_ruby(&mut nodes);
+        assert_eq!(nodes.len(), 1, "{nodes:?}");
+        let NodeKind::Ruby { children, .. } = &nodes[0].kind else {
+            panic!("{nodes:?}");
+        };
+        assert!(
+            matches!(&children[0].kind, NodeKind::Style { .. }),
+            "斜体タグが親文字になっていない: {children:?}"
+        );
     }
 
     #[test]
