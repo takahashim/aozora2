@@ -16,8 +16,11 @@ pub fn parse_block_start(content: &str) -> CommandResult {
     if content.contains("割り注") {
         return CommandResult::Note(format!("ここから{content}"));
     }
-    let mut params = BlockParams::default();
-    params.is_block = true; // ここから pattern is block-level
+    // ここから pattern は常にブロックレベル
+    let mut params = BlockParams {
+        is_block: true,
+        ..Default::default()
+    };
 
     // ぶら下げパターン: 「N字下げ、折り返してM字下げ」または「改行天付き、折り返してN字下げ」
     if content.contains("折り返して") {
@@ -207,9 +210,11 @@ pub fn try_parse_line_chitsuki(content: &str) -> Option<CommandResult> {
 pub fn try_parse_midashi_start(content: &str) -> Option<CommandResult> {
     let level = MidashiLevel::from_command(content)?;
     let style = MidashiStyle::from_command(content);
-    let mut params = BlockParams::default();
-    params.level = Some(level);
-    params.midashi_style = Some(style);
+    let params = BlockParams {
+        level: Some(level),
+        midashi_style: Some(style),
+        ..Default::default()
+    };
     Some(CommandResult::BlockStart {
         block_type: BlockType::Midashi,
         params,
@@ -219,8 +224,10 @@ pub fn try_parse_midashi_start(content: &str) -> Option<CommandResult> {
 /// インラインフォントサイズ開始を解析
 pub fn try_parse_font_size_start(content: &str) -> Option<CommandResult> {
     let (size_type, level) = FontSizeType::from_command(content)?;
-    let mut params = BlockParams::default();
-    params.font_size = Some(level);
+    let params = BlockParams {
+        font_size: Some(level),
+        ..Default::default()
+    };
     Some(CommandResult::BlockStart {
         block_type: match size_type {
             FontSizeType::Dai => BlockType::FontDai,

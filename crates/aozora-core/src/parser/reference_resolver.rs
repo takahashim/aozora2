@@ -90,12 +90,12 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
                 // 対応する終了を探す
                 let mut end_idx = None;
                 let mut annotation = None;
-                for j in (i + 1)..nodes.len() {
+                for (j, node) in nodes.iter().enumerate().skip(i + 1) {
                     if let NodeKind::BlockEnd {
                         block_type: bt,
                         params,
                         ..
-                    } = &nodes[j].kind
+                    } = &node.kind
                     {
                         if (*bt == BlockType::AnnotationRange && !is_left)
                             || (*bt == BlockType::LeftAnnotationRange && is_left)

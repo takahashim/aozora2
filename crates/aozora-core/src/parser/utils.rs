@@ -131,53 +131,6 @@ pub fn extract_number_before(s: &str, keyword: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_number() {
-        assert_eq!(extract_number("2字下げ"), Some(2));
-        assert_eq!(extract_number("10字詰め"), Some(10));
-        assert_eq!(extract_number("字下げ"), None);
-    }
-
-    #[test]
-    fn test_convert_japanese_number() {
-        assert_eq!(convert_japanese_number("一字下げ"), "1字下げ");
-        assert_eq!(convert_japanese_number("三字下げ"), "3字下げ");
-        assert_eq!(convert_japanese_number("十字下げ"), "10字下げ");
-        assert_eq!(convert_japanese_number("二十三"), "23");
-        assert_eq!(convert_japanese_number("二十"), "20");
-        assert_eq!(convert_japanese_number("十五"), "15");
-        assert_eq!(convert_japanese_number("１０字下げ"), "10字下げ");
-        // 校正注記の誤コマンド: 「一字下げ」を拾い、後続の 200-14 は無視される
-        assert_eq!(
-            extract_number_before(&convert_japanese_number("一字下げ忘れか？200-14"), "字下げ"),
-            Some(1)
-        );
-    }
-
-    #[test]
-    fn test_extract_number_before_anchors_to_keyword() {
-        // 直前の数字だけを取り、後続の別の数字を巻き込まない
-        assert_eq!(
-            extract_number_before("７字下げ、２１字詰め", "字下げ"),
-            Some(7)
-        );
-        assert_eq!(extract_number_before("２字下げ、", "字下げ"), Some(2));
-        assert_eq!(extract_number_before("字下げ", "字下げ"), None);
-        assert_eq!(extract_number_before("改行天付き", "字下げ"), None);
-    }
-
-    #[test]
-    fn test_extract_number_fullwidth() {
-        assert_eq!(extract_number("２字下げ"), Some(2));
-        assert_eq!(extract_number("３字下げ"), Some(3));
-        assert_eq!(extract_number("１０字詰め"), Some(10));
-    }
-}
-
 /// 句点コード指定（`ローマ数字、1-13-25` など）から外字画像のコードを取り出す。
 ///
 /// 参照実装 aozora2html の `kuten2png` と同じ判定:
@@ -228,4 +181,51 @@ fn read_digits(chars: &[char], pos: usize, len: usize) -> Option<(u32, usize)> {
         value = value * 10 + digit;
     }
     Some((value, pos + len))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_number() {
+        assert_eq!(extract_number("2字下げ"), Some(2));
+        assert_eq!(extract_number("10字詰め"), Some(10));
+        assert_eq!(extract_number("字下げ"), None);
+    }
+
+    #[test]
+    fn test_convert_japanese_number() {
+        assert_eq!(convert_japanese_number("一字下げ"), "1字下げ");
+        assert_eq!(convert_japanese_number("三字下げ"), "3字下げ");
+        assert_eq!(convert_japanese_number("十字下げ"), "10字下げ");
+        assert_eq!(convert_japanese_number("二十三"), "23");
+        assert_eq!(convert_japanese_number("二十"), "20");
+        assert_eq!(convert_japanese_number("十五"), "15");
+        assert_eq!(convert_japanese_number("１０字下げ"), "10字下げ");
+        // 校正注記の誤コマンド: 「一字下げ」を拾い、後続の 200-14 は無視される
+        assert_eq!(
+            extract_number_before(&convert_japanese_number("一字下げ忘れか？200-14"), "字下げ"),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn test_extract_number_before_anchors_to_keyword() {
+        // 直前の数字だけを取り、後続の別の数字を巻き込まない
+        assert_eq!(
+            extract_number_before("７字下げ、２１字詰め", "字下げ"),
+            Some(7)
+        );
+        assert_eq!(extract_number_before("２字下げ、", "字下げ"), Some(2));
+        assert_eq!(extract_number_before("字下げ", "字下げ"), None);
+        assert_eq!(extract_number_before("改行天付き", "字下げ"), None);
+    }
+
+    #[test]
+    fn test_extract_number_fullwidth() {
+        assert_eq!(extract_number("２字下げ"), Some(2));
+        assert_eq!(extract_number("３字下げ"), Some(3));
+        assert_eq!(extract_number("１０字詰め"), Some(10));
+    }
 }

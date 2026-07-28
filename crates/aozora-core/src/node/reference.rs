@@ -105,10 +105,8 @@ impl RefSpec {
             RefSpec::SideNote { annotation } => {
                 // 親文字の文字数だけ注記を繰り返し、&nbsp; で区切る
                 let char_count: usize = children.iter().map(|n| n.to_text().chars().count()).sum();
-                let repeated: String = std::iter::repeat(annotation.as_str())
-                    .take(char_count.max(1))
-                    .collect::<Vec<_>>()
-                    .join("\u{00a0}");
+                let repeated: String =
+                    vec![annotation.as_str(); char_count.max(1)].join("\u{00a0}");
                 NodeKind::Ruby {
                     children,
                     ruby: vec![Node::text(&repeated, span)],

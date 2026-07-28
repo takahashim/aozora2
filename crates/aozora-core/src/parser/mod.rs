@@ -102,7 +102,7 @@ struct ParenContext {
 
 /// 直前のノードがテキストで `（` で終わるかチェック
 fn has_open_paren_before(nodes: &[Node]) -> bool {
-    nodes.last().map_or(false, |node| {
+    nodes.last().is_some_and(|node| {
         if let NodeKind::Text(s) = &node.kind {
             s.ends_with('（')
         } else {
@@ -113,7 +113,7 @@ fn has_open_paren_before(nodes: &[Node]) -> bool {
 
 /// 直後のトークンがテキストで `）` で始まるかチェック
 fn has_close_paren_after(tokens: &[Token], current_index: usize) -> bool {
-    tokens.get(current_index + 1).map_or(false, |token| {
+    tokens.get(current_index + 1).is_some_and(|token| {
         if let TokenKind::Text(s) = &token.kind {
             s.starts_with('）')
         } else {

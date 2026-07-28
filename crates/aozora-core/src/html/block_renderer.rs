@@ -449,10 +449,7 @@ impl<'a> BlockRenderer<'a> {
             }
             InlineKind::Okurigana(text) => {
                 // 参照実装 Tag::Okurigana は注記と同じ再パースを通し、外側 （ ） を除去する。
-                let inner = self
-                    .render_note_content(text)
-                    .replace('（', "")
-                    .replace('）', "");
+                let inner = self.render_note_content(text).replace(['（', '）'], "");
                 out.push_str(&format!("<sup class=\"okurigana\">{inner}</sup>"));
             }
             InlineKind::FontSize {

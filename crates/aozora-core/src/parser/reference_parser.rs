@@ -30,12 +30,11 @@ fn find_target_end(content: &str, start: usize) -> Option<usize> {
     content[start..]
         .match_indices('」')
         .map(|(i, _)| start + i)
-        .filter(|&i| {
+        .rfind(|&i| {
             let rest = &content[i + '」'.len_utf8()..];
             ["に", "は", "の"].iter().any(|c| rest.starts_with(c))
                 && is_reference_target(&content[start..i])
         })
-        .next_back()
 }
 
 /// 後方参照パターンを解析
