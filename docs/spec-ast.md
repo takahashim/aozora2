@@ -62,6 +62,25 @@ struct Node { kind: NodeKind, span: Span }
 
 行番号 `line_no` / `line` はいずれも**本文（`extract_body_lines` 後）における 0 起点**。
 
+span は位置メタデータなので、`PartialEq` は `kind` だけを比較する（span は無視）。外付けの
+器（`Spanned<T>{node,span}`）ではなく各構文要素の intrinsic なフィールドにしてあるのは、
+入れ子（ルビ内容・アクセント内容）まで位置を通すため。入れ子は再トークナイズ時に
+base offset を渡すので、子も**行内の絶対 span** を持つ。
+
+### span が「実在」でない箇所（継承・合併）
+
+**Token の span は常に実在する**（全トークンが消費した char に対応する）。一方 **Node と
+Inline には実在しない span が混じる**ので、位置として使う側は注意が要る。
+
+- **継承**: 解決器が**合成した**ノードは、元の char 範囲を持たないので**親の span を継承**する。
+  - `parse_annotation_text`（`reference_resolver.rs`）… 注記文字列を再 tokenize/再 parse して
+    Text/Gaiji を新規生成する。元行の char 位置とは無関係。
+  - `node/reference.rs` の `SideNote` / `AnnotationRuby` / `EmbeddedGaiji` … ルビ内容を親文字数
+    だけ繰り返し生成する、または注記文字列から生成する。
+- **合併**: ルビ親文字の後方吸収では、親文字が `《》` より**前**の本文に在る。Ruby ノードの
+  span は `union(親文字spans, 読みspan)` に広げる。子（親文字）は自身の前方の span を保つので、
+  「子が親マーカーより前にある」ことが正しく表れる。
+
 ---
 
 ## RawAST 仕様

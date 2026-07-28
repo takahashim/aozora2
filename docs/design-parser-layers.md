@@ -18,7 +18,6 @@
 - [spec-tokenizer.md](spec-tokenizer.md) … ①トークナイザの仕様（互換実装用）
 - [spec-reference-resolver.md](spec-reference-resolver.md) … ③前方参照解決の仕様（互換実装用）
 - [spec-ast.md](spec-ast.md) … ④ Aozora AST の仕様
-- [plan-span-inline.md](plan-span-inline.md) … span を AST まで通す設計メモ
 
 ---
 
