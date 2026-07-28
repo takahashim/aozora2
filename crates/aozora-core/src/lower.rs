@@ -146,16 +146,14 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                     },
                 );
             }
-            LineKind::BlockCloseWithHead(explicit) => {
-                // 参照は行を逐次出力するので、閉じタグより前の本文は閉じるブロックの
-                // 内側に出る。行末の改行は閉じタグ側が出すので Break::NoNewline。
-                // 対応する開きが無ければ閉じタグは出ないので、通常の内容行に落とす。
-                let head: Vec<Node> = nodes[..nodes.len() - 1].to_vec();
-                let inline = crate::ast::to_inlines(&head);
-                let brk = if stack.is_empty() {
+            LineKind::BlockCloseWithHead(idx, explicit) if stack.is_empty() => {
+                // 対応する開きが無ければ閉じタグは出ない。行をまとめて内容行にする。
+                let _ = idx;
+                let inline = crate::ast::to_inlines(&nodes);
+                let brk = if explicit || crate::ast::line_is_block_only(&inline) {
                     Break::None
                 } else {
-                    Break::NoNewline
+                    Break::Br
                 };
                 push_block(
                     &mut stack,
@@ -166,8 +164,27 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                         line: line_no,
                     },
                 );
+            }
+            LineKind::BlockCloseWithHead(idx, explicit) => {
+                // 参照は行を逐次出力するので、閉じタグより前の本文は閉じるブロックの
+                // 内側に出る。行末の改行は閉じタグ（後続本文があればその行）が出すので
+                // 前半は Break::NoNewline。
+                let tail: Vec<Node> = nodes[idx + 1..].to_vec();
+                let head_inline = crate::ast::to_inlines(&nodes[..idx]);
+                push_block(
+                    &mut stack,
+                    &mut top,
+                    Block::Line {
+                        inline: head_inline,
+                        brk: Break::NoNewline,
+                        line: line_no,
+                    },
+                );
                 if let Some((kind, children, open_line)) = stack.pop() {
-                    let close = if explicit {
+                    // 後続本文があるなら改行はその行が出すので `</div>` のみ。
+                    let close = if !tail.is_empty() {
+                        CloseKind::NoBreak
+                    } else if explicit {
                         CloseKind::Newline
                     } else {
                         CloseKind::BareBreak
@@ -180,6 +197,23 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                             children,
                             close,
                             line: open_line,
+                        },
+                    );
+                }
+                if !tail.is_empty() {
+                    let inline = crate::ast::to_inlines(&tail);
+                    let brk = if explicit || crate::ast::line_is_block_only(&inline) {
+                        Break::None
+                    } else {
+                        Break::Br
+                    };
+                    push_block(
+                        &mut stack,
+                        &mut top,
+                        Block::Line {
+                            inline,
+                            brk,
+                            line: line_no,
                         },
                     );
                 }
@@ -327,9 +361,11 @@ enum LineKind {
     BlockClose(bool),
     /// 先頭 BlockEnd＋後続本文の行（`［＃ここで…終わり］text`）。bool は explicit_close。
     BlockCloseWithTail(bool),
-    /// 本文＋行末 BlockEnd の行（`text［＃ここで…終わり］`）。bool は explicit_close。
-    /// 参照実装は行を逐次出力するので、本文を出してからその場でブロックを閉じる。
-    BlockCloseWithHead(bool),
+    /// 本文の後ろに BlockEnd が現れる行（`text［＃ここで…終わり］` および
+    /// `text［＃ここで…終わり］text`）。usize は BlockEnd の位置、bool は
+    /// explicit_close。参照実装は行を逐次出力するので、前半の本文を出してから
+    /// その場でブロックを閉じ、後続の本文を同じ行に続ける。
+    BlockCloseWithHead(usize, bool),
     /// 行スコープの1行包み（同行に本文あり）。字下げ／地付き。
     LineWrap(BlockKind),
     /// 内容行。
@@ -375,18 +411,21 @@ fn classify_line(nodes: &[Node]) -> LineKind {
             return LineKind::BlockCloseWithTail(*explicit_close);
         }
     }
-    // 本文（素のテキストのみ）＋行末 BlockEnd の行。`［＃「…」は太字終わり］` 等の
-    // インライン範囲終端を巻き込まないよう、前半が Text だけの場合に限る。
-    if let Some((
-        Node {
-            kind: NodeKind::BlockEnd { explicit_close, .. },
-            ..
-        },
-        head,
-    )) = nodes.split_last()
+    // 本文（素のテキストのみ）の後ろに BlockEnd が現れる行。`［＃「…」は太字終わり］`
+    // 等のインライン範囲終端を巻き込まないよう、前半が Text だけの場合に限る。
+    if let Some(idx) = nodes
+        .iter()
+        .position(|n| matches!(n.kind, NodeKind::BlockEnd { .. }))
     {
-        if !head.is_empty() && head.iter().all(|n| matches!(n.kind, NodeKind::Text(_))) {
-            return LineKind::BlockCloseWithHead(*explicit_close);
+        if idx > 0
+            && nodes[..idx]
+                .iter()
+                .all(|n| matches!(n.kind, NodeKind::Text(_)))
+        {
+            let NodeKind::BlockEnd { explicit_close, .. } = nodes[idx].kind else {
+                unreachable!("position で BlockEnd を選んでいる")
+            };
+            return LineKind::BlockCloseWithHead(idx, explicit_close);
         }
     }
     // 行単位字下げ ［＃N字下げ］。行にこのマーカーしか無ければ複数行ブロックを開く
@@ -527,6 +566,28 @@ mod position_tests {
             other => panic!("Nested を期待: {other:?}"),
         }
         assert!(matches!(blocks[1], Block::Line { line: 3, .. }));
+    }
+
+    /// 行途中クローズの後ろに本文が続く場合、閉じタグは `</div>`（改行なし）で、
+    /// 行末の改行は後続本文が出す（例: 000081/48220 の
+    /// `（正方形にやりますか。）［＃ここで字下げ終わり］どういふ訳か…`）。
+    #[test]
+    fn block_end_between_texts_closes_and_continues_on_the_same_line() {
+        let lines = vec!["［＃ここから４字下げ］", "前［＃ここで字下げ終わり］後"];
+        let blocks = lower_to_blocks(&parse_document_raw(&lines));
+        match &blocks[0] {
+            Block::Nested { close, .. } => assert_eq!(*close, CloseKind::NoBreak),
+            other => panic!("Nested を期待: {other:?}"),
+        }
+        // 後続本文は同じ行として `\r\n` を出す（explicit なので `<br />` は抑制）。
+        assert!(matches!(
+            blocks[1],
+            Block::Line {
+                brk: Break::None,
+                line: 1,
+                ..
+            }
+        ));
     }
 
     /// 対応する開きが無ければ閉じタグは出さず、通常の内容行として扱う。
