@@ -189,18 +189,17 @@ architecture.md 2.1 性質5「ある記法の定義・意味・実例が grep �
 
 | 指標 | 値 |
 |---|---|
-| **byte-exact** | **17361 / 17509**（99.15%） |
-| 構造差あり | 92 |
+| **byte-exact** | **17410 / 17509**（99.43%） |
+| 構造差あり | 43 |
 | 変換エラー（参照実装が失敗しオラクルが無い） | 56 |
 
 実効上限は 17509 − 56 = **17453**。真の互換指標は byte-exact 件数（後述「指標の注意」）。
 
-### ⚠ baseline が古い（他の作業より先に直すこと）
+### baseline（2026-07-28 に貼り直し済み）
 
-`aozora-htmlcheck/baseline-oracle.jsonl` は **2026-07-24 のまま**（17374 exact）で、
-その後の Aozora AST 移行（17361 へ）が反映されていない。現在 `--baseline` を付けて回すと
-**悪化 49・終了コード 1** になり、§1 不変条件 2 のゲートが機能していない。
-§7 の原則（守衛が死んだ状態で作業しない）に従い、現状で貼り直す:
+`aozora-htmlcheck/baseline-oracle.jsonl` は **17410 exact** で現状に一致しており、
+`--baseline` を付けた実行は悪化 0・終了コード 0（§1 不変条件 2 のゲートは生きている）。
+出力を変える改修のあとは、下記で貼り直してから次の作業に移ること。
 
 ```
 cd aozora-htmlcheck && cargo build --release
@@ -216,7 +215,8 @@ architecture.md 6 章「移行の段階」の順序に従って進めてきた�
   プレーンテキストとも Aozora AST のみから描画する。下記「次の作業の選択肢 1（renderer の
   行制御の作り直し）」はこれで達成済み。経緯は docs/plan-neutral-ast.md。
 - **位置情報の intrinsic 化（完了）**: `Token`/`Node`/`Inline` がそれぞれ自前の char span を
-  持つ。span の実在性（合成ノードの継承・ルビ親文字吸収の合併）は docs/spec-ast.md。
+  持つ。span の実在性（合成ノードの継承・ルビ親文字吸収の合併・注記の中身の別原点）は
+  docs/spec-ast.md。
 - **エディタ支援 `analysis`（フェーズ1完了）**: セマンティックトークン・アウトライン・
   折りたたみ・診断 4 種（`unresolved-reference` / `unresolved-gaiji` / `unclosed-accent` /
   `unclosed-block`）。計画は docs/plan-lsp.md。
@@ -660,16 +660,15 @@ error 56 は参照実装が失敗しオラクルが無い作品（内訳は §�
 
 ## 9. 次の作業キュー
 
-着手前に §8「baseline が古い」を先に片付けること（守衛が死んだ状態で作業しない）。
+baseline は現状に一致している（§8）。出力を変えたら貼り直してから次に進むこと。
 
-1. **baseline の貼り直し**（最優先・小）。§8 のコマンドで現状を基準に固定する。
-2. **ループD 定常運用**（コーパス・注記一覧の更新反映、未対応記法の集計）。
+1. **ループD 定常運用**（コーパス・注記一覧の更新反映、未対応記法の集計）。
    三者のドリフト解消は恒常作業（§5）。
-3. **残差 92 件の個別対応**（中〜高リスク）。多くは参照実装のバグ・実装都合の再現で、
+2. **残差 43 件の個別対応**（中〜高リスク）。多くは参照実装のバグ・実装都合の再現で、
    div/br 均衡と burasage 入れ子は architecture.md §5 の方針どおり深追いしない。
    per-case な参照バグの Quirk 化は効果小・低リスクなので手が空いたときに。
-4. **`analysis` フェーズ2**（診断の拡充と CodeMirror 接続）。計画は docs/plan-lsp.md。
-5. **記法のデータ駆動化の継続**（architecture.md §2.1 性質1）。`BlockType`・
+3. **`analysis` フェーズ2**（診断の拡充と CodeMirror 接続）。計画は docs/plan-lsp.md。
+4. **記法のデータ駆動化の継続**（architecture.md §2.1 性質1）。`BlockType`・
    `FontSizeType`・`MidashiLevel/Style` は順序依存ディスパッチのため対象外と判断済み。
 
 将来の検討課題として、UTF-8 入力時の JIS X 0213 対応（第3・第4水準を直接書いた本文）が

@@ -375,3 +375,21 @@ Lowerer に逐次モデルが載るので memory 記録の保留項目が表現�
   見送っていた **Aozora AST `Inline` への per-inline span が実現**している。出力 byte 不変・
   オラクル 17361。span が「実在」でない箇所（合成ノードの継承・ルビ親文字吸収の合併）は
   spec-ast.md「共通: 位置情報」に記載。
+
+- 2026-07-28 **移行後の後片付け（ast.rs の責務整理・注記の解決・デッドコード削除）。**
+  Aozora AST 移行そのものは完了済みだが、`ast.rs` に畳み込みと出力形の判断が同居し
+  `lower` と相互依存していた。`lower/` をディレクトリにして
+  `lower/inline.rs`（インライン畳み込み）・`lower/break_policy.rs`（行末 `<br />` の
+  抑制判定＝旧 `line_is_block_only`）へ分け、依存を `lower → ast` の一方向にした。
+  `ast.rs` は型と `Inline` のコンストラクタ・`PartialEq` だけになった（818→399 行）。
+  編集者注は `Note(String)` → `Note { content, raw }` にし、再パースを Lower 時に
+  一度だけ行う（描画器から `parse`/`resolve_inline_ruby` 依存と深さ管理が消えた）。
+  ぶら下げ幅は `BurasageGeometry` に集約。上の 2026-07-25 で「構築箇所ゼロ」と記録した
+  `Node::Warichu{upper,lower}` は**削除**した（実在する割り注 `InlineKind::Warichu` /
+  `BlockType::Warichu` は別物なのでそのまま）。
+  span の「実在」でない箇所に**第3の類型**が増えた: 注記の中身（`Note`/`Okurigana` の
+  `content`）は注記文字列を再パースするので span が**注記内の相対位置**になる。継承・
+  合併と違い行内の値として読めてしまうので、位置として使う側は注意が要る
+  （spec-ast.md に追記）。あわせて `Inline` の `PartialEq` に `range_form` を含めた
+  （ぶら下げの包みの有無を変える互換メタデータで、落とすと出力の違う木が等価になる）。
+  出力 byte 不変・**オラクル 17410 / 悪化 0**（コミット時は未実行だったので事後に確認）。
