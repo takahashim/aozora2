@@ -16,19 +16,13 @@ pub struct Tokenizer {
     /// 入れ子トークナイズでは未閉じ 〔 をリテラルにする（例:54931 の
     /// 〔訳者注…〔Beethoven…〕 の内側 〔Beethoven）。
     allow_unclosed_accent: bool,
+    /// 未閉じのまま行末まで延長したアクセント（＝複数行アクセントの1行目）の絶対 span。
+    /// 変換には無関係の**検証用の副産物**。トップレベルでのみ溜まる（入れ子は未閉じ 〔 を
+    /// リテラルにするので発生しない）。診断 `unclosed-accent` や厳格モードが使う。
+    unclosed_accent_spans: Vec<Span>,
 }
 
 impl Tokenizer {
-    /// 新しいトークナイザを作成（入れ子用。未閉じ 〔 はリテラル）
-    pub fn new(input: &str) -> Self {
-        Self {
-            chars: input.chars().collect(),
-            pos: 0,
-            base: 0,
-            allow_unclosed_accent: false,
-        }
-    }
-
     /// トップレベル（行）用トークナイザ。未閉じ 〔 を行末までのアクセントに。
     pub fn new_top_level(input: &str) -> Self {
         Self {
@@ -36,6 +30,7 @@ impl Tokenizer {
             pos: 0,
             base: 0,
             allow_unclosed_accent: true,
+            unclosed_accent_spans: Vec::new(),
         }
     }
 
@@ -51,7 +46,10 @@ impl Tokenizer {
                 Span::new(self.base + start, self.base + self.pos),
             ));
         }
-        out
+        // ｜ は字句段階では単なるマーカー（RubyPrefix）として出るだけ。ここで
+        // 直後のルビと畳んで明示ルビ（PrefixedRuby）を確定する。tokenize_children
+        // 経由でも呼ばれるので、入れ子の ｜ も同じ規則で畳まれる。
+        fold_prefixed_ruby(out)
     }
 
     /// 入れ子内容（ルビ・親文字・アクセント内）を絶対char位置付きでトークナイズする。
@@ -61,6 +59,7 @@ impl Tokenizer {
             pos: 0,
             base,
             allow_unclosed_accent: false,
+            unclosed_accent_spans: Vec::new(),
         };
         tokenizer.tokenize()
     }
@@ -81,8 +80,11 @@ impl Tokenizer {
             }
             // ルビ 《...》
             RUBY_BEGIN => self.read_ruby(),
-            // 明示ルビ ｜...《...》
-            RUBY_PREFIX => self.read_prefixed_ruby(),
+            // 明示ルビ前置 ｜ … 字句段階ではマーカーを出すだけ（親文字確定は後段 fold）。
+            RUBY_PREFIX => {
+                self.skip(1);
+                TokenKind::RubyPrefix
+            }
             // 外字 ※［...］（＃は任意）。※ の次が ［ なら外字扱い（参照 dispatch_gaiji）。
             GAIJI_MARK => {
                 if self.peek_nth(1) == Some(COMMAND_BEGIN) {
@@ -163,79 +165,6 @@ impl Tokenizer {
         TokenKind::Ruby { children }
     }
 
-    /// 明示ルビトークンを読む ｜...《...》
-    ///
-    /// 参照実装 RubyBuffer は `｜` のたびに親文字バッファを dump_into して
-    /// protected を立て直す。つまり `《》` の直前の**最後の** `｜` からが親文字で、
-    /// それより前の `｜…` 区間は（`｜` をリテラルとして残したまま）本文へ出る。
-    /// 例: `今日｜民族観念［＃「民族観念」に傍点］と呼ぶ…悲憤｜慷慨《こうがい》`
-    /// → `｜` と `民族観念…悲憤` は本文、親文字は `慷慨` だけ。
-    /// よって最初の `｜` の後にトップレベル（コマンド ［…］ の外）でもう一つ `｜` が
-    /// あれば、最初の `｜` はリテラル扱いにして内容は再トークナイズに任せる。
-    fn read_prefixed_ruby(&mut self) -> TokenKind {
-        self.skip(1); // ｜
-        let base_start = self.pos;
-
-        // base_start から、コマンド ［…］ を飛ばしつつトップレベルの ｜ か 《 を探す。
-        let n = self.chars.len();
-        let mut scan = base_start;
-        while scan < n {
-            let c = self.chars[scan];
-            if c == COMMAND_BEGIN {
-                // ［…］（入れ子可）を丸ごと飛ばす。コマンド内の ｜/《 は区切りでない。
-                let mut depth = 0usize;
-                while scan < n {
-                    match self.chars[scan] {
-                        COMMAND_BEGIN => depth += 1,
-                        COMMAND_END => {
-                            depth -= 1;
-                            if depth == 0 {
-                                scan += 1;
-                                break;
-                            }
-                        }
-                        _ => {}
-                    }
-                    scan += 1;
-                }
-                continue;
-            }
-            if c == RUBY_PREFIX {
-                // 次の ｜ が 《 より先に来た: 最初の ｜ はリテラル。pos は base_start の
-                // ままにして、間の内容と次の ｜ は通常のトークナイズに任せる。
-                self.pos = base_start;
-                return TokenKind::Text(RUBY_PREFIX.to_string());
-            }
-            if c == RUBY_BEGIN {
-                break;
-            }
-            scan += 1;
-        }
-
-        // 《 が見つからなければ ｜ をテキストとして返す
-        if scan >= n || self.chars[scan] != RUBY_BEGIN {
-            self.pos = base_start;
-            return TokenKind::Text(RUBY_PREFIX.to_string());
-        }
-
-        let base_content: String = self.chars[base_start..scan].iter().collect();
-        self.pos = scan + 1; // 《 の次へ
-        let ruby_start = self.pos;
-
-        self.skip_until(RUBY_END);
-        let ruby_content = self.slice_from(ruby_start);
-        self.skip_if(RUBY_END);
-
-        // 親文字とルビを再帰的にトークナイズ
-        let base_children = Self::tokenize_children(&base_content, self.base + base_start);
-        let ruby_children = Self::tokenize_children(&ruby_content, self.base + ruby_start);
-
-        TokenKind::PrefixedRuby {
-            base_children,
-            ruby_children,
-        }
-    }
-
     /// 外字トークンを読む ※［...］（＃は任意）
     fn read_gaiji(&mut self) -> TokenKind {
         self.skip(2); // ※［
@@ -286,6 +215,11 @@ impl Tokenizer {
 
         if found_close {
             self.skip(1); // 〕
+        } else {
+            // 対応する 〕 が同一行に無いまま行末まで延長した（＝複数行アクセントの1行目、
+            // あるいは閉じ忘れ）。変換は参照実装どおり受理するが、検証用に span を控える。
+            self.unclosed_accent_spans
+                .push(Span::new(self.base + start, self.base + self.pos));
         }
 
         let children = Self::tokenize_children(&content, self.base + content_start);
@@ -359,10 +293,82 @@ impl Tokenizer {
     }
 }
 
+/// 一時マーカー [`TokenKind::RubyPrefix`]（＝`｜`）を、直後のルビと畳んで
+/// [`TokenKind::PrefixedRuby`] にする。字句解析の直後に一度だけ走る。
+///
+/// アルゴリズムは「`《》` から左へ辿って最も近い `｜` が親文字開始」という後方規則
+/// （spec-tokenizer.md 参照）を、逆向きに実装したもの:
+/// - ルビ（暗黙 `Ruby`）を見つけたら **`out` を末尾から遡り**、別のルビ
+///   （`Ruby`/`PrefixedRuby`）を越えない範囲で最も近い `RubyPrefix` を探す。
+/// - 見つかれば、そのマーカー〜ルビ直前を**親文字**として `PrefixedRuby` に畳む
+///   （親文字は空でもよい。例:`一番向｜《むか》` → 親文字空）。
+/// - 見つからなければ暗黙ルビのまま（親文字は後段の文字種抽出に委ねる）。
+/// - どのルビにも畳まれず余った `RubyPrefix` は本文の `｜`（`Text`）へ戻す。
+///   これで「多重 `｜` は最後が親文字・前はリテラル」が自動的に従う。
+/// - コマンド `［＃…］` は1トークンなので、その中の `｜` はマーカーにならず透過。
+fn fold_prefixed_ruby(tokens: Vec<Token>) -> Vec<Token> {
+    let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
+    for token in tokens {
+        let Token { kind, span } = token;
+        if let TokenKind::Ruby { children } = kind {
+            // 末尾から遡り、別のルビを越えない範囲で最も近い ｜ マーカーを探す。
+            let mut marker = None;
+            for idx in (0..out.len()).rev() {
+                match &out[idx].kind {
+                    TokenKind::RubyPrefix => {
+                        marker = Some(idx);
+                        break;
+                    }
+                    TokenKind::Ruby { .. } | TokenKind::PrefixedRuby { .. } => break,
+                    _ => {}
+                }
+            }
+            match marker {
+                Some(m) => {
+                    let marker_span = out[m].span;
+                    let mut base_children = out.split_off(m);
+                    base_children.remove(0); // ｜ マーカーを捨て、残りを親文字にする
+                    out.push(Token::new(
+                        TokenKind::PrefixedRuby {
+                            base_children,
+                            ruby_children: children,
+                        },
+                        marker_span.union(span),
+                    ));
+                }
+                None => out.push(Token::new(TokenKind::Ruby { children }, span)),
+            }
+        } else {
+            out.push(Token::new(kind, span));
+        }
+    }
+    // 余った ｜ マーカーはリテラルの本文 ｜ に戻す。
+    for token in out.iter_mut() {
+        if matches!(token.kind, TokenKind::RubyPrefix) {
+            token.kind = TokenKind::Text(RUBY_PREFIX.to_string());
+        }
+    }
+    out
+}
+
 /// 文字列を [`Token`] 列に変換するユーティリティ関数。各spanは入力先頭からの
 /// char オフセット `[start, end)`。
+///
+/// **1 行**（改行を含まない文字列）を渡す前提。複数行を渡すと `\n` はただのテキストになり、
+/// 未閉じ `〔` の「行末まで」が「入力末まで」に変わる。
 pub fn tokenize(input: &str) -> Vec<Token> {
     Tokenizer::new_top_level(input).tokenize()
+}
+
+/// [`tokenize`] と同じトークン列に加え、**未閉じのまま行末まで延長したアクセント**
+/// （＝複数行アクセントの1行目・閉じ忘れ）の絶対 span を返す。
+///
+/// トークン列は [`tokenize`] と完全に同一（byte 一致に無影響）で、span を副産物として
+/// 返すだけ。検証・診断（`unclosed-accent`）・将来の厳格モードが使う。1 行を渡す前提。
+pub fn tokenize_collecting_unclosed_accents(input: &str) -> (Vec<Token>, Vec<Span>) {
+    let mut tokenizer = Tokenizer::new_top_level(input);
+    let tokens = tokenizer.tokenize();
+    (tokens, tokenizer.unclosed_accent_spans)
 }
 
 #[cfg(test)]
@@ -418,6 +424,9 @@ mod tests {
                 TokenKind::Accent { children } => Self::Accent {
                     children: children.into_iter().map(Self::from).collect(),
                 },
+                TokenKind::RubyPrefix => {
+                    unreachable!("RubyPrefix markers are folded away inside tokenize()")
+                }
             }
         }
     }
@@ -453,7 +462,10 @@ mod tests {
                     assert_spans_are_well_formed(base_children, source_len, Some(token.span));
                     assert_spans_are_well_formed(ruby_children, source_len, Some(token.span));
                 }
-                TokenKind::Text(_) | TokenKind::Command { .. } | TokenKind::Gaiji { .. } => {}
+                TokenKind::Text(_)
+                | TokenKind::Command { .. }
+                | TokenKind::Gaiji { .. }
+                | TokenKind::RubyPrefix => {}
             }
         }
     }
@@ -579,6 +591,47 @@ mod tests {
                 "内側の未閉じ 〔 がリテラルになっていない: {children:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_unclosed_constructs_swallow_to_end_of_line() {
+        // spec-tokenizer.md「未閉じ構文の扱い」: 巻き戻して literal にするのは入れ子の
+        // 〔 だけ。《 ［＃ ※［ はいずれも閉じ記号が無ければ行末まで飲み込む（拒否しない）。
+        assert_eq!(
+            plain("あ《かな"),
+            vec![
+                Token::Text("あ".to_string()),
+                Token::Ruby {
+                    children: vec![Token::Text("かな".to_string())]
+                }
+            ]
+        );
+        assert_eq!(
+            plain("あ［＃注記"),
+            vec![
+                Token::Text("あ".to_string()),
+                Token::Command {
+                    content: "注記".to_string()
+                }
+            ]
+        );
+        assert_eq!(
+            plain("あ※［＃外字"),
+            vec![
+                Token::Text("あ".to_string()),
+                Token::Gaiji {
+                    description: "外字".to_string(),
+                    had_igeta: true
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn test_closing_delimiters_alone_are_plain_text() {
+        // 閉じ記号は read_text の区切りではないので、単独で現れたらただの本文。
+        assert_eq!(plain("あ》い"), vec![Token::Text("あ》い".to_string())]);
+        assert_eq!(plain("あ〕い"), vec![Token::Text("あ〕い".to_string())]);
     }
 
     #[test]

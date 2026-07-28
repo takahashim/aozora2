@@ -17,6 +17,7 @@ use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node, NodeKind, RefSpec};
 use crate::parser::reference_resolver::resolve_references_collecting_failures;
 use crate::parser::{parse_document_raw, RawLine};
+use crate::tokenizer::tokenize_collecting_unclosed_accents;
 use std::collections::HashSet;
 
 #[cfg(feature = "serde")]
@@ -196,6 +197,26 @@ pub fn analyze(input: &str) -> Analysis {
                 }
                 _ => {}
             }
+        }
+
+        // 未閉じアクセント（対応する 〕 が同一行に無く、行末まで延長した 〔…）。
+        // 参照実装は複数行アクセントの1行目として受理する（変換は byte 一致のまま）。
+        // 現状は互換優先で許容 → Warning。将来 複数行アクセントを禁止する厳格モードは、
+        // この検出（安定コード `unclosed-accent`）を弾く根拠に再利用できる。
+        let (_, unclosed) = tokenize_collecting_unclosed_accents(&raw.source);
+        for span in unclosed {
+            analysis.diagnostics.push(Diagnostic {
+                range: Range {
+                    line: raw.line_no,
+                    start: span.start,
+                    end: span.end,
+                },
+                severity: Severity::Warning,
+                code: "unclosed-accent",
+                message:
+                    "アクセント〔…〕が同一行で閉じられていません（行末まで延長。複数行アクセントは将来非対応予定）"
+                        .to_string(),
+            });
         }
 
         extract_symbols(raw, &mut analysis.symbols);
@@ -585,6 +606,36 @@ mod tests {
     fn properly_closed_block_has_no_unclosed_diagnostic() {
         let a = analyze("［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］");
         assert!(a.diagnostics.iter().all(|d| d.code != "unclosed-block"));
+    }
+
+    #[test]
+    fn unclosed_accent_becomes_diagnostic() {
+        // 対応する 〕 が同一行に無く行末まで延長した 〔…（複数行アクセントの1行目・4363相当）。
+        // 変換は互換のため受理するが、検証用に Warning を出す。
+        let a = analyze("〔Pardonnez a` mon");
+        let acc: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "unclosed-accent")
+            .collect();
+        assert_eq!(acc.len(), 1);
+        assert_eq!(acc[0].range.line, 0);
+        assert_eq!(acc[0].severity, Severity::Warning);
+    }
+
+    #[test]
+    fn closed_accent_has_no_unclosed_diagnostic() {
+        // 同一行で 〕 まで閉じているアクセントは診断しない。
+        let a = analyze("〔Cafe'《カフエ》〕");
+        assert!(a.diagnostics.iter().all(|d| d.code != "unclosed-accent"));
+    }
+
+    #[test]
+    fn nested_unclosed_bracket_is_not_flagged() {
+        // 入れ子の未閉じ 〔 はリテラル（アクセントにならない）ので診断も出ない。
+        // 〔訳者注 〔Beethoven e`〕: 外側だけアクセント、内側 〔 は本文（54931相当）。
+        let a = analyze("〔訳者注 〔Beethoven e`〕");
+        assert!(a.diagnostics.iter().all(|d| d.code != "unclosed-accent"));
     }
 
     #[test]
