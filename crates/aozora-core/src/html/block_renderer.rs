@@ -279,6 +279,14 @@ impl<'a> BlockRenderer<'a> {
         let (margin, text_indent) = self.burasage_geometry(wrap_width, width);
         for child in children {
             match child {
+                // ぶら下げが明示的に閉じられる行。参照はこの行を出力する前に
+                // ぶら下げを indent_stack から降ろすので、per-line の包みは効かず、
+                // 行末も出さない（バッファが次の行に持ち越される）。
+                Block::Line {
+                    inline,
+                    brk: Break::NoNewline,
+                    ..
+                } => self.render_inlines(inline, out),
                 // 参照 general_output と同順で判定する。まず包むか（blank_type==false）、
                 // 次に `<br />` を出すか（terprip）。
                 Block::Line { inline, .. } if has_inline_text(inline) => {
@@ -942,6 +950,30 @@ mod tests {
                 "後方参照形は包まない: {backref} → {html:?}"
             );
         }
+    }
+
+    /// ぶら下げが明示的に閉じられる行は、参照がその行の出力前にぶら下げを
+    /// indent_stack から降ろすので per-line の包みが効かない。行末も出さないため、
+    /// 続く行の内容が同じ出力行に繋がる（参照実装で実測）。
+    ///
+    /// 例: 001699/57254 の `(*20) full beard …髭をいいます。［＃ここで字下げ終わり］`
+    #[test]
+    fn burasage_line_with_explicit_close_is_not_wrapped() {
+        let lines = vec![
+            "［＃ここから３字下げ、折り返して４字下げ］",
+            "注1。",
+            "注2。［＃ここで字下げ終わり］",
+            "　次。",
+        ];
+        let blocks = lower_to_blocks(&parse_document_raw(&lines));
+        let html = BlockRenderer::new(&RenderOptions::default()).render_body(&blocks);
+        assert_eq!(
+            html,
+            concat!(
+                "<div class=\"burasage\" style=\"margin-left: 4em; text-indent: -1em;\">注1。</div>\r\n",
+                "注2。　次。<br />\r\n"
+            )
+        );
     }
 
     #[test]
