@@ -13,8 +13,10 @@
 
 mod block_renderer;
 mod document_renderer;
+mod notation;
 mod options;
 mod presentation;
+mod section_renderer;
 
 pub use options::{Quirks, RenderOptions};
 pub use presentation::html_escape;
@@ -66,19 +68,14 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
 }
 
 /// Aozora AST 新経路で**全文書**を組み立てる（docs/plan-neutral-ast.md B4）。
-/// head/metadata/section 枠は DocumentRenderer を再利用し、本文と tail は
+/// head/metadata/card の枠は [`document_renderer::DocumentRenderer`]、各セクション
+/// （本文・本文終わり後・底本情報）は [`section_renderer::SectionRenderer`] が
 /// `lower_to_blocks`→`BlockRenderer` で描画する（BlockManager 非依存）。
-/// フッタ「表記について」用の状態は BlockRenderer が描画の副作用で蓄積する。
+/// フッタ「表記について」の材料は全セクションを通して描画の副作用で溜まる。
 pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
-    use crate::document::{
-        extract_after_text_lines, extract_bibliographical_lines, extract_body_lines,
-        extract_header_info,
-    };
-    use crate::lower::lower_to_blocks;
-    use crate::parser::parse_document_raw;
-    use block_renderer::BlockRenderer;
+    use crate::document::extract_header_info;
     use document_renderer::DocumentRenderer;
-    use presentation::auto_link;
+    use section_renderer::{Section, SectionRenderer};
 
     let mut lines: Vec<&str> = input.split("\r\n").collect();
     if lines.last() == Some(&"") {
@@ -87,60 +84,21 @@ pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
 
     let header_info = extract_header_info(&lines);
     let doc = DocumentRenderer::new(options);
-    let mut br = BlockRenderer::new(options);
+    let mut sections = SectionRenderer::new(&doc, options);
 
     let mut output = String::new();
     doc.render_html_head(&mut output, &header_info);
     doc.render_metadata_section(&mut output, &header_info);
-
-    // 本文（main_text）。くの字点は生の行から数える（注記内も拾うため）。
-    doc.render_main_text_start(&mut output);
-    let body_lines = extract_body_lines(&lines);
-    for l in &body_lines {
-        br.scan_kunoji(l);
-    }
-    let body_raw = parse_document_raw(&body_lines);
-    let body_blocks = lower_to_blocks(&body_raw);
-    output.push_str(&br.render_body(&body_blocks));
-    doc.render_main_text_end(&mut output);
-
-    // tail セクション（after_text/bibliographical）は enter_tail 後に描画し、
-    // 各セクション出力へ自動リンクを適用する（参照 tail_output）。
-    br.enter_tail();
-
-    let after_text_lines = extract_after_text_lines(&lines);
-    if !after_text_lines.is_empty() {
-        doc.render_after_text_header(&mut output);
-        for l in &after_text_lines {
-            br.scan_kunoji(l);
-        }
-        let raw = parse_document_raw(&after_text_lines);
-        let blocks = lower_to_blocks(&raw);
-        output.push_str(&auto_link(&br.render_body(&blocks)));
-        doc.render_after_text_footer(&mut output);
-    }
-
-    let biblio_lines = extract_bibliographical_lines(&lines);
-    if !biblio_lines.is_empty() {
-        doc.render_bibliographical_header(&mut output);
-        for l in &biblio_lines {
-            br.scan_kunoji(l);
-        }
-        let raw = parse_document_raw(&biblio_lines);
-        let blocks = lower_to_blocks(&raw);
-        output.push_str(&auto_link(&br.render_body(&blocks)));
-        doc.render_bibliographical_footer(&mut output, input.ends_with('\n'));
-    }
-
-    doc.render_notation_notes(
+    sections.render(&mut output, Section::MainText, &lines);
+    sections.render(&mut output, Section::AfterText, &lines);
+    sections.render(
         &mut output,
-        br.has_notes,
-        br.has_jisx0213,
-        br.has_accent,
-        br.has_kunoji,
-        br.has_dakuten_kunoji,
-        &br.unconverted_gaiji,
+        Section::Bibliographical {
+            input_ends_with_newline: input.ends_with('\n'),
+        },
+        &lines,
     );
+    doc.render_notation_notes(&mut output, sections.notation());
     doc.render_card_section(&mut output);
     doc.render_html_foot(&mut output);
     output
