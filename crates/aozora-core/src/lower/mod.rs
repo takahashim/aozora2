@@ -53,27 +53,8 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
 
         match classify_line(&nodes) {
             LineKind::BlockOpen(kind) => {
-                // 参照実装 close_conflicting_blocks の implicit_close を再現する。
-                //  - Jisage 開始: 最上位が Jisage/Burasage なら1つ閉じる。
-                //  - Chitsuki 開始: 最上位から Chitsuki/Burasage が続く限り閉じる。
-                //  - Burasage 開始: 最上位から Jisage/Burasage が続く限り閉じる。
-                // 閉じタグ直後の改行: 開始タグを即座に出すブロック（Jisage/Chitsuki 等）は
-                // `</div><新開始…>` と同じ出力行に続くので改行なし（explicit_close=false）。
-                // Burasage は開始行に可視タグを出さない per-line モデルなので、暗黙閉じの
-                // `</div>` はその開始行の唯一の出力＝行末 `\r\n` が付く（explicit_close=true）。
-                let (matches_top, close): (fn(&BlockKind) -> bool, CloseKind) = match &kind {
-                    BlockKind::Jisage { .. } => (is_jisage_or_burasage, CloseKind::NoBreak),
-                    BlockKind::Chitsuki { .. } => (is_chitsuki_or_burasage, CloseKind::NoBreak),
-                    BlockKind::Burasage { .. } => (is_jisage_or_burasage, CloseKind::Newline),
-                    _ => (never_matches, CloseKind::NoBreak),
-                };
-                // Jisage は1つだけ、Chitsuki/Burasage は続く限り閉じる。
-                let close_once = matches!(kind, BlockKind::Jisage { .. });
-                while stack.innermost().is_some_and(matches_top) {
-                    stack.close_block(|_, _| close);
-                    if close_once {
-                        break;
-                    }
+                if let Some(policy) = ImplicitClose::when_opening(&kind) {
+                    policy.apply(&mut stack);
                 }
                 stack.open_block(kind, line_no, OpenKind::Newline);
             }
@@ -103,7 +84,7 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 // 先頭の行スコープマーカー1個（LineJisage、または is_block=false の
                 // 行スコープ BlockStart）だけを取り除き、残りは to_inlines に渡す
                 // （行内の見出しコマンド範囲などはそちらが畳む）。
-                let rest = strip_leading_line_scope_marker(nodes);
+                let rest = strip_line_scope_marker(nodes);
                 stack.push(Block::LineWrap {
                     kind,
                     inline: to_inlines(&rest),
@@ -145,18 +126,20 @@ fn apply_closes(stack: &mut BlockStack, nodes: &[Node], closes: &[(usize, bool)]
         push_content_line(stack, nodes, line_no);
         return;
     }
-    let last_close = closes[closable - 1].0;
+    // 以降は「実際に閉じられる並び」だけを見る。
+    let closes = &closes[..closable];
+    let last_close = closes.last().expect("closable > 0").0;
     let has_tail = last_close + 1 < nodes.len();
     let mut seg_start = 0usize;
 
-    for (n, (idx, explicit)) in closes.iter().take(closable).enumerate() {
+    for (n, (idx, explicit)) in closes.iter().enumerate() {
         // 閉じタグより前の本文。行末の改行は閉じタグ以降が出す。
         let segment = (seg_start < *idx).then(|| to_inlines(&nodes[seg_start..*idx]));
         // 参照は閉じタグを buffer に積む（＝本文の続き）ので、本文は閉じるブロックの
         // 内側に出る。ただしぶら下げだけは閉じで indent_stack から降りてしまい
         // per-line の包みが効かなくなるので、その行の本文はブロックの外に出す。
         let closing_burasage = matches!(stack.innermost(), Some(BlockKind::Burasage(_)));
-        let is_last = n + 1 == closable;
+        let is_last = n + 1 == closes.len();
         // 行末の改行を出すのは最後の閉じだけ。後続本文があるなら `</div>` のみ。
         let close_kind = |kind: &BlockKind, s: &BlockStack| {
             if !is_last || has_tail {
@@ -182,7 +165,7 @@ fn apply_closes(stack: &mut BlockStack, nodes: &[Node], closes: &[(usize, bool)]
 
     // 最後の閉じの後ろに残った本文を同じ行に出す。
     if has_tail {
-        let explicit = closes.iter().take(closable).any(|(_, e)| *e);
+        let explicit = closes.iter().any(|(_, e)| *e);
         let inline = to_inlines(&nodes[last_close + 1..]);
         let brk = content_break(&inline, explicit);
         stack.push_line(inline, brk, line_no);
@@ -206,12 +189,17 @@ fn push_content_line(stack: &mut BlockStack, nodes: &[Node], line_no: usize) {
     stack.push_line(inline, brk, line_no);
 }
 
-/// 行スコープ包みの先頭マーカー1個を取り除いた残りのノード列を返す。
+/// 行スコープ包みを起こしたマーカー1個を取り除いた残りのノード列を返す。
 ///
-/// ［＃N字下げ］（`LineJisage`、行内どこでも）を1個、または先頭の行スコープ
-/// `BlockStart`（is_block=false の Jisage/Chitsuki＝地付き）を取り除く。行内の
-/// 見出しコマンド範囲などブロックマーカーはそのまま残す（to_inlines が畳む）。
-fn strip_leading_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
+/// ［＃N字下げ］（`LineJisage`）は**行内のどこにあっても**1個、行スコープの
+/// `BlockStart`（is_block=false の Jisage/Chitsuki＝地付き）は**先頭にあるとき**だけ
+/// 取り除く。行内の見出しコマンド範囲などブロックマーカーはそのまま残す
+/// （to_inlines が畳む）。
+///
+/// 位置だけ返して呼び出し側で飛ばす形にはしない。マーカーをまたぐ範囲コマンド
+/// （`［＃ここから太字］…［＃N字下げ］…［＃ここで太字終わり］`）があるので、
+/// 列を分割すると `to_inlines` が対を見つけられなくなる。
+fn strip_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
     // まず LineJisage を1個だけ落とす（参照 apply_jisage の位置除去）。
     if let Some(pos) = nodes
         .iter()
@@ -259,8 +247,56 @@ fn is_chitsuki_or_burasage(k: &BlockKind) -> bool {
     matches!(k, BlockKind::Chitsuki { .. } | BlockKind::Burasage { .. })
 }
 
-fn never_matches(_: &BlockKind) -> bool {
-    false
+/// ブロックを開くときに暗黙で閉じる相手（参照実装 `close_conflicting_blocks`）。
+///
+/// 開く種類ごとに「どれを閉じるか・どう閉じるか・1つだけか」が決まる。
+/// 暗黙閉じを持たない種類では [`ImplicitClose::when_opening`] が None を返す。
+struct ImplicitClose {
+    /// 閉じる相手か（スタック最上位に対して判定する）。
+    matches: fn(&BlockKind) -> bool,
+    /// 暗黙閉じの閉じタグの出力形。
+    close: CloseKind,
+    /// 1つ閉じたら止めるか（false なら該当する限り閉じ続ける）。
+    once: bool,
+}
+
+impl ImplicitClose {
+    /// 閉じタグ直後の改行: 開始タグを即座に出すブロック（Jisage/Chitsuki 等）は
+    /// `</div><新開始…>` と同じ出力行に続くので改行なし。Burasage は開始行に
+    /// 可視タグを出さない per-line モデルなので、暗黙閉じの `</div>` がその
+    /// 開始行の唯一の出力＝行末 `\r\n` が付く。
+    fn when_opening(kind: &BlockKind) -> Option<Self> {
+        match kind {
+            // Jisage 開始: 最上位が Jisage/Burasage なら1つだけ閉じる。
+            BlockKind::Jisage { .. } => Some(Self {
+                matches: is_jisage_or_burasage,
+                close: CloseKind::NoBreak,
+                once: true,
+            }),
+            // Chitsuki 開始: 最上位から Chitsuki/Burasage が続く限り閉じる。
+            BlockKind::Chitsuki { .. } => Some(Self {
+                matches: is_chitsuki_or_burasage,
+                close: CloseKind::NoBreak,
+                once: false,
+            }),
+            // Burasage 開始: 最上位から Jisage/Burasage が続く限り閉じる。
+            BlockKind::Burasage { .. } => Some(Self {
+                matches: is_jisage_or_burasage,
+                close: CloseKind::Newline,
+                once: false,
+            }),
+            _ => None,
+        }
+    }
+
+    fn apply(&self, stack: &mut BlockStack) {
+        while stack.innermost().is_some_and(self.matches) {
+            stack.close_block(|_, _| self.close);
+            if self.once {
+                break;
+            }
+        }
+    }
 }
 
 /// 行末で閉じるブロックの閉じタグの出力形。
@@ -355,14 +391,13 @@ impl BlockStack {
     }
 
     /// いちばん内側のブロックを閉じて木に載せる。閉じ方は**ポップ後の**スタックから
-    /// 決める（ぶら下げ直下かの判定に外側が要る）。開いていなければ何もせず false。
-    fn close_block(&mut self, close: impl FnOnce(&BlockKind, &Self) -> CloseKind) -> bool {
+    /// 決める（ぶら下げ直下かの判定に外側が要る）。開いていなければ何もしない。
+    fn close_block(&mut self, close: impl FnOnce(&BlockKind, &Self) -> CloseKind) {
         let Some(block) = self.open.pop() else {
-            return false;
+            return;
         };
         let close = close(&block.kind, self);
         self.push(block.into_nested(close));
-        true
     }
 
     /// 閉じられないまま残ったブロックを内側から順に取り出す（EOF 処理用）。
