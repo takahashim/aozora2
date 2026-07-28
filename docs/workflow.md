@@ -183,9 +183,47 @@ architecture.md 2.1 性質5「ある記法の定義・意味・実例が grep �
   `oracle/` に添える。
 - baseline の更新は「改善をコミットするとき」に行う（不変条件 2）。
 
-## 8. 現在の作業キュー
+## 8. 現在の状態と作業記録
 
-architecture.md 6 章「移行の段階」の順序に従う。
+### 現在の適合性（2026-07-28 時点）
+
+| 指標 | 値 |
+|---|---|
+| **byte-exact** | **17361 / 17509**（99.15%） |
+| 構造差あり | 92 |
+| 変換エラー（参照実装が失敗しオラクルが無い） | 56 |
+
+実効上限は 17509 − 56 = **17453**。真の互換指標は byte-exact 件数（後述「指標の注意」）。
+
+### ⚠ baseline が古い（他の作業より先に直すこと）
+
+`aozora-htmlcheck/baseline-oracle.jsonl` は **2026-07-24 のまま**（17374 exact）で、
+その後の Aozora AST 移行（17361 へ）が反映されていない。現在 `--baseline` を付けて回すと
+**悪化 49・終了コード 1** になり、§1 不変条件 2 のゲートが機能していない。
+§7 の原則（守衛が死んだ状態で作業しない）に従い、現状で貼り直す:
+
+```
+cd aozora-htmlcheck && cargo build --release
+./target/release/aozora-htmlcheck --oracle-dir oracle \
+    --baseline-out baseline-oracle.jsonl --out results-oracle.jsonl
+```
+
+### 完了した大きな作業
+
+architecture.md 6 章「移行の段階」の順序に従って進めてきた。
+
+- **Aozora AST 木化・BlockManager 撤去（完了）**: 旧ストリーミング経路を撤去し、HTML・
+  プレーンテキストとも Aozora AST のみから描画する。下記「次の作業の選択肢 1（renderer の
+  行制御の作り直し）」はこれで達成済み。経緯は docs/plan-neutral-ast.md。
+- **位置情報の intrinsic 化（完了）**: `Token`/`Node`/`Inline` がそれぞれ自前の char span を
+  持つ。span の実在性（合成ノードの継承・ルビ親文字吸収の合併）は docs/spec-ast.md。
+- **エディタ支援 `analysis`（フェーズ1完了）**: セマンティックトークン・アウトライン・
+  折りたたみ・診断 4 種（`unresolved-reference` / `unresolved-gaiji` / `unclosed-accent` /
+  `unclosed-block`）。計画は docs/plan-lsp.md。
+- **記法定義のデータ化（継続中）**: `data/*.json` から build.rs が表を生成する形へ。
+  現在 jis2ucs・accent・accent_names・original_title_chars・command_table.tsv。
+
+### 過去の作業記録（日付つき・追記のみ）
 
 **コメント→テスト監査（2026-07 実施済み）**: 参照実装の挙動を説明する規範
 コメント約 60 箇所を、対応するテストの有無で照合した。結果、大半は既に
@@ -613,10 +651,27 @@ error 56 は参照実装が失敗しオラクルが無い作品（内訳は §�
 - 4995/57416/1452（外字入りルビ親文字＋底本注記、参照バグ）、18371/47055、gaiji 一覧
   など散在。
 
-次の作業の選択肢（どれもオラクル byte-exact で各段検証。真の初回相違は gz と
-出力の直接行 diff で取ること。修正時は関連仕様も確認する）:
-1. **renderer の行制御の作り直し**（大きいが根本的）: 参照の @indent_stack/
-   general_output（@noprint・@terprip・tail・String/Tag 型）モデルへ寄せる。div均衡・
-   burasage・bare終了br・58012 のマージがまとめて射程に入る。着手前に設計検討。
-2. per-case な参照バグを1件ずつ Quirk 化（効果小・低リスク）。
-3. ループD 定常運用（コーパス/注記一覧更新・未対応記法の集計）に戻る。
+**Aozora AST 移行の完了（2026-07-25〜28）**: 上の「次の作業の選択肢 1（renderer の行制御の
+作り直し）」を実施した。参照の `@indent_stack`/`general_output` モデルを Lowerer へ移し、
+`BlockManager` と出力HTML詮索を撤去。HTML・プレーンテキストとも Aozora AST のみから
+状態レスに描画する。経緯とフェーズ記録は docs/plan-neutral-ast.md。
+
+---
+
+## 9. 次の作業キュー
+
+着手前に §8「baseline が古い」を先に片付けること（守衛が死んだ状態で作業しない）。
+
+1. **baseline の貼り直し**（最優先・小）。§8 のコマンドで現状を基準に固定する。
+2. **ループD 定常運用**（コーパス・注記一覧の更新反映、未対応記法の集計）。
+   三者のドリフト解消は恒常作業（§5）。
+3. **残差 92 件の個別対応**（中〜高リスク）。多くは参照実装のバグ・実装都合の再現で、
+   div/br 均衡と burasage 入れ子は architecture.md §5 の方針どおり深追いしない。
+   per-case な参照バグの Quirk 化は効果小・低リスクなので手が空いたときに。
+4. **`analysis` フェーズ2**（診断の拡充と CodeMirror 接続）。計画は docs/plan-lsp.md。
+5. **記法のデータ駆動化の継続**（architecture.md §2.1 性質1）。`BlockType`・
+   `FontSizeType`・`MidashiLevel/Style` は順序依存ディスパッチのため対象外と判断済み。
+
+将来の検討課題として、UTF-8 入力時の JIS X 0213 対応（第3・第4水準を直接書いた本文）が
+ある。参照実装は Shift_JIS 入力しか扱えないので byte 一致の制約が無い領域で、
+入力エンコーディングで挙動を分ける設計になる。
