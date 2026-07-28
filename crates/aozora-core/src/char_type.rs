@@ -10,9 +10,17 @@
 //! | Katakana | カタカナ（ァ-ン、ー、ヽ、ヾ、ヴ） |
 //! | Zenkaku | 全角英数・ギリシャ・キリル文字 |
 //! | Hankaku | 半角英数と一部記号 |
-//! | Kanji | CJK統合漢字と特殊文字（々、※、仝、〆、〇、ヶ） |
+//! | Kanji | JIS X 0208 の漢字 6,355 字 ＋ 々、※、仝、〆、〇、ヶ |
 //! | HankakuTerminate | 半角終端記号（.;"?!)） |
 //! | Else | その他（句読点、括弧など） |
+//!
+//! 分類は参照実装 `aozora2html` の Shift_JIS 正規表現
+//! （`[ぁ-んゝゞ]` / `[ァ-ンーヽヾヴ]` / `[亜-熙々※仝〆〇ヶ]` 等）と 1 文字も違わないように
+//! 定義してある。漢字だけは Unicode 上で 4,031 本に散らばるので、区点レンジから
+//! 生成したビットマップで判定する（[`is_x0208_kanji`]）。
+//!
+//! 々・仝・〆・〇・ヶ を漢字とみなすのは青空文庫作業マニュアルの規定による。
+//! 一方 ヵ (U+30F5) は X 0208 の仮名だが公式規定も参照実装の分類も無く、`Else` になる。
 
 /// 文字種別
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -79,16 +87,18 @@ impl CharType {
         }
 
         // 漢字: 参照実装 REGEX_KANJI = [亜-熙々※仝〆〇ヶ]（SJIS）。
-        // 亜(SJIS 0x889F)〜熙(0xEAA4) の SJIS 2バイトコード、および明示された
-        // 々 (U+3005), ※ (U+203B), 仝 (U+4EDD), 〆 (U+3006), 〇 (U+3007), ヶ (U+30F6)。
-        // 仝・々 は SJIS が 0x889F 未満だが明示リストにあるので漢字。
+        // 明示された 々 (U+3005), ※ (U+203B), 仝 (U+4EDD), 〆 (U+3006),
+        // 〇 (U+3007), ヶ (U+30F6)。これらは JIS X 0208 の漢字ブロックの外にあるが、
+        // 青空文庫作業マニュアルが「｜がいるかいらないかの判断にあたっては漢字と
+        // みなす」と規定している（※ のみマニュアル未記載だが参照実装にある）。
+        // なお ヵ (U+30F5) は規定が無く、参照実装でもどの文字種にも属さない（:else）。
         if matches!(c, '々' | '※' | '仝' | '〆' | '〇' | 'ヶ') {
             return CharType::Kanji;
         }
-        // U+4E00-U+9FFF でも、SJIS が [亜, 熙] の範囲外（NEC/IBM 拡張漢字
-        // 0xED-,0xFA- 等）やエンコード不能なものは、参照では :else になり
-        // ルビ親文字の連なりが切れる（例:厓=SJIS 0xFA8D）。
-        if matches!(c, '\u{4E00}'..='\u{9FFF}') && sjis_in_kanji_range(c) {
+        // 亜-熙 = JIS X 0208 の漢字 6,355 字。X 0208 の外（NEC/IBM 拡張漢字や
+        // X 0213 の第3・第4水準）は参照では :else になり、ルビ親文字の連なりが
+        // そこで切れる（例:厓 は参照実装では「JIS外字」警告が出て親文字にならない）。
+        if is_x0208_kanji(c) {
             return CharType::Kanji;
         }
 
@@ -109,21 +119,29 @@ impl CharType {
     }
 }
 
-/// 文字の Shift_JIS 2バイトコードが 亜(0x889F)〜熙(0xEAA4) の範囲にあるか。
-/// 参照実装 REGEX_KANJI = [亜-熙…] の 亜-熙（JIS X 0208 の漢字ブロック）に相当。
-/// NEC/IBM 拡張漢字（SJIS 0xED-,0xFA- 等）やエンコード不能な文字は範囲外＝false。
-fn sjis_in_kanji_range(c: char) -> bool {
-    let mut buf = [0u8; 8];
-    let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
-    if had_err {
+/// URO（CJK統合漢字 U+4E00-U+9FFF）の下限。
+const URO_START: u32 = 0x4E00;
+/// URO の上限。
+const URO_END: u32 = 0x9FFF;
+
+/// URO 各符号位置が JIS X 0208 の漢字かを示すビットマップ（1 ビット / 符号位置）。
+/// `build.rs` が `data/jis2ucs.json`（JIS X 0213 面区点 → Unicode）の
+/// 面1 **16-01〜47-51** ＋ **48-01〜84-06** から生成する（計 6,355 字）。
+static X0208_KANJI_BITS: [u8; ((URO_END - URO_START + 1) / 8) as usize] =
+    include!(concat!(env!("OUT_DIR"), "/x0208_kanji_bitmap.rs"));
+
+/// 文字が **JIS X 0208 の漢字**（第1水準＋第2水準の 6,355 字）か。
+///
+/// 参照実装 `REGEX_KANJI = /[亜-熙…]/`（Shift_JIS 範囲）の 亜-熙 に相当する。
+/// X 0208 の漢字は Unicode 上では 4,031 本に散らばるためレンジでは表せないが、
+/// 区点空間では 2 レンジで表せるので、それをビットマップに畳んで O(1) で判定する。
+fn is_x0208_kanji(c: char) -> bool {
+    let cp = c as u32;
+    if !(URO_START..=URO_END).contains(&cp) {
         return false;
     }
-    let b = encoded.as_ref();
-    if b.len() != 2 {
-        return false;
-    }
-    let code = ((b[0] as u16) << 8) | b[1] as u16;
-    (0x889F..=0xEAA4).contains(&code)
+    let idx = (cp - URO_START) as usize;
+    X0208_KANJI_BITS[idx / 8] & (1 << (idx % 8)) != 0
 }
 
 /// 文字種別を取得する拡張トレイト
@@ -141,6 +159,62 @@ impl CharTypeExt for char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 旧定義（検証用）: Shift_JIS へ符号化して 亜(0x889F)〜熙(0xEAA4) に入るか。
+    /// ビットマップ化の前はこれが漢字判定だった。生成表がこれと完全一致することを
+    /// 下のテストで保証する（一致する限り byte 一致は崩れない）。
+    fn sjis_in_kanji_range_reference(c: char) -> bool {
+        let mut buf = [0u8; 8];
+        let (encoded, _, had_err) = encoding_rs::SHIFT_JIS.encode(c.encode_utf8(&mut buf));
+        if had_err {
+            return false;
+        }
+        let b = encoded.as_ref();
+        if b.len() != 2 {
+            return false;
+        }
+        let code = ((b[0] as u16) << 8) | b[1] as u16;
+        (0x889F..=0xEAA4).contains(&code)
+    }
+
+    #[test]
+    fn x0208_kanji_bitmap_matches_sjis_definition() {
+        // URO 全域を総当たりし、生成したビットマップが旧定義と 1 文字も違わないことを確認する。
+        let mut count = 0usize;
+        for cp in URO_START..=URO_END {
+            let c = char::from_u32(cp).expect("URO は全て有効なスカラ値");
+            let expected = sjis_in_kanji_range_reference(c);
+            assert_eq!(
+                is_x0208_kanji(c),
+                expected,
+                "U+{cp:04X} ({c}) の判定が旧定義と食い違う"
+            );
+            if expected {
+                count += 1;
+            }
+        }
+        // JIS X 0208-1990/1997/2012 の漢字数（第1水準 2,965 ＋ 第2水準 3,390）。
+        assert_eq!(count, 6355, "JIS X 0208 の漢字数が合わない");
+    }
+
+    #[test]
+    fn x0208_kanji_excludes_extensions() {
+        // 第1水準の先頭（16-01）と第2水準の末尾（84-06、X 0208-1990 で追加）は漢字。
+        assert!(is_x0208_kanji('亜'));
+        assert!(is_x0208_kanji('熙'));
+
+        // NEC/IBM 拡張漢字は X 0208 の外なので漢字にしない（厓・賴）。
+        assert!(!is_x0208_kanji('\u{5393}'));
+        assert!(!is_x0208_kanji('\u{8CF4}'));
+        assert_eq!(CharType::classify('\u{5393}'), CharType::Else);
+
+        // 々 等は URO の外なのでビットマップ側では false。classify の明示リストが拾う。
+        assert!(!is_x0208_kanji('々'));
+        assert_eq!(CharType::classify('々'), CharType::Kanji);
+
+        // ヵ (U+30F5) は青空文庫にも参照実装にも規定が無く、どの文字種にも属さない。
+        assert_eq!(CharType::classify('ヵ'), CharType::Else);
+    }
 
     #[test]
     fn test_hiragana() {

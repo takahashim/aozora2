@@ -32,6 +32,101 @@ fn main() {
         "data/accent_names.json",
         |s| Ok(s.to_string()),
     );
+
+    // JIS X 0208 の漢字 6,355 字のビットマップ。
+    generate_x0208_kanji_bitmap(&out_dir);
+}
+
+/// URO（U+4E00-U+9FFF）の各符号位置が **JIS X 0208 の漢字**かを表すビットマップを
+/// `OUT_DIR/x0208_kanji_bitmap.rs` へ書き出す（`[u8; 2624]` の配列リテラル）。
+///
+/// 出典は `data/jis2ucs.json`（JIS X 0213 の面区点 → Unicode）。JIS X 0208 の漢字は
+/// X 0213 面1 のうち **16-01〜47-51（第1水準 2,965字）** と
+/// **48-01〜84-06（第2水準 3,390字）** で、計 **6,355字**。
+/// 区47 点52〜94 と 区84 点7〜94 は X 0213 で追加された 131 字なので除外する。
+///
+/// 漢字判定を Unicode レンジで書くと 4,031 本に散らばるが、区点空間では上記2レンジで
+/// 済む。生成後は実行時に O(1) のビット参照で判定でき、エンコーディング実装に依存しない。
+fn generate_x0208_kanji_bitmap(out_dir: &str) {
+    const URO_START: u32 = 0x4E00;
+    const URO_END: u32 = 0x9FFF;
+    const LEN: usize = ((URO_END - URO_START + 1) / 8) as usize; // 2624
+
+    let in_file = "data/jis2ucs.json";
+    let json = fs::read_to_string(in_file).unwrap_or_else(|_| panic!("{in_file} not found"));
+    let table: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    let mut bits = vec![0u8; LEN];
+    let mut count = 0usize;
+    if let serde_json::Value::Object(map) = table {
+        for (key, value) in map {
+            let Some((men, ku, ten)) = parse_menkuten(&key) else {
+                continue;
+            };
+            if !is_x0208_kanji_cell(men, ku, ten) {
+                continue;
+            }
+            let serde_json::Value::String(s) = value else {
+                continue;
+            };
+            let decoded = parse_html_entities(&s)
+                .unwrap_or_else(|| panic!("{in_file}: {key} の値 {s:?} をデコードできません"));
+            let mut chars = decoded.chars();
+            let (Some(c), None) = (chars.next(), chars.next()) else {
+                panic!("{in_file}: {key} が単一文字ではありません: {decoded:?}");
+            };
+            let cp = c as u32;
+            assert!(
+                (URO_START..=URO_END).contains(&cp),
+                "{in_file}: {key} ({c}, U+{cp:04X}) が URO の外にあります"
+            );
+            let idx = (cp - URO_START) as usize;
+            bits[idx / 8] |= 1 << (idx % 8);
+            count += 1;
+        }
+    }
+    assert_eq!(
+        count, 6355,
+        "JIS X 0208 の漢字数が 6,355 になりません（区点レンジの抽出条件を確認）"
+    );
+
+    let mut code = String::from("[\n");
+    for chunk in bits.chunks(16) {
+        code.push_str("    ");
+        for b in chunk {
+            code.push_str(&format!("{b:#04x}, "));
+        }
+        code.push('\n');
+    }
+    code.push(']');
+    fs::write(Path::new(out_dir).join("x0208_kanji_bitmap.rs"), code).unwrap();
+    println!("cargo:rerun-if-changed={in_file}");
+}
+
+/// `"1-16-01"` 形式のキーを (面, 区, 点) に分解する。形式が違えば `None`。
+fn parse_menkuten(key: &str) -> Option<(u32, u32, u32)> {
+    let mut it = key.split('-');
+    let men = it.next()?.parse().ok()?;
+    let ku = it.next()?.parse().ok()?;
+    let ten = it.next()?.parse().ok()?;
+    if it.next().is_some() {
+        return None;
+    }
+    Some((men, ku, ten))
+}
+
+/// その面区点が JIS X 0208 の漢字か（面1 の 16-01〜47-51 ＋ 48-01〜84-06）。
+fn is_x0208_kanji_cell(men: u32, ku: u32, ten: u32) -> bool {
+    if men != 1 {
+        return false;
+    }
+    match ku {
+        16..=46 => true,
+        47 => ten <= 51, // 第1水準の末尾。47-52 以降は X 0213 の追加分
+        48..=83 => true,
+        84 => ten <= 6, // 第2水準の末尾（84-05 凜, 84-06 熙 は X 0208-1990 で追加）
+        _ => false,
+    }
 }
 
 /// JSON（文字列→文字列のオブジェクト）から
