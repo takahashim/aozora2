@@ -9,10 +9,9 @@ use std::fs;
 use std::path::Path;
 
 /// ビルド時に読む入力データ。変更されたら再生成する。
-const INPUTS: [&str; 4] = [
+const INPUTS: [&str; 3] = [
     "data/jis2ucs.json",
     "data/accent_table.json",
-    "data/accent_names.json",
     "data/original_title_chars.json",
 ];
 
@@ -41,19 +40,9 @@ fn main() {
             .ok_or_else(|| "HTML 実体参照（&#xXXXX;）をデコードできません".to_string())
     });
 
-    // accent: 「基底文字＋記号」→ JISコード。値はそのまま。
-    generate_string_map(&out_dir, "accent_table.rs", "data/accent_table.json", |s| {
-        Ok(s.to_string())
-    });
-
-    // accent の説明文: 参照実装 aozora2html の yml/accent_table.yml 由来（規則から
-    // 組み立てられない表記＝ドイツ語エスツェット等を含む）。値はそのまま。
-    generate_string_map(
-        &out_dir,
-        "accent_name_table.rs",
-        "data/accent_names.json",
-        |s| Ok(s.to_string()),
-    );
+    // accent: 「基底文字＋記号」→ (JISコード, 説明文)。1エントリが組を持つので、
+    // 1ファイルから 2 つのマップを生成する（jis2ucs.json から 2 生成物を作るのと同じ形）。
+    generate_accent_tables(&out_dir);
 
     // JIS X 0208 の漢字ビットマップ（同じ jis2ucs.json から導出する 2 つ目の生成物）。
     generate_x0208_kanji_bitmap(&out_dir);
@@ -223,6 +212,52 @@ where
     }
     code.push_str("    m\n}");
     write_generated(out_dir, out_file, &code);
+}
+
+/// アクセント表（`data/accent_table.json`）から 2 つのマップを生成する。
+///
+/// - `accent_table.rs` … 「基底文字＋記号」→ JISコード（変換に使う）
+/// - `accent_name_table.rs` … 「基底文字＋記号」→ 説明文（外字画像の alt に使う）
+///
+/// 元は 2 ファイルに分けていたが、両者は同じキー集合で 1:1 に対応するのに並び順が
+/// 違い、1 件足すのに 2 箇所を別々の位置へ書く必要があった。説明文を隣のキーへ
+/// 取り違えてもキー数が変わらないため気づけない。1 エントリ＝1 組にして構造的に
+/// 防ぐ。説明文は規則から組み立てられない表記（ドイツ語エスツェット、参照実装の
+/// 表記ゆれ）を含むのでデータとして持つ。
+fn generate_accent_tables(out_dir: &str) {
+    const IN_FILE: &str = "data/accent_table.json";
+    let json = fs::read_to_string(IN_FILE).unwrap_or_else(|_| panic!("{IN_FILE} not found"));
+    let table: serde_json::Value = serde_json::from_str(&json)
+        .unwrap_or_else(|e| panic!("{IN_FILE}: JSON として読めません: {e}"));
+    let serde_json::Value::Object(map) = table else {
+        panic!("{IN_FILE}: トップレベルがオブジェクトではありません");
+    };
+
+    let mut jis = String::from("{\n    let mut m = std::collections::HashMap::new();\n");
+    let mut names = jis.clone();
+    for (key, value) in map {
+        let field = |name: &str| -> String {
+            match value.get(name) {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                other => {
+                    panic!("{IN_FILE}: キー {key:?} の {name} が文字列ではありません: {other:?}")
+                }
+            }
+        };
+        jis.push_str(&format!(
+            "    m.insert(\"{key}\", \"{}\");\n",
+            field("jis_code")
+        ));
+        names.push_str(&format!(
+            "    m.insert(\"{key}\", \"{}\");\n",
+            field("name")
+        ));
+    }
+    for code in [&mut jis, &mut names] {
+        code.push_str("    m\n}");
+    }
+    write_generated(out_dir, "accent_table.rs", &jis);
+    write_generated(out_dir, "accent_name_table.rs", &names);
 }
 
 // ---------------------------------------------------------------------------

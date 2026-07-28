@@ -221,7 +221,7 @@ architecture.md 6 章「移行の段階」の順序に従って進めてきた�
   折りたたみ・診断 4 種（`unresolved-reference` / `unresolved-gaiji` / `unclosed-accent` /
   `unclosed-block`）。計画は docs/plan-lsp.md。
 - **記法定義のデータ化（継続中）**: `data/*.json` から build.rs が表を生成する形へ。
-  現在 jis2ucs・accent・accent_names・original_title_chars・command_table.tsv。
+  現在 jis2ucs・accent_table（JISコードと説明文の組）・original_title_chars・command_table.tsv。
 
 ### 過去の作業記録（日付つき・追記のみ）
 

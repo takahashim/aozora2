@@ -6,11 +6,12 @@ use std::collections::HashMap;
 use crate::delimiters::ACCENT_MARKS;
 use crate::jis_table::jis_to_unicode;
 
-/// アクセントテーブル（基底文字+記号 → JISコード）
+/// アクセントテーブル（基底文字+記号 → JISコード）。`data/accent_table.json` から生成。
 static ACCENT_TABLE: Lazy<HashMap<&'static str, &'static str>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/accent_table.rs")));
 
-/// アクセント文字の説明文。参照実装 aozora2html の accent_table.yml 由来で、
+/// アクセント文字の説明文（基底文字+記号 → 説明文）。`data/accent_table.json` の
+/// 同じエントリから生成する。参照実装 aozora2html の accent_table.yml 由来で、
 /// 規則から組み立てられない表記（ドイツ語エスツェット など）も含む。
 static ACCENT_NAME_TABLE: Lazy<HashMap<&'static str, &'static str>> =
     Lazy::new(|| include!(concat!(env!("OUT_DIR"), "/accent_name_table.rs")));
@@ -148,10 +149,9 @@ fn lookup_accent(key: &str) -> Option<(String, String)> {
 
 /// アクセント文字の説明文を引く。
 ///
-/// 説明文は参照実装 aozora2html の accent_table.yml 由来の表がすべて持っている
-/// （`accent_name_table_covers_every_accent_key` が網羅を固定する）。規則から
-/// 組み立てられない表記（ドイツ語エスツェット、参照実装の表記ゆれ）があるため
-/// 生成はせず表を引くだけにする。キーに直す fallback は表が欠けたときの保険。
+/// 説明文は `data/accent_table.json` の各エントリが JIS コードと組で持っている。
+/// 規則から組み立てられない表記（ドイツ語エスツェット、参照実装の表記ゆれ）が
+/// あるため生成はせず表を引くだけにする。キーに直す fallback は保険。
 fn accent_name(key: &str) -> String {
     ACCENT_NAME_TABLE
         .get(key)
@@ -176,10 +176,12 @@ mod tests {
         ));
     }
 
-    /// 説明文の表がアクセント表を完全に覆っていること。以前は覆えていない場合に
-    /// 備えて規則から説明文を組み立てる分岐を持っていたが、両表は build.rs が
-    /// 同じ data/ から生成していて 1:1 なので到達しなかった。網羅をここで固定して
-    /// 分岐を落としている。
+    /// 説明文の表がアクセント表を完全に覆っていること。
+    ///
+    /// 元は 2 つの JSON に分かれていて 1:1 が偶然に頼っていたので、規則から説明文を
+    /// 組み立てる（到達しない）分岐を持っていた。現在は 1 エントリが
+    /// `{ jis_code, name }` の組を持ち build.rs が両マップを生成するので構造的に
+    /// 揃うが、生成の取りこぼしを検出する網として残す。
     #[test]
     fn accent_name_table_covers_every_accent_key() {
         for key in ACCENT_TABLE.keys() {
