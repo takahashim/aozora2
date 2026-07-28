@@ -5,7 +5,7 @@
 //! のみ）。旧経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ足す。
 //! バックエンドは木を**状態なしに歩く**だけ（BlockManager を持たない）。
 
-use crate::ast::{to_inlines, Block, BlockKind, Break, CloseKind, Inline, InlineKind};
+use crate::ast::{to_inlines, Block, BlockKind, Break, CloseKind, Inline, InlineKind, OpenKind};
 use crate::gaiji::{
     parse_gaiji, split_nested_gaiji, strip_kuten_prefix, GaijiResult, NestedGaijiSegment,
 };
@@ -163,8 +163,9 @@ impl<'a> BlockRenderer<'a> {
                 kind,
                 children,
                 close,
+                open,
                 ..
-            } => self.render_nested(kind, children, *close, out),
+            } => self.render_nested(kind, children, *close, *open, out),
             Block::LineWrap { kind, inline, .. } => {
                 // 行全体をブロック div で1行に包む（行スコープ字下げ／地付き）。
                 // 開き直後の改行も内側 <br /> も出さず、行末に `\r\n` のみ。
@@ -186,6 +187,7 @@ impl<'a> BlockRenderer<'a> {
         kind: &BlockKind,
         children: &[Block],
         close: CloseKind,
+        open: OpenKind,
         out: &mut String,
     ) {
         // ぶら下げ（折り返し字下げ）は per-line モデル。外側 div を作らず、各内容行を
@@ -225,9 +227,12 @@ impl<'a> BlockRenderer<'a> {
         // 開始タグ（旧 tag_generator の block 形と厳密一致）。複数行ブロックは開き
         // 直後に `\r\n` を出す（行スコープ包みとの違い）。None なら div で包まない。
         match block_open_tag(kind, self.options.quirks.empty_indent_css) {
-            Some(open) => {
-                out.push_str(&open);
-                out.push_str("\r\n");
+            Some(open_tag) => {
+                out.push_str(&open_tag);
+                // 行の途中で開くブロックは同じ行に内容が続くので改行を出さない。
+                if open == OpenKind::Newline {
+                    out.push_str("\r\n");
+                }
                 for child in children {
                     self.render_block(child, out);
                 }
