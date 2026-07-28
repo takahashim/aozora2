@@ -22,71 +22,22 @@ pub fn resolve_references(nodes: &mut Vec<Node>) {
     resolve_style_references(nodes);
 }
 
-/// 行内でのルビ親文字解決
+/// ルビ親文字解決の 2 パス目（工程4）。
 ///
-/// 「漢字《かんじ》」形式のルビの親文字を解決します。
-/// 外字ノードも漢字として親文字に含めます。
+/// 中身は工程1 [`resolve_ruby_bases`] と**同一**で、呼ぶ位置だけが違う。
+/// 呼び出し元は `resolve_references`（工程1〜3）の**直後**にこれを呼ぶ。
+///
+/// なぜ 2 回必要か: 工程1の時点でルビの直前が `UnresolvedReference` だと
+/// `last_char_type()` が `None` を返して親文字を取れない。工程3でそれが装飾タグへ
+/// 解決されて初めて「タグ丸ごと 1 個が親文字」を適用できるため、もう一度走らせる。
+/// 逆に工程1を省くこともできない（工程3の `search_front_reference` は
+/// `extract_plain_text(Ruby)`＝親文字を見るので、親文字が空だと照合が失敗する）。
+/// 詳細は docs/spec-reference-resolver.md。
 pub fn resolve_inline_ruby(nodes: &mut Vec<Node>) {
-    let mut i = 0;
-    while i < nodes.len() {
-        if let NodeKind::Ruby {
-            children,
-            ruby,
-            direction,
-            ..
-        } = &nodes[i].kind
-        {
-            if children.is_empty() && !ruby.is_empty() && i > 0 {
-                let ruby_clone = ruby.clone();
-                let direction_clone = *direction;
-
-                // 直前のノード列から親文字を抽出（外字も含む）
-                let preceding_nodes: Vec<Node> = nodes[..i].to_vec();
-                if let Some((remaining, base)) = extract_ruby_base_from_nodes(&preceding_nodes) {
-                    // 残りのノード数を計算
-                    let nodes_to_remove = preceding_nodes.len() - remaining.len();
-
-                    // 前半を残りのノードで置き換え
-                    let start_idx = i - nodes_to_remove;
-                    nodes.splice(start_idx..i, std::iter::empty());
-
-                    // 新しいインデックスを計算
-                    let new_i = start_idx;
-
-                    // 前半部分を挿入
-                    nodes.splice(..new_i, remaining.into_iter());
-
-                    // Rubyノードを更新（インデックスが変わっているので再計算）
-                    let ruby_idx = nodes.iter().position(
-                        |n| matches!(&n.kind, NodeKind::Ruby { children: c, .. } if c.is_empty()),
-                    );
-
-                    if let Some(idx) = ruby_idx {
-                        let span = base
-                            .iter()
-                            .fold(nodes[idx].span, |span, node| span.union(node.span));
-                        let span = ruby_clone
-                            .iter()
-                            .fold(span, |span, node| span.union(node.span));
-                        nodes[idx] = Node::new(
-                            NodeKind::Ruby {
-                                children: base,
-                                ruby: ruby_clone,
-                                direction: direction_clone,
-                                keep_gaiji_notes_in_base: false,
-                            },
-                            span,
-                        );
-                    }
-                    continue; // iを増やさない（ノードを操作したので）
-                }
-            }
-        }
-        i += 1;
-    }
+    resolve_ruby_bases(nodes);
 }
 
-/// ルビの親文字を解決
+/// ルビの親文字を解決（工程1・工程4 共通の実体）
 fn resolve_ruby_bases(nodes: &mut Vec<Node>) {
     let mut i = 0;
     while i < nodes.len() {
@@ -545,6 +496,51 @@ mod tests {
         } else {
             panic!("Expected Ruby node");
         }
+    }
+
+    #[test]
+    fn stage4_does_not_overwrite_an_earlier_unresolved_ruby() {
+        use crate::parser::parse_raw_nodes;
+        use crate::tokenizer::tokenize;
+
+        // 行頭の 《あ》 は直前ノードが無い（i > 0 の条件）ため親文字を取れず、
+        // 親文字が空のまま最後まで残る。その状態で工程4が後続ルビ（親文字＝斜体タグ）を
+        // 解決するとき、手前の空ルビを掴んで上書きしてはいけない。
+        // 旧 resolve_inline_ruby は更新対象を position() で「先頭から最初の空ルビ」と
+        // して探していたため、rt=あ が消えて くじこんげん が二重化していた。
+        let mut nodes = parse_raw_nodes(&tokenize(
+            "《あ》公事根源［＃「公事根源」は斜体］《くじこんげん》",
+        ));
+        resolve_references(&mut nodes);
+        resolve_inline_ruby(&mut nodes);
+
+        assert_eq!(nodes.len(), 2, "ノード数が想定外: {nodes:?}");
+
+        // 行頭ルビは手つかず（親文字空・rt=あ）で残る。
+        let NodeKind::Ruby { children, ruby, .. } = &nodes[0].kind else {
+            panic!("先頭が Ruby でない: {nodes:?}");
+        };
+        assert!(
+            children.is_empty(),
+            "行頭ルビの親文字が書き換えられた: {nodes:?}"
+        );
+        assert!(
+            matches!(&ruby[0].kind, NodeKind::Text(s) if s == "あ"),
+            "行頭ルビの rt が失われた: {nodes:?}"
+        );
+
+        // 後続ルビは工程3で生まれた斜体タグを親文字として解決される。
+        let NodeKind::Ruby { children, ruby, .. } = &nodes[1].kind else {
+            panic!("2つ目が Ruby でない: {nodes:?}");
+        };
+        assert!(
+            matches!(&children[0].kind, NodeKind::Style { .. }),
+            "親文字が斜体タグになっていない: {children:?}"
+        );
+        assert!(
+            matches!(&ruby[0].kind, NodeKind::Text(s) if s == "くじこんげん"),
+            "rt が想定外: {ruby:?}"
+        );
     }
 
     #[test]
