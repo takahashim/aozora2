@@ -154,7 +154,10 @@ impl<'a> BlockRenderer<'a> {
                 if *brk == Break::Br {
                     out.push_str("<br />");
                 }
-                out.push_str("\r\n");
+                // NoNewline は行途中クローズの前半。改行は続く閉じタグが出す。
+                if *brk != Break::NoNewline {
+                    out.push_str("\r\n");
+                }
             }
             Block::Nested {
                 kind,

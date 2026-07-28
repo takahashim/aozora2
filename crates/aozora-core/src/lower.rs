@@ -146,6 +146,44 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                     },
                 );
             }
+            LineKind::BlockCloseWithHead(explicit) => {
+                // 参照は行を逐次出力するので、閉じタグより前の本文は閉じるブロックの
+                // 内側に出る。行末の改行は閉じタグ側が出すので Break::NoNewline。
+                // 対応する開きが無ければ閉じタグは出ないので、通常の内容行に落とす。
+                let head: Vec<Node> = nodes[..nodes.len() - 1].to_vec();
+                let inline = crate::ast::to_inlines(&head);
+                let brk = if stack.is_empty() {
+                    Break::None
+                } else {
+                    Break::NoNewline
+                };
+                push_block(
+                    &mut stack,
+                    &mut top,
+                    Block::Line {
+                        inline,
+                        brk,
+                        line: line_no,
+                    },
+                );
+                if let Some((kind, children, open_line)) = stack.pop() {
+                    let close = if explicit {
+                        CloseKind::Newline
+                    } else {
+                        CloseKind::BareBreak
+                    };
+                    push_block(
+                        &mut stack,
+                        &mut top,
+                        Block::Nested {
+                            kind,
+                            children,
+                            close,
+                            line: open_line,
+                        },
+                    );
+                }
+            }
             LineKind::LineWrap(kind) => {
                 // ［＃N字下げ］text／行スコープ地付き: 行全体を div で1行に包む。
                 // 先頭の行スコープマーカー1個（LineJisage、または is_block=false の
@@ -289,6 +327,9 @@ enum LineKind {
     BlockClose(bool),
     /// 先頭 BlockEnd＋後続本文の行（`［＃ここで…終わり］text`）。bool は explicit_close。
     BlockCloseWithTail(bool),
+    /// 本文＋行末 BlockEnd の行（`text［＃ここで…終わり］`）。bool は explicit_close。
+    /// 参照実装は行を逐次出力するので、本文を出してからその場でブロックを閉じる。
+    BlockCloseWithHead(bool),
     /// 行スコープの1行包み（同行に本文あり）。字下げ／地付き。
     LineWrap(BlockKind),
     /// 内容行。
@@ -332,6 +373,20 @@ fn classify_line(nodes: &[Node]) -> LineKind {
     {
         if !rest.is_empty() {
             return LineKind::BlockCloseWithTail(*explicit_close);
+        }
+    }
+    // 本文（素のテキストのみ）＋行末 BlockEnd の行。`［＃「…」は太字終わり］` 等の
+    // インライン範囲終端を巻き込まないよう、前半が Text だけの場合に限る。
+    if let Some((
+        Node {
+            kind: NodeKind::BlockEnd { explicit_close, .. },
+            ..
+        },
+        head,
+    )) = nodes.split_last()
+    {
+        if !head.is_empty() && head.iter().all(|n| matches!(n.kind, NodeKind::Text(_))) {
+            return LineKind::BlockCloseWithHead(*explicit_close);
         }
     }
     // 行単位字下げ ［＃N字下げ］。行にこのマーカーしか無ければ複数行ブロックを開く
@@ -438,5 +493,53 @@ mod position_tests {
             }
             other => panic!("Nested を期待: {other:?}"),
         }
+    }
+
+    /// 本文の途中（行末）に現れた「ここで…終わり」もその場でブロックを閉じる。
+    ///
+    /// 参照実装は行を逐次出力するので、閉じタグより前の本文は閉じるブロックの内側に
+    /// 出て、行末の改行は閉じタグが出す。現実の入力では CRLF 区切りの行に孤立 LF が
+    /// 混ざる形で現れる（例: 宮本百合子「千世子」000311/15945 の1箇所が
+    /// `"\n［＃ここで字下げ終わり］"`）。
+    #[test]
+    fn block_end_after_text_closes_the_block_on_that_line() {
+        let lines = vec![
+            "［＃ここから１字下げ］",
+            "内容",
+            "\n［＃ここで字下げ終わり］",
+            "後続",
+        ];
+        let blocks = lower_to_blocks(&parse_document_raw(&lines));
+        match &blocks[0] {
+            Block::Nested {
+                children, close, ..
+            } => {
+                assert_eq!(children.len(), 2, "本文行と行途中クローズ前の本文");
+                assert!(matches!(
+                    children[1],
+                    Block::Line {
+                        brk: Break::NoNewline,
+                        ..
+                    }
+                ));
+                assert_eq!(*close, CloseKind::Newline);
+            }
+            other => panic!("Nested を期待: {other:?}"),
+        }
+        assert!(matches!(blocks[1], Block::Line { line: 3, .. }));
+    }
+
+    /// 対応する開きが無ければ閉じタグは出さず、通常の内容行として扱う。
+    #[test]
+    fn block_end_after_text_without_open_block_is_plain_content() {
+        let blocks = lower_to_blocks(&parse_document_raw(&["本文［＃ここで字下げ終わり］"]));
+        assert_eq!(blocks.len(), 1);
+        assert!(matches!(
+            blocks[0],
+            Block::Line {
+                brk: Break::None,
+                ..
+            }
+        ));
     }
 }
