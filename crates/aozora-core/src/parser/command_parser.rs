@@ -9,7 +9,9 @@ use super::block_parser::{
     try_parse_font_size_start, try_parse_line_chitsuki, try_parse_line_indent,
     try_parse_midashi_start,
 };
-use super::content_parser::{contains_fig_png, is_kaeriten, try_parse_image, try_parse_okurigana};
+use super::content_parser::{
+    contains_fig_png, dakuten_katakana_num, is_kaeriten, try_parse_image, try_parse_okurigana,
+};
 use super::reference_parser::{try_parse_left_ruby, try_parse_reference};
 
 /// コマンド解析結果
@@ -71,6 +73,12 @@ pub enum CommandResult {
 
     /// 返り点
     Kaeriten(String),
+
+    /// 濁点付き片仮名（面区点 `1-7-8N`）。直前の `ワ゛`〜`ヲ゛` を対象にする前方参照。
+    DakutenKatakana {
+        /// 面区点 `1-7-8N` の末尾番号 N（`2`〜`5`）
+        num: String,
+    },
 
     /// 訓点送り仮名
     Okurigana(String),
@@ -239,7 +247,13 @@ pub fn parse_command(content: &str) -> CommandResult {
         return result;
     }
 
-    // 8. 返り点
+    // 8. 濁点付き片仮名（`ワ゛［＃1-7-82］`）。参照 dispatch_aozora_command は
+    //    前方参照（PAT_REF）の後・返り点の前に置くので、ここでも同じ位置にする。
+    if let Some(num) = dakuten_katakana_num(content) {
+        return CommandResult::DakutenKatakana { num };
+    }
+
+    // 9. 返り点
     if is_kaeriten(content) {
         return CommandResult::Kaeriten(content.to_string());
     }

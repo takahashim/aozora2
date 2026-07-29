@@ -41,6 +41,11 @@ pub struct Quirks {
     /// 途中で閉じるなど不正な HTML になる（例: `alt="…from "The Triumph of Death"…"`）。
     /// オフにすると alt を HTML エスケープして妥当な属性値にする。
     pub raw_image_alt: bool,
+    /// 濁点付き片仮名（`ワ゛［＃1-7-82］`）の画像 src を、参照実装 `Tag::DakutenKatakana`
+    /// は `"#{@gaiji_dir}/1-07/…"` と組み立てる。`@gaiji_dir` は既に `/` で終わるので
+    /// `../../../gaiji//1-07/…` と**スラッシュが二重**になる（他の外字画像は
+    /// `"#{@gaiji_dir}#{@folder}/…"` で一重）。オフにすると一重にする。
+    pub dakuten_katakana_double_slash: bool,
 }
 
 impl Default for Quirks {
@@ -53,6 +58,7 @@ impl Default for Quirks {
             raw_header_metadata: true,
             empty_indent_css: true,
             raw_image_alt: true,
+            dakuten_katakana_double_slash: true,
         }
     }
 }
@@ -67,6 +73,7 @@ impl Quirks {
             raw_header_metadata: false,
             empty_indent_css: false,
             raw_image_alt: false,
+            dakuten_katakana_double_slash: false,
         }
     }
 }

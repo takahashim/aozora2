@@ -132,6 +132,17 @@ fn extract_alt_text(desc_part: &str) -> String {
     desc_part.to_string()
 }
 
+/// 濁点付き片仮名の注記（`［＃1-7-82］`）なら面区点の末尾番号を返す。
+///
+/// 参照実装 `dispatch_aozora_command` は `/1-7-8[2345]/` を**位置を問わず**含む
+/// 注記をここへ回すので、`［＃濁点付き片仮名、1-7-84］` のような説明付きも通る。
+/// 前方参照（`ワ゛`〜`ヲ゛`）より先に判定されないよう、呼び出し側の分岐順に注意。
+pub fn dakuten_katakana_num(content: &str) -> Option<String> {
+    let rest = content.split("1-7-8").nth(1)?;
+    let num = rest.chars().next()?;
+    matches!(num, '2'..='5').then(|| num.to_string())
+}
+
 /// 返り点かどうかを判定
 pub fn is_kaeriten(content: &str) -> bool {
     // 参照実装 PAT_KAERITEN = ^[一二三四五六七八九十レ上中下甲乙丙丁天地人]+$。

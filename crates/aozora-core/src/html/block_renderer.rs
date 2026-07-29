@@ -438,7 +438,8 @@ impl<'a> BlockRenderer<'a> {
                 out.push_str(&s);
             }
             InlineKind::DakutenKatakana { num } => {
-                out.push_str(crate::node::Node::dakuten_katakana_char(num))
+                let s = self.render_dakuten_katakana(num);
+                out.push_str(&s);
             }
             InlineKind::ChitsukiInline { width, children } => {
                 out.push_str(&format!(
@@ -680,6 +681,25 @@ impl<'a> BlockRenderer<'a> {
         format!(
             "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
             self.options.gaiji_dir, folder, file, alt
+        )
+    }
+
+    /// 濁点付き片仮名（`ワ゛［＃1-7-82］`）の外字画像（参照 `Tag::DakutenKatakana#to_s`）。
+    ///
+    /// 通常の外字と違い、参照はフッタ「表記について」に何も積まない
+    /// （`Tag::DakutenKatakana` は `Tag::Inline` 派生で `@chuuki_table` を触らない）。
+    /// src の組み立ても専用で、`@gaiji_dir` の末尾 `/` に続けてもう1つ `/` を置く
+    /// （Quirk [`crate::html::Quirks::dakuten_katakana_double_slash`]）。
+    fn render_dakuten_katakana(&self, num: &str) -> String {
+        let sep = if self.options.quirks.dakuten_katakana_double_slash {
+            "/"
+        } else {
+            ""
+        };
+        format!(
+            "<img src=\"{}{sep}1-07/1-07-8{num}.png\" alt=\"※(濁点付き片仮名「{}」、1-07-8{num})\" class=\"gaiji\" />",
+            self.options.gaiji_dir,
+            crate::node::Node::dakuten_katakana_char(num),
         )
     }
 
@@ -991,6 +1011,42 @@ mod tests {
                 "包まない: {backref} → {html:?}"
             );
         }
+    }
+
+    /// 濁点付き片仮名（`ワ゛［＃1-7-82］`）は直前の `ワ゛`〜`ヲ゛` を消費して外字画像に
+    /// なる（参照 `apply_dakuten_katakana` ＋ `Tag::DakutenKatakana#to_s`）。
+    ///
+    /// 参照実装で実測した性質:
+    /// - src は `{gaiji_dir}/1-07/…` で組まれ、gaiji_dir 末尾の `/` と重なって二重になる
+    /// - alt の面区点は `1-07-8N` とゼロ詰め（注記中の表記 `1-7-8N` とは別）
+    /// - 前方に対象が無ければ解決せず、注記 `［＃1-7-82］` のまま出る
+    /// - `※［＃濁点付き片仮名ワ、1-7-82］`（外字記法）は通常の外字経路で、別物
+    #[test]
+    fn dakuten_katakana_consumes_front_reference() {
+        let opts = RenderOptions::default();
+        assert_eq!(
+            render_line_inline("ワ゛［＃1-7-82］", &opts),
+            "<img src=\"../../../gaiji//1-07/1-07-82.png\" \
+             alt=\"※(濁点付き片仮名「ワ゛」、1-07-82)\" class=\"gaiji\" />"
+        );
+        // 説明付きでも面区点が入っていれば同じ経路（参照は位置を問わず判定する）。
+        assert_eq!(
+            render_line_inline("ヱ゛［＃濁点付き片仮名、1-7-84］", &opts),
+            "<img src=\"../../../gaiji//1-07/1-07-84.png\" \
+             alt=\"※(濁点付き片仮名「ヱ゛」、1-07-84)\" class=\"gaiji\" />"
+        );
+        // 対象が前方に無ければ注記のまま（参照 apply_rest_notes へのフォールバック）。
+        assert_eq!(
+            render_line_inline("ワ［＃1-7-82］", &opts),
+            "ワ<span class=\"notes\">［＃1-7-82］</span>"
+        );
+        // quirk を切るとスラッシュが一重になる。
+        let clean = RenderOptions {
+            quirks: crate::html::Quirks::none(),
+            ..RenderOptions::default()
+        };
+        assert!(render_line_inline("ワ゛［＃1-7-82］", &clean)
+            .contains("src=\"../../../gaiji/1-07/1-07-82.png\""));
     }
 
     /// 外字・アクセントの実体参照は**大文字16進・最低4桁**（参照 `yml/jis2ucs.yml`

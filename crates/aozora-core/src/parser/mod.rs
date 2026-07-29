@@ -375,6 +375,14 @@ fn command_to_node_kind(result: CommandResult, raw: &str, paren: ParenContext) -
 
         CommandResult::Kaeriten(s) => NodeKind::Kaeriten(s),
 
+        // 対象は直前の `ワ゛`〜`ヲ゛` そのもの（参照 DAKUTEN_KATAKANA_TABLE）。
+        // 前方に無ければ解決器が raw のまま注記にする（参照 apply_rest_notes）。
+        CommandResult::DakutenKatakana { num } => NodeKind::UnresolvedReference {
+            target: Node::dakuten_katakana_char(&num).to_string(),
+            spec: RefSpec::DakutenKatakana { num },
+            raw: raw.to_string(),
+        },
+
         CommandResult::Okurigana(s) => NodeKind::Okurigana(s),
 
         CommandResult::TcyStart => NodeKind::BlockStart {

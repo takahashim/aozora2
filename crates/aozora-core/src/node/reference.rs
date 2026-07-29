@@ -51,6 +51,14 @@ pub enum RefSpec {
         /// 注記形のときのルビ内容（外字＋後続テキスト）。置換形は None。
         annotation_ruby: Option<Vec<Node>>,
     },
+    /// 濁点付き片仮名（`ワ゛［＃1-7-82］`）。対象は直前の `ワ゛`〜`ヲ゛` そのもので、
+    /// 参照実装 `apply_dakuten_katakana` は見つけた対象をバッファから取り除いて
+    /// `Tag::DakutenKatakana` に置き換える（対象の文字は面区点から一意に決まるので
+    /// 捨ててよい）。前方に対象が無ければ解決に失敗し、注記のまま出る。
+    DakutenKatakana {
+        /// 面区点 `1-7-8N` の末尾番号 N（`2`〜`5`）
+        num: String,
+    },
 }
 
 impl RefSpec {
@@ -81,6 +89,9 @@ impl RefSpec {
                     had_igeta: false,
                 },
             },
+            // 対象（`ワ゛` 等）は面区点から復元できるので取り込まず捨てる
+            // （参照実装も見つけた対象をバッファから取り除くだけ）。
+            RefSpec::DakutenKatakana { num } => NodeKind::DakutenKatakana { num: num.clone() },
             RefSpec::Style(style_type) => NodeKind::Style {
                 children,
                 style_type: *style_type,
