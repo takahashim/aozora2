@@ -403,7 +403,13 @@ impl PartialEq for Block {
                     ..
                 },
             ) => kind == other_kind && inline == other_inline,
-            _ => false,
+            // 種類が違えば不等。`_ => false` と書くと変種を足したとき
+            // **同じ値どうしが不等**になり（反射律違反）、しかも気付けない。
+            // 左側だけを列挙すればタプル空間を網羅でき、変種追加が
+            // コンパイルエラーになる。
+            (Block::Line { .. }, _) | (Block::Nested { .. }, _) | (Block::LineWrap { .. }, _) => {
+                false
+            }
         }
     }
 }

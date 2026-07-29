@@ -203,6 +203,9 @@ impl NodeKind {
     ///
     /// この判定を各所で手書きすると `NodeKind` に variant を足すたび同期漏れが起きる
     /// ので、「どれがインラインコンテナか」の知識はここ 1 箇所に置く。
+    /// **`_` の catch-all を置かないこと。** 置くと variant を足したとき
+    /// コンパイラが黙って「コンテナではない」を選び、その要素をまたぐ前方参照が
+    /// 静かに解決できなくなる。
     pub fn inline_container_children(&self) -> Option<&[Node]> {
         match self {
             NodeKind::Ruby { children, .. }
@@ -213,16 +216,30 @@ impl NodeKind {
             | NodeKind::Yokogumi { children }
             | NodeKind::Caption { children }
             | NodeKind::Midashi { children, .. } => Some(children),
-            _ => None,
+            // スパン要素になれない（葉・マーカー・描画内容）。
+            NodeKind::Text(_)
+            | NodeKind::Gaiji { .. }
+            | NodeKind::Accent { .. }
+            | NodeKind::Img { .. }
+            | NodeKind::Kaeriten(_)
+            | NodeKind::Okurigana(_)
+            | NodeKind::DakutenKatakana { .. }
+            | NodeKind::Note(_)
+            | NodeKind::LineJisage { .. }
+            | NodeKind::BlockStart { .. }
+            | NodeKind::BlockEnd { .. }
+            | NodeKind::AnnotationEnd { .. }
+            | NodeKind::UnresolvedReference { .. } => None,
         }
     }
 
-    /// 本文の流れを成す子ノード列を可変で返す（走査・書き換え用）。
+    /// **すべての**子ノード列を可変で返す（span の付け替えなど全走査用）。
     ///
-    /// [`Self::inline_container_children`] と違い、ルビ文字（rt）と割注の上下段も含む。
-    /// `AnnotationEnd` の中身は注記マーカーの描画内容であって本文ではないので含めない。
-    /// 子を持たないノードでは空になる。
-    pub fn inline_child_lists_mut(&mut self) -> Vec<&mut Vec<Node>> {
+    /// 「どの variant がどの子リストを持つか」の知識はここ1箇所に置き、
+    /// 用途別の絞り込み（[`Self::inline_child_lists_mut`]）はここから導く。
+    /// **`_` の catch-all を置かないこと。** 置くと variant を足したとき
+    /// その子が走査から静かに漏れる。
+    pub fn child_lists_mut(&mut self) -> Vec<&mut Vec<Node>> {
         match self {
             NodeKind::Ruby { children, ruby, .. } => vec![children, ruby],
             NodeKind::Style { children, .. }
@@ -232,8 +249,33 @@ impl NodeKind {
             | NodeKind::Yokogumi { children }
             | NodeKind::Caption { children }
             | NodeKind::Midashi { children, .. } => vec![children],
-            _ => Vec::new(),
+            NodeKind::AnnotationEnd { content, .. } => vec![content],
+            // 子を持たない。
+            NodeKind::Text(_)
+            | NodeKind::Gaiji { .. }
+            | NodeKind::Accent { .. }
+            | NodeKind::Img { .. }
+            | NodeKind::Kaeriten(_)
+            | NodeKind::Okurigana(_)
+            | NodeKind::DakutenKatakana { .. }
+            | NodeKind::Note(_)
+            | NodeKind::LineJisage { .. }
+            | NodeKind::BlockStart { .. }
+            | NodeKind::BlockEnd { .. }
+            | NodeKind::UnresolvedReference { .. } => Vec::new(),
         }
+    }
+
+    /// 本文の流れを成す子ノード列を可変で返す（走査・書き換え用）。
+    ///
+    /// [`Self::inline_container_children`] と違い、ルビ文字（rt）と割注の上下段も含む。
+    /// [`Self::child_lists_mut`] との違いは `AnnotationEnd` だけで、その中身は
+    /// 注記マーカーの描画内容であって本文ではないので含めない。
+    pub fn inline_child_lists_mut(&mut self) -> Vec<&mut Vec<Node>> {
+        if matches!(self, NodeKind::AnnotationEnd { .. }) {
+            return Vec::new();
+        }
+        self.child_lists_mut()
     }
 }
 

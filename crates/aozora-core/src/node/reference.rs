@@ -172,29 +172,12 @@ impl InlineKind {
 /// 絶対位置を持つ注記自身の span を配る（注記内の細かい位置は持たない方針）。
 pub(crate) fn inherit_span(mut node: Node, span: Span) -> Node {
     node.span = span;
-    match &mut node.kind {
-        NodeKind::Ruby { children, ruby, .. } => {
-            for child in children.iter_mut().chain(ruby) {
-                *child = inherit_span(child.clone(), span);
-            }
+    // どの variant がどの子リストを持つかは NodeKind 側の網羅マッチが唯一の
+    // 真実。ここで手書きすると variant を足したとき子の span が古いまま残る。
+    for children in node.kind.child_lists_mut() {
+        for child in children {
+            *child = inherit_span(child.clone(), span);
         }
-        NodeKind::Style { children, .. }
-        | NodeKind::Midashi { children, .. }
-        | NodeKind::Tcy { children }
-        | NodeKind::Keigakomi { children }
-        | NodeKind::Yokogumi { children }
-        | NodeKind::Caption { children }
-        | NodeKind::FontSize { children, .. } => {
-            for child in children {
-                *child = inherit_span(child.clone(), span);
-            }
-        }
-        NodeKind::AnnotationEnd { content, .. } => {
-            for child in content {
-                *child = inherit_span(child.clone(), span);
-            }
-        }
-        _ => {}
     }
     node
 }

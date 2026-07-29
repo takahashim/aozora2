@@ -217,9 +217,11 @@ fn fold_inline_range(
     params: &BlockParams,
     depth: usize,
 ) -> Option<(Inline, usize)> {
-    if params.is_block || !is_inline_range_type(block_type) {
+    if params.is_block {
         return None;
     }
+    // 畳める種類かどうかは wrap_inline_range が Option で答える（前段で同じ
+    // 一覧を持たない）。畳めない種類はここまで来ても最後に None になる。
     let end = find_matching_end(nodes, i, block_type)?;
     let inner = to_inlines_at(&nodes[i + 1..end], depth);
     let inline = wrap_inline_range(block_type, params, inner, span_for_nodes(&nodes[i..=end]))?;
@@ -282,24 +284,16 @@ fn fold_trailing_chitsuki(
     Some((inline, consumed_end))
 }
 
-/// 同行に畳めるインライン範囲コマンドの種類か（見出し・装飾・大小文字・
-/// 横組み・縦中横・罫囲み・キャプション・割書）。
-fn is_inline_range_type(block_type: &BlockType) -> bool {
-    matches!(
-        block_type,
-        BlockType::Midashi
-            | BlockType::Style
-            | BlockType::FontDai
-            | BlockType::FontSho
-            | BlockType::Yokogumi
-            | BlockType::Tcy
-            | BlockType::Keigakomi
-            | BlockType::Caption
-            | BlockType::Warigaki
-    )
-}
-
-/// インライン範囲コマンドの開閉対を対応する [`Inline`] に包む。
+/// インライン範囲コマンド（見出し・装飾・大小文字・横組み・縦中横・罫囲み・
+/// キャプション・割書）の開閉対を、対応する [`Inline`] に包む。畳めない種類は None。
+///
+/// 「どの種類が同行に畳めるか」の知識はこの網羅マッチだけが持つ。以前は
+/// `is_inline_range_type` が同じ一覧を別に持ち、[`fold_inline_range`] の前段
+/// ガードに使っていたが、片方にだけ種類を足すとガードは通ってここが None を返し、
+/// その記法が**黙って注記化**する。ここが Option を返すので前段ガードは不要。
+///
+/// **`_` の catch-all を置かないこと。** 置くと [`BlockType`] に variant を
+/// 足したとき同じずれが再発する。
 fn wrap_inline_range(
     block_type: &BlockType,
     params: &BlockParams,
@@ -334,7 +328,18 @@ fn wrap_inline_range(
         BlockType::Keigakomi => Some(InlineKind::Keigakomi { children: inner }),
         BlockType::Caption => Some(InlineKind::Caption { children: inner }),
         BlockType::Warigaki => Some(InlineKind::Warigaki { children: inner }),
-        _ => None,
+        // 同行に畳まない種類。ブロック形（is_block=true）は
+        // [`fold_block_inline`] が BlockInline として扱い、割り注・地付きは
+        // それぞれ専用の経路を持つ。
+        BlockType::Jisage
+        | BlockType::Chitsuki
+        | BlockType::Jizume
+        | BlockType::Futoji
+        | BlockType::Shatai
+        | BlockType::Warichu
+        | BlockType::Burasage
+        | BlockType::AnnotationRange
+        | BlockType::LeftAnnotationRange => None,
     };
     kind.map(|kind| Inline::from_range(kind, span))
 }
