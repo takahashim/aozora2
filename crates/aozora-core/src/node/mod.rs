@@ -328,36 +328,69 @@ impl FontSizeType {
 
 /// コマンド文字列から段階レベルを抽出（"N段階" の N）。
 ///
-/// 参照実装 PAT_CHARSIZE は convert_japanese_number 後に `(\d*)段階` を取るので、
-/// 全角/半角数字も漢数字も段階の直前の値を読む。従来は 1〜5 の全半角数字しか
-/// 拾えず「６段階大きな文字」等が既定の 1 になっていた（dai1）。0〜9 と漢数字
-/// 一〜十を「段階」直前の1文字として拾う。
+/// 参照実装 `PAT_CHARSIZE = /(.*)段階(..)な文字/` は「段階」の**前をすべて**取り、
+/// `Utils.convert_japanese_number` で全角・漢数字を算用数字に均してから `.to_i`
+/// する。よって `１２段階` は 12、`十二段階` は 12、`二十段階` は 20 になる。
+/// 直前の1文字だけを見ると `１２段階` が 2、`二十段階` が 10 になってしまう
+/// （実コーパス 17,902 ファイルでは複数桁の使用は 0 件だが、参照に合わせる）。
 fn extract_level(command: &str) -> Option<u32> {
-    let chars: Vec<char> = command.chars().collect();
-    for (i, c) in chars.iter().enumerate() {
-        let num = match c {
-            '０'..='９' => Some(*c as u32 - '０' as u32),
-            '0'..='9' => Some(*c as u32 - '0' as u32),
-            '一' => Some(1),
-            '二' => Some(2),
-            '三' => Some(3),
-            '四' => Some(4),
-            '五' => Some(5),
-            '六' => Some(6),
-            '七' => Some(7),
-            '八' => Some(8),
-            '九' => Some(9),
-            '十' => Some(10),
-            _ => None,
-        };
-        if let Some(n) = num {
-            // 次の文字が "段階" かチェック
-            if i + 2 < chars.len() && chars[i + 1] == '段' && chars[i + 2] == '階' {
-                return Some(n);
-            }
-        }
+    let head = command.split("段階").next()?;
+    if head == command {
+        return None; // 「段階」を含まない
     }
-    None
+    convert_japanese_number(head).parse().ok()
+}
+
+/// 全角数字・漢数字を算用数字に均す（参照 `Utils.convert_japanese_number` の移植）。
+///
+/// 十の位は参照と同じ順で畳む: `(\d)十(\d)`→`$1$2`、`(\d)十`→`$1 0`、
+/// `十(\d)`→`1$1`、`十`→`10`。
+fn convert_japanese_number(s: &str) -> String {
+    const ZENKAKU: &str = "０１２３４５６７８９";
+    const KANJI: &str = "〇一二三四五六七八九";
+    let mut t: String = s
+        .chars()
+        .map(|c| {
+            let from = |table: &str| {
+                table
+                    .chars()
+                    .position(|d| d == c)
+                    .map(|i| char::from_digit(i as u32, 10).unwrap())
+            };
+            from(ZENKAKU).or_else(|| from(KANJI)).unwrap_or(c)
+        })
+        .collect();
+    // 参照の gsub! と同じ順・同じ規則で「十」を畳む。
+    t = replace_ten(&t);
+    t
+}
+
+/// [`convert_japanese_number`] の「十」畳み込み。
+fn replace_ten(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '十' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        let prev_digit = out.chars().last().filter(|c| c.is_ascii_digit()).is_some();
+        let next_digit = chars.get(i + 1).is_some_and(|c| c.is_ascii_digit());
+        match (prev_digit, next_digit) {
+            // (\d)十(\d) → $1$2 （二十三 → 23）
+            (true, true) => {}
+            // (\d)十 → $1 0 （二十 → 20）
+            (true, false) => out.push('0'),
+            // 十(\d) → 1$1 （十二 → 12）
+            (false, true) => out.push('1'),
+            // 十 → 10
+            (false, false) => out.push_str("10"),
+        }
+        i += 1;
+    }
+    out
 }
 
 impl Node {
@@ -517,5 +550,30 @@ mod tests {
             had_igeta: true,
         });
         assert_eq!(node.last_char_type(), Some(CharType::Kanji));
+    }
+
+    /// 段階レベルは参照 `PAT_CHARSIZE` ＋ `Utils.convert_japanese_number` と
+    /// 同じで、「段階」の**前をすべて**読む（直前の1文字だけではない）。
+    /// 下の期待値は参照実装の `convert_japanese_number(nest).to_i` で実測した。
+    #[test]
+    fn test_font_size_level_matches_reference_number_conversion() {
+        let level = |c: &str| extract_level(c);
+        assert_eq!(level("１段階"), Some(1));
+        assert_eq!(level("一段階"), Some(1));
+        assert_eq!(level("1段階"), Some(1));
+        assert_eq!(level("６段階"), Some(6));
+        // 複数桁（従来は直前1文字しか見ず ２ になっていた）
+        assert_eq!(level("１２段階"), Some(12));
+        assert_eq!(level("12段階"), Some(12));
+        // 十の位の畳み込み（参照 gsub! と同じ規則）
+        assert_eq!(level("十段階"), Some(10));
+        assert_eq!(level("十二段階"), Some(12));
+        assert_eq!(level("二十段階"), Some(20));
+        assert_eq!(level("二十三段階"), Some(23));
+        assert_eq!(level("三十段階"), Some(30));
+        assert_eq!(level("〇段階"), Some(0));
+        // 「段階」を含まなければ None（呼び出し側が既定 1 に倒す）
+        assert_eq!(level("段階"), None);
+        assert_eq!(level("大きな文字"), None);
     }
 }
