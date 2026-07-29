@@ -17,7 +17,7 @@ use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node, NodeKind, RefSpec};
 use crate::parser::reference_resolver::resolve_references_collecting_failures;
 use crate::parser::{parse_document_raw, RawLine};
-use crate::tokenizer::tokenize_collecting_unclosed_accents;
+use crate::token::Span;
 use std::collections::HashSet;
 
 #[cfg(feature = "serde")]
@@ -134,20 +134,40 @@ pub struct Analysis {
 /// 行は `\n` で分割し（末尾 `\r` は除去）、各行を位置情報付きでパースして
 /// トークン／シンボル／診断を組み立てる。純粋関数で副作用は無い。
 pub fn analyze(input: &str) -> Analysis {
-    let lines: Vec<&str> = input.lines().collect();
+    // `convert_editor` と同じく単独 `\r` も改行として扱う（エディタのバッファが
+    // どの改行でも、行番号が変換側とずれないようにする）。`str::lines` は
+    // 単独 `\r` を改行と見なさないので、先に均してから分割する。
+    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    let mut lines: Vec<&str> = normalized.split('\n').collect();
+    // 末尾の改行で生じる空行は行として数えない（`str::lines` と同じ挙動）。
+    if normalized.ends_with('\n') {
+        lines.pop();
+    }
     let doc = parse_document_raw(&lines);
 
     let mut analysis = Analysis::default();
 
     for raw in &doc.lines {
         // 前方参照はこの行のなかで解決される（ルビ親文字も含む）。生ノードでは未解決
-        // なので、実際の解決を **1 行 1 回**走らせて、注記化された（＝解決に失敗した）
-        // raw の集合を得ておく。個々の参照を再解決する二次コストを避けるため。
-        let failed: HashSet<String> = {
+        // なので、実際の解決を **1 行 1 回**走らせて、解決に失敗した参照の**位置**を
+        // 得ておく。個々の参照を再解決する二次コストを避けるため。
+        //
+        // 識別子が注記文字列ではなく位置なのは、同じ注記が1行に2回あるとき
+        // （`［＃「あ」は太字］あ［＃「あ」は太字］` は前者だけ失敗する）に
+        // 文字列では区別できず、成功した方にも診断が出てしまうため。
+        //
+        // 前方参照が1つも無い行が大半なので、その場合は複製も解決も走らせない。
+        let failed: HashSet<Span> = if raw
+            .nodes
+            .iter()
+            .any(|n| matches!(n.kind, NodeKind::UnresolvedReference { .. }))
+        {
             let mut nodes = raw.nodes.clone();
             resolve_references_collecting_failures(&mut nodes)
                 .into_iter()
                 .collect()
+        } else {
+            HashSet::new()
         };
 
         // 各生ノードがchar位置範囲を自前で持つ。
@@ -170,7 +190,7 @@ pub fn analyze(input: &str) -> Analysis {
             match &node.kind {
                 // 実際に解決できず注記化されたものだけ診断（ルビ併用などの偽陽性を除く）。
                 NodeKind::UnresolvedReference { raw: original, .. }
-                    if failed.contains(original) =>
+                    if failed.contains(&node.span) =>
                 {
                     analysis.diagnostics.push(Diagnostic {
                         range,
@@ -203,8 +223,7 @@ pub fn analyze(input: &str) -> Analysis {
         // 参照実装は複数行アクセントの1行目として受理する（変換は byte 一致のまま）。
         // 現状は互換優先で許容 → Warning。将来 複数行アクセントを禁止する厳格モードは、
         // この検出（安定コード `unclosed-accent`）を弾く根拠に再利用できる。
-        let (_, unclosed) = tokenize_collecting_unclosed_accents(&raw.source);
-        for span in unclosed {
+        for span in &raw.unclosed_accents {
             analysis.diagnostics.push(Diagnostic {
                 range: Range {
                     line: raw.line_no,
@@ -369,25 +388,24 @@ fn span_range(raw: &RawLine, from: usize, to: usize) -> Range {
 }
 
 /// ノードをセマンティックトークン種別に分類する。`Text` はハイライト不要なので `None`。
+///
+/// **`_` の catch-all を置かないこと。** 既定の `Annotation` は「注記色にする」という
+/// 積極的な主張なので、variant を足すとコンパイラが黙って誤った色を選ぶ
+/// （実際に濁点付き片仮名を実装したとき、外字なのに注記色のまま漏れていた）。
 fn classify(node: &Node) -> Option<SemTokenKind> {
     match &node.kind {
         NodeKind::Text(_) => None,
         NodeKind::Ruby { .. } => Some(SemTokenKind::Ruby),
         NodeKind::Midashi { .. } => Some(SemTokenKind::Heading),
         NodeKind::Style { .. } => Some(SemTokenKind::Emphasis),
+        NodeKind::FontSize { .. } => Some(SemTokenKind::Emphasis),
         NodeKind::Gaiji { .. } => Some(SemTokenKind::Gaiji),
         NodeKind::Accent { .. } => Some(SemTokenKind::Accent),
+        NodeKind::DakutenKatakana { .. } => Some(SemTokenKind::Gaiji),
         NodeKind::Img { .. } => Some(SemTokenKind::Image),
-        // 後置形の参照（未解決の生ノード）: 見出し・強調は種別色にする。
+        // 後置形の参照（未解決の生ノード）は、適用先の種別で色を決める。
         // 例 `序章［＃「序章」は大見出し］` は NodeKind::Midashi ではなく UnresolvedReference。
-        NodeKind::UnresolvedReference {
-            spec: RefSpec::Midashi { .. },
-            ..
-        } => Some(SemTokenKind::Heading),
-        NodeKind::UnresolvedReference {
-            spec: RefSpec::Style(_),
-            ..
-        } => Some(SemTokenKind::Emphasis),
+        NodeKind::UnresolvedReference { spec, .. } => Some(classify_ref_spec(spec)),
         // ブロック見出しの開始／終了マーカーも見出し色にする。
         NodeKind::BlockStart {
             block_type: BlockType::Midashi,
@@ -397,8 +415,33 @@ fn classify(node: &Node) -> Option<SemTokenKind> {
             block_type: BlockType::Midashi,
             ..
         } => Some(SemTokenKind::Heading),
-        // 構造・その他の注記系はまとめて Annotation。
-        _ => Some(SemTokenKind::Annotation),
+        // 構造・その他の注記系。
+        NodeKind::BlockStart { .. }
+        | NodeKind::BlockEnd { .. }
+        | NodeKind::Note(_)
+        | NodeKind::LineJisage { .. }
+        | NodeKind::AnnotationEnd { .. }
+        | NodeKind::Kaeriten(_)
+        | NodeKind::Okurigana(_)
+        | NodeKind::Tcy { .. }
+        | NodeKind::Keigakomi { .. }
+        | NodeKind::Yokogumi { .. }
+        | NodeKind::Caption { .. } => Some(SemTokenKind::Annotation),
+    }
+}
+
+/// 後置形の参照が適用する指定を、トークン種別に対応づける。
+/// ここも `_` を置かないこと（[`RefSpec`] を足すと色が黙って注記色になる）。
+fn classify_ref_spec(spec: &RefSpec) -> SemTokenKind {
+    match spec {
+        RefSpec::Midashi { .. } => SemTokenKind::Heading,
+        RefSpec::Style(_) | RefSpec::FontSize { .. } => SemTokenKind::Emphasis,
+        // ルビとして表示されるもの（注記ルビ・傍記）。
+        RefSpec::AnnotationRuby { .. } | RefSpec::SideNote { .. } => SemTokenKind::Ruby,
+        // 外字画像になるもの（句点コード指定・濁点付き片仮名）。
+        RefSpec::EmbeddedGaiji { .. } | RefSpec::DakutenKatakana { .. } => SemTokenKind::Gaiji,
+        // 縦中横・罫囲み・横組み・キャプション・返り点・訓点送り仮名。
+        RefSpec::Inline(_) => SemTokenKind::Annotation,
     }
 }
 
@@ -444,6 +487,17 @@ fn describe(node: &Node) -> Option<String> {
         }),
         NodeKind::Midashi { level, .. } => Some(format!("{}見出し", level_label(*level))),
         NodeKind::Img { filename, .. } => Some(format!("画像: {filename}")),
+        NodeKind::DakutenKatakana { num } => Some(format!(
+            "濁点付き片仮名: {}（1-07-8{num}）",
+            Node::dakuten_katakana_char(num)
+        )),
+        NodeKind::UnresolvedReference {
+            spec: RefSpec::DakutenKatakana { num },
+            ..
+        } => Some(format!(
+            "濁点付き片仮名: {}（1-07-8{num}）",
+            Node::dakuten_katakana_char(num)
+        )),
         NodeKind::BlockStart {
             block_type: BlockType::Midashi,
             params,
@@ -670,5 +724,50 @@ mod tests {
             .find(|t| t.kind == SemTokenKind::Ruby)
             .expect("2 行目のルビ");
         assert_eq!(ruby.range.line, 1, "0 起点で 2 行目 = 1");
+    }
+
+    /// 解決に失敗した参照の識別は**位置**で行う。同じ注記が1行に2回あると、
+    /// 文字列をキーにしていた頃は成功した方にも診断が出ていた。
+    ///
+    /// `［＃「あ」は太字］あ［＃「あ」は太字］`
+    /// → 1つ目は前方に対象が無く失敗、2つ目は「あ」を消費して成功。
+    #[test]
+    fn duplicate_reference_reports_only_the_failing_one() {
+        let a = analyze("［＃「あ」は太字］あ［＃「あ」は太字］");
+        let d: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "unresolved-reference")
+            .collect();
+        assert_eq!(d.len(), 1, "失敗した1件だけが診断される: {d:?}");
+        // 失敗するのは行頭の方（[0, 9)）。
+        assert_eq!(d[0].range.start, 0);
+    }
+
+    /// 濁点付き片仮名は外字画像になるので、注記色ではなく外字色にする。
+    /// `RefSpec` を足したとき色が黙って注記色に落ちないよう classify は網羅マッチ。
+    #[test]
+    fn dakuten_katakana_is_a_gaiji_token_with_detail() {
+        let a = analyze("ワ゛［＃1-7-82］");
+        let t = a
+            .tokens
+            .iter()
+            .find(|t| t.kind == SemTokenKind::Gaiji)
+            .unwrap_or_else(|| panic!("外字トークンが無い: {:?}", a.tokens));
+        assert_eq!(
+            t.detail.as_deref(),
+            Some("濁点付き片仮名: ワ゛（1-07-82）")
+        );
+    }
+
+    /// 単独 `\r` 改行でも `convert_editor` と同じ行分割になる
+    /// （`str::lines` は単独 `\r` を改行と見なさない）。
+    #[test]
+    fn lone_cr_is_treated_as_a_line_break() {
+        let a = analyze("タイトル\r著者\r\r序章［＃「序章」は大見出し］");
+        assert_eq!(a.symbols.len(), 1, "{:?}", a.symbols);
+        assert_eq!(a.symbols[0].range.line, 3);
+        // 末尾の改行が余分な行を作らないことも固定する。
+        assert_eq!(analyze("あ\n").symbols.len(), 0);
     }
 }

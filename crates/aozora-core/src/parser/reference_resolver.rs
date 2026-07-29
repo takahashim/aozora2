@@ -165,11 +165,15 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
 }
 
 /// 装飾の前方参照を解決
-/// 前方参照を解決しつつ、解決できず注記化した参照の `raw` 文字列を返す。
+/// 前方参照を解決しつつ、解決できず注記化した参照の**位置**（[`Span`]）を返す。
 /// ノード変換の結果は [`resolve_references`] と完全に同一で、失敗リストを追加返却するだけ。
 /// エディタ支援 `analysis` が「実際に解決できなかった参照」を **1 行 1 回**の解決で
 /// 知るために使う（参照ごとに resolve をやり直す二次的コストを避ける）。
-pub fn resolve_references_collecting_failures(nodes: &mut Vec<Node>) -> Vec<String> {
+///
+/// 返すのが注記文字列ではなく span なのは、**同じ注記が1行に2回**書かれたとき
+/// （`［＃「あ」は太字］あ［＃「あ」は太字］` は前者だけ失敗する）に、
+/// 文字列では両者を区別できず成功した方にも診断が出てしまうため。
+pub fn resolve_references_collecting_failures(nodes: &mut Vec<Node>) -> Vec<Span> {
     // 1. ルビの親文字を解決
     resolve_ruby_bases(nodes);
 
@@ -187,8 +191,9 @@ fn resolve_style_references(nodes: &mut Vec<Node>) {
 }
 
 /// [`resolve_style_references`] と同じ解決を行い、解決できず注記化したトップレベル参照の
-/// `raw` を `failed` に集める（子ノード内の失敗は集めない）。
-fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<String>) {
+/// **位置**を `failed` に集める（子ノード内の失敗は集めない。`analysis` の診断は
+/// 生ノードのトップレベルだけを走査するので、集めても使われない）。
+fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<Span>) {
     let mut i = 0;
     while i < nodes.len() {
         if let NodeKind::UnresolvedReference { target, spec, raw } = &nodes[i].kind {
@@ -205,9 +210,10 @@ fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<S
                 }
             }
 
-            // 解決できなかった場合は、もとの文字列のまま注記にする
-            failed.push(raw_clone.clone());
+            // 解決できなかった場合は、もとの文字列のまま注記にする。
+            // 失敗の識別子は位置（同じ注記が1行に複数あっても一意）。
             let span = nodes[i].span;
+            failed.push(span);
             nodes[i] = Node::new(NodeKind::Note(raw_clone), span);
         }
         i += 1;

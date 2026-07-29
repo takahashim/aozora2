@@ -3,7 +3,7 @@
 /// ソース行内の**文字（char）単位**の範囲 `[start, end)`（半開区間・0 起点）。
 /// Token と Node が保持する。byte ではなく char 数なので、全角文字も1として数える
 /// （`line.chars().nth(start)` 等でそのまま使える）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     /// 開始 char オフセット（0 起点・含む）
     pub start: usize,
