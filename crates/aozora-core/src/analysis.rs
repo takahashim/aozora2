@@ -791,10 +791,7 @@ mod tests {
             .iter()
             .find(|t| t.kind == SemTokenKind::Gaiji)
             .unwrap_or_else(|| panic!("外字トークンが無い: {:?}", a.tokens));
-        assert_eq!(
-            t.detail.as_deref(),
-            Some("濁点付き片仮名: ワ゛（1-07-82）")
-        );
+        assert_eq!(t.detail.as_deref(), Some("濁点付き片仮名: ワ゛（1-07-82）"));
     }
 
     /// 単独 `\r` 改行でも `convert_editor` と同じ行分割になる
@@ -861,8 +858,6 @@ mod tests {
         assert_eq!(info[0].range.line, 0);
         assert_eq!(info[0].severity, Severity::Info);
         // 記法の無いヘッダ行には出さない。
-        assert!(analyze("作品名\n著者\n\n本文\n")
-            .diagnostics
-            .is_empty());
+        assert!(analyze("作品名\n著者\n\n本文\n").diagnostics.is_empty());
     }
 }

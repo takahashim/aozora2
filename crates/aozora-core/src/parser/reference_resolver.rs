@@ -92,9 +92,9 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
                 let mut annotation = None;
                 for (j, node) in nodes.iter().enumerate().skip(i + 1) {
                     match &node.kind {
-                        NodeKind::BlockStart {
-                            block_type: bt, ..
-                        } if *bt == range_type => depth += 1,
+                        NodeKind::BlockStart { block_type: bt, .. } if *bt == range_type => {
+                            depth += 1
+                        }
                         NodeKind::BlockEnd {
                             block_type: bt,
                             params,
@@ -788,7 +788,12 @@ mod tests {
         assert_eq!(children.len(), 3, "{children:?}");
         assert!(matches!(&children[0].kind, NodeKind::Text(s) if s == "外"));
         assert!(matches!(&children[2].kind, NodeKind::Text(s) if s == "側"));
-        let NodeKind::Ruby { children: inner, ruby: inner_ruby, .. } = &children[1].kind else {
+        let NodeKind::Ruby {
+            children: inner,
+            ruby: inner_ruby,
+            ..
+        } = &children[1].kind
+        else {
             panic!("内側がルビになっていない: {children:?}");
         };
         assert!(matches!(&inner[0].kind, NodeKind::Text(s) if s == "内"));
