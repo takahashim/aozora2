@@ -27,6 +27,35 @@ use super::presentation::{
 /// alt の入れ子外字を展開する深さの上限（暴走防止）
 const MAX_ALT_DEPTH: usize = 4;
 
+/// 外字1つを描画した結果と、それが**注記になったか**。
+///
+/// ルビ親文字の中では、画像化できず注記になった外字だけを rb の外へ追い出す
+/// （[`BlockRenderer::render_ruby_base`]）。どちらになったかは描画した側が
+/// 知っているので、描画済みHTMLを `starts_with` で覗き直さずここで持ち回す。
+enum GaijiHtml {
+    /// 画像・実体参照など、そのまま置ける形になった
+    Direct(String),
+    /// 画像化も実体参照化もできず `<span class="notes">…</span>` になった
+    Note(String),
+}
+
+impl GaijiHtml {
+    fn into_html(self) -> String {
+        match self {
+            GaijiHtml::Direct(s) | GaijiHtml::Note(s) => s,
+        }
+    }
+}
+
+/// Unicode 文字列を数値実体参照列にする。
+///
+/// 参照実装は `yml/jis2ucs.yml`（`"&#x3000;"`）と `Tag::EmbedGaiji#to_s` の
+/// `"&#x#{@unicode};"` のどちらも**大文字16進・最低4桁**なので、それに合わせる
+/// （表には5桁の面区点もあるので `{:04X}` の最小幅指定で両方を満たす）。
+fn numeric_entities(s: &str) -> String {
+    s.chars().map(|c| format!("&#x{:04X};", c as u32)).collect()
+}
+
 /// ブロックの開始タグ（`\r\n` を含まない）。複数行 Nested は末尾に `\r\n` を足し、
 /// 行スコープ包み（[`Block::LineWrap`]）はそのまま内容を続ける。None は div 非包み。
 fn block_open_tag(kind: &BlockKind, empty_indent_css: bool) -> Option<String> {
@@ -57,8 +86,11 @@ fn block_open_tag(kind: &BlockKind, empty_indent_css: bool) -> Option<String> {
         }
         BlockKind::Futoji => Some("<div class=\"futoji\">".to_string()),
         BlockKind::Shatai => Some("<div class=\"shatai\">".to_string()),
-        // TODO: Burasage（per-line 包み）・Midashi（id カウンタ）。
-        _ => None,
+        // この2つは開始タグが単純な div ではないので、呼び出し側が先に捌く。
+        // Burasage は外側 div を作らない per-line 包み（[`BlockRenderer::render_burasage`]）、
+        // Midashi は h4/h3/h5＋アンカー id（[`BlockRenderer::render_nested`]）。
+        // ここに `_` を置くと変種を足したとき黙って div 非包みになるので網羅させる。
+        BlockKind::Burasage(_) | BlockKind::Midashi { .. } => None,
     }
 }
 
@@ -170,7 +202,10 @@ impl<'a> BlockRenderer<'a> {
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
                 } else {
-                    // div で包まない種類（想定外）は内容だけ出す。
+                    // LineWrap になるのは行スコープの字下げ・地付きだけ（Lowerer の
+                    // `LineKind::LineWrap` は Jisage / Chitsuki しか作らない）ので、
+                    // どちらも block_open_tag が Some を返す。ここは到達しない。
+                    debug_assert!(false, "LineWrap に div 非包みの種類が来た: {kind:?}");
                     self.render_inlines(inline, out);
                     out.push_str("\r\n");
                 }
@@ -308,50 +343,6 @@ impl<'a> BlockRenderer<'a> {
     }
 }
 
-/// 行が「本文テキスト」を持つか（参照実装 `TextBuffer#blank_type == false`）。
-///
-/// 参照実装のぶら下げは、バッファに**空でない String** がある行だけを per-line の
-/// burasage div で包む。分かれ目は注記の書き方で、参照実装に最小入力を与えて
-/// 見出し・太字・傍点・縦中横のすべてで実測した:
-///
-/// - **範囲形**（`［＃中見出し］abc［＃中見出し終わり］`）は中身が String のまま
-///   バッファに残る → **包む**。[`Inline::range_form`] が立つ。
-/// - **後方参照形**（`［＃「abc」は中見出し］`）は String をタグへ取り込んで消す
-///   → **包まない**。画像・ルビ（親文字を取り込む）・注記も同じく残さない。
-///
-/// 行全体がブロック div になる行（行スコープの字下げ・地付き）は、そもそも
-/// [`Block::Line`] ではなく [`Block::LineWrap`] になるのでこの判定には来ない
-/// （参照の `blank_type == :inline` に相当し、包まず行末は `\r\n` だけ）。
-fn has_inline_text(inlines: &[Inline]) -> bool {
-    inlines.iter().any(|inline| match &inline.kind {
-        InlineKind::Text(s) => !s.is_empty(),
-        // 範囲形（`［＃中見出し］…［＃中見出し終わり］`）は中身が参照実装の
-        // バッファに素の String として残るので、中を見て判定する。後方参照形
-        // （`［＃「…」は中見出し］`）は String をタグに取り込むので残さない。
-        InlineKind::Style { children, .. }
-        | InlineKind::FontSize { children, .. }
-        | InlineKind::Tcy { children, .. }
-        | InlineKind::Midashi { children, .. }
-        | InlineKind::BlockInline { children, .. }
-            if inline.range_form =>
-        {
-            has_inline_text(children)
-        }
-        InlineKind::Img { .. }
-        | InlineKind::Ruby { .. }
-        | InlineKind::Style { .. }
-        | InlineKind::FontSize { .. }
-        | InlineKind::Tcy { .. }
-        | InlineKind::Note { .. }
-        | InlineKind::Midashi { .. }
-        // 同一行で開閉するブロック形コマンド・行スコープ地付きは、旧経路の
-        // BlockStart/BlockEnd/LineJisage に対応するブロックマーカー。String を残さない。
-        | InlineKind::BlockInline { .. }
-        | InlineKind::ChitsukiInline { .. } => false,
-        _ => true,
-    })
-}
-
 impl<'a> BlockRenderer<'a> {
     fn render_inlines(&mut self, inlines: &[Inline], out: &mut String) {
         for inline in inlines {
@@ -416,12 +407,14 @@ impl<'a> BlockRenderer<'a> {
                 jis_code,
                 had_igeta,
             } => {
-                let s = self.render_gaiji(
-                    description,
-                    unicode.as_deref(),
-                    jis_code.as_deref(),
-                    *had_igeta,
-                );
+                let s = self
+                    .render_gaiji(
+                        description,
+                        unicode.as_deref(),
+                        jis_code.as_deref(),
+                        *had_igeta,
+                    )
+                    .into_html();
                 out.push_str(&s);
             }
             InlineKind::Accent {
@@ -611,25 +604,18 @@ impl<'a> BlockRenderer<'a> {
     // --- 以下は旧 node_renderer から移植した外字・アクセント描画（Path B）。 ---
     // node_renderer 撤去後はこちらが唯一の実装になる。挙動は厳密一致。
 
-    /// アクセント文字（外字画像）を描画する。
+    /// アクセント文字（外字画像）を描画する（参照 `Tag::Accent#to_s`）。
+    ///
+    /// 参照が見るのは `use_jisx0213` **だけ**で、`use_unicode` はアクセントに効かない
+    /// （`Tag::Accent` は `@unicode` を持たず、面区点から `JIS2UCS` を引くため）。
+    /// 表に無い面区点のときは参照も `nil` を出す＝空文字列になる。
     fn render_accent(&mut self, code: &str, name: &str, unicode: Option<&str>) -> String {
         self.notation.mark_accent();
-        if self.options.use_jisx0213 || self.options.use_unicode {
-            if let Some(u) = unicode {
-                u.chars().map(|c| format!("&#{};", c as u32)).collect()
-            } else {
-                String::new()
-            }
+        if self.options.use_jisx0213 {
+            unicode.map(numeric_entities).unwrap_or_default()
         } else {
             self.notation.mark_gaiji_image();
-            let (folder, file) = jis_code_to_path(code);
-            format!(
-                "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                self.options.gaiji_dir,
-                folder,
-                file,
-                html_escape(&self.accent_name_for_alt(name))
-            )
+            self.gaiji_img(code, &html_escape(&self.accent_name_for_alt(name)))
         }
     }
 
@@ -658,130 +644,136 @@ impl<'a> BlockRenderer<'a> {
     fn render_ruby_base(&mut self, base: &[Inline]) -> (String, String) {
         let mut rb = String::new();
         let mut trailing = String::new();
+        // 親文字の中では注記に ※ を付けない（rb 側に自分で付けるため）。
         let outer = std::mem::replace(&mut self.in_ruby_base, true);
         for inline in base {
-            let mut html = String::new();
-            self.render_inline(inline, &mut html);
-            if matches!(&inline.kind, InlineKind::Gaiji { .. })
-                && html.starts_with("<span class=\"notes\">")
-            {
-                rb.push_str(GAIJI_MARK_STR);
-                trailing.push_str(&html);
-            } else {
-                rb.push_str(&html);
+            let InlineKind::Gaiji {
+                description,
+                unicode,
+                jis_code,
+                had_igeta,
+            } = &inline.kind
+            else {
+                self.render_inline(inline, &mut rb);
+                continue;
+            };
+            match self.render_gaiji(
+                description,
+                unicode.as_deref(),
+                jis_code.as_deref(),
+                *had_igeta,
+            ) {
+                GaijiHtml::Note(html) => {
+                    rb.push_str(GAIJI_MARK_STR);
+                    trailing.push_str(&html);
+                }
+                GaijiHtml::Direct(html) => rb.push_str(&html),
             }
         }
         self.in_ruby_base = outer;
         (rb, trailing)
     }
 
-    /// 外字をHTMLに変換（node_renderer::render_gaiji と厳密一致）。
+    /// 外字画像 `<img class="gaiji" />`（参照 `Tag::EmbedGaiji#to_s` / `Tag::Accent#to_s`）。
+    fn gaiji_img(&self, jis_code: &str, alt: &str) -> String {
+        let (folder, file) = jis_code_to_path(jis_code);
+        format!(
+            "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
+            self.options.gaiji_dir, folder, file, alt
+        )
+    }
+
+    /// 画像化も実体参照化もできなかった外字（`※［＃…］` の注記）。
+    /// フッタの外字一覧にも積む（参照 `@images`）。
+    fn unconvertible_note(&mut self, description: &str, had_igeta: bool) -> String {
+        self.notation.add_unconverted_gaiji(description, had_igeta);
+        let notes_mark = if had_igeta { "＃" } else { "" };
+        format!(
+            "{}<span class=\"notes\">［{}{}］</span>",
+            self.gaiji_mark_prefix(),
+            notes_mark,
+            html_escape(description)
+        )
+    }
+
+    /// 外字をHTMLに変換（参照 `Tag::EmbedGaiji#to_s`）。
+    ///
+    /// AST に解決済みのコードがあればそれを使い、無ければ説明文から引き直す。
+    /// どちらも [`GaijiResult`] に正規化してから1箇所で描画する。
     fn render_gaiji(
         &mut self,
         description: &str,
         unicode: Option<&str>,
         jis_code: Option<&str>,
         had_igeta: bool,
-    ) -> String {
-        let alt_name = |renderer: &mut Self| {
-            if had_igeta {
-                renderer.gaiji_alt(description)
-            } else {
-                String::new()
-            }
+    ) -> GaijiHtml {
+        let resolved = match (unicode, jis_code) {
+            (Some(u), Some(jis)) => GaijiResult::JisConverted {
+                jis_code: jis.to_string(),
+                unicode: u.to_string(),
+            },
+            (Some(u), None) => GaijiResult::Unicode(u.to_string()),
+            (None, Some(jis)) => GaijiResult::JisImage {
+                jis_code: jis.to_string(),
+            },
+            (None, None) => parse_gaiji(description),
         };
-        let notes_mark = if had_igeta { "＃" } else { "" };
-        match (unicode, jis_code) {
-            (Some(u), Some(jis)) => {
-                self.notation.mark_jisx0213();
-                if self.options.use_jisx0213 || self.options.use_unicode {
-                    return u.chars().map(|c| format!("&#{};", c as u32)).collect();
-                } else {
-                    self.notation.mark_gaiji_image();
-                    let (folder, file) = jis_code_to_path(jis);
-                    let alt = alt_name(self);
-                    return format!(
-                        "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                        self.options.gaiji_dir, folder, file, alt
-                    );
-                }
-            }
-            (Some(u), None) => {
-                if self.options.use_unicode {
-                    return u.chars().map(|c| format!("&#{};", c as u32)).collect();
-                }
-                self.notation.add_unconverted_gaiji(description, had_igeta);
-                return format!(
-                    "{}<span class=\"notes\">［{}{}］</span>",
-                    self.gaiji_mark_prefix(),
-                    notes_mark,
-                    html_escape(description)
-                );
-            }
-            (None, Some(jis)) => {
-                self.notation.mark_jisx0213();
-                self.notation.mark_gaiji_image();
-                let (folder, file) = jis_code_to_path(jis);
-                let alt = alt_name(self);
-                return format!(
-                    "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                    self.options.gaiji_dir, folder, file, alt
-                );
-            }
-            (None, None) => {}
-        }
+        self.render_gaiji_result(resolved, description, had_igeta)
+    }
 
-        match parse_gaiji(description) {
-            GaijiResult::Unicode(s) => {
+    /// 正規化済みの外字解決結果を描画する。
+    ///
+    /// 参照 `Tag::EmbedGaiji#to_s` は JIS コード（`use_jisx0213`）と `U+` 指定
+    /// （`use_unicode`）を**別のオプション**で切り替え、片方から他方へは落ちない。
+    /// JIS コードしか無い外字は `--use-unicode` でも画像のままになる。
+    fn render_gaiji_result(
+        &mut self,
+        resolved: GaijiResult,
+        description: &str,
+        had_igeta: bool,
+    ) -> GaijiHtml {
+        match resolved {
+            // `U+` 指定のみ。参照は use_unicode のときだけ実体参照にする。
+            GaijiResult::Unicode(u) => {
                 if self.options.use_unicode {
-                    s.chars().map(|c| format!("&#{};", c as u32)).collect()
+                    GaijiHtml::Direct(numeric_entities(&u))
                 } else {
-                    self.notation.add_unconverted_gaiji(description, had_igeta);
-                    format!(
-                        "{}<span class=\"notes\">［{}{}］</span>",
-                        self.gaiji_mark_prefix(),
-                        notes_mark,
-                        html_escape(description)
-                    )
+                    GaijiHtml::Note(self.unconvertible_note(description, had_igeta))
                 }
             }
-            GaijiResult::JisConverted {
-                jis_code: jis,
-                unicode: u,
-            } => {
+            // JIS コードから Unicode が引けた外字。参照は use_jisx0213 のときだけ
+            // 実体参照にする（use_unicode では画像のまま）。
+            GaijiResult::JisConverted { jis_code, unicode } => {
                 self.notation.mark_jisx0213();
-                if self.options.use_jisx0213 || self.options.use_unicode {
-                    u.chars().map(|c| format!("&#{};", c as u32)).collect()
+                if self.options.use_jisx0213 {
+                    GaijiHtml::Direct(numeric_entities(&unicode))
                 } else {
                     self.notation.mark_gaiji_image();
-                    let (folder, file) = jis_code_to_path(&jis);
-                    let alt = alt_name(self);
-                    format!(
-                        "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                        self.options.gaiji_dir, folder, file, alt
-                    )
+                    GaijiHtml::Direct(self.gaiji_img_with_alt(&jis_code, description, had_igeta))
                 }
             }
-            GaijiResult::JisImage { jis_code: jis } => {
+            // Unicode が引けないので常に画像。
+            GaijiResult::JisImage { jis_code } => {
                 self.notation.mark_jisx0213();
                 self.notation.mark_gaiji_image();
-                let (folder, file) = jis_code_to_path(&jis);
-                let alt = alt_name(self);
-                format!(
-                    "<img src=\"{}{}/{}.png\" alt=\"※({})\" class=\"gaiji\" />",
-                    self.options.gaiji_dir, folder, file, alt
-                )
+                GaijiHtml::Direct(self.gaiji_img_with_alt(&jis_code, description, had_igeta))
             }
             GaijiResult::Unconvertible => {
-                self.notation.add_unconverted_gaiji(description, had_igeta);
-                format!(
-                    "{}<span class=\"notes\">［{}{}］</span>",
-                    self.gaiji_mark_prefix(),
-                    notes_mark,
-                    html_escape(description)
-                )
+                GaijiHtml::Note(self.unconvertible_note(description, had_igeta))
             }
         }
+    }
+
+    /// 外字画像を alt 付きで組み立てる。alt は `＃` 付きの外字注記のときだけ入る
+    /// （[`Self::gaiji_alt`] は入れ子外字を展開しうるので、必ずフッタ用フラグを
+    /// 立てた**後**に呼ぶ。参照実装と登録順を合わせるため）。
+    fn gaiji_img_with_alt(&mut self, jis_code: &str, description: &str, had_igeta: bool) -> String {
+        let alt = if had_igeta {
+            self.gaiji_alt(description)
+        } else {
+            String::new()
+        };
+        self.gaiji_img(jis_code, &alt)
     }
 
     /// 外字画像の alt を作る。alt の中の入れ子外字 `※［＃…］` は、参照実装が
@@ -798,7 +790,7 @@ impl<'a> BlockRenderer<'a> {
             match segment {
                 NestedGaijiSegment::Text(text) => out.push_str(&html_escape(text)),
                 NestedGaijiSegment::Gaiji(inner) => {
-                    let html = self.render_gaiji(inner, None, None, true);
+                    let html = self.render_gaiji(inner, None, None, true).into_html();
                     out.push_str(&html);
                 }
             }
@@ -839,6 +831,67 @@ impl<'a> BlockRenderer<'a> {
                 }
             }
         }
+    }
+}
+
+/// 行が「本文テキスト」を持つか（参照実装 `TextBuffer#blank_type == false`）。
+///
+/// 参照実装のぶら下げは、バッファに**空でない String** がある行だけを per-line の
+/// burasage div で包む。分かれ目は注記の書き方で、参照実装に最小入力を与えて
+/// 見出し・太字・傍点・縦中横・罫囲み・横組み・キャプション・外字・アクセント・
+/// 返り点・送り仮名で実測した:
+///
+/// - **範囲形**（`［＃中見出し］abc［＃中見出し終わり］`）は中身が String のまま
+///   バッファに残る → **包む**。[`Inline::range_form`] が立つ。
+/// - **後方参照形**（`［＃「abc」は中見出し］`）は String をタグへ取り込んで消す
+///   → **包まない**。画像・ルビ（親文字を取り込む）・注記も同じく残さない。
+///
+/// 行全体がブロック div になる行（行スコープの字下げ・地付き）は、そもそも
+/// [`Block::Line`] ではなく [`Block::LineWrap`] になるのでこの判定には来ない
+/// （参照の `blank_type == :inline` に相当し、包まず行末は `\r\n` だけ）。
+fn has_inline_text(inlines: &[Inline]) -> bool {
+    inlines.iter().any(inline_has_text)
+}
+
+/// [`has_inline_text`] の1要素版。
+///
+/// **`_` の catch-all を置かないこと。** 置くと [`InlineKind`] に変種を足したとき
+/// コンパイラが黙って「本文あり」を選び、ぶら下げの包み判定が静かにずれる
+/// （実際に罫囲み・横組み・キャプション・外字・アクセント・返り点・送り仮名の
+/// 7種類がこれで誤判定していた）。
+fn inline_has_text(inline: &Inline) -> bool {
+    match &inline.kind {
+        // 素の String。空文字列はバッファに何も残さない。
+        InlineKind::Text(s) => !s.is_empty(),
+        // 参照 apply_warichu は状態を持たず、開閉を素の文字列でバッファに積む。
+        InlineKind::Warichu { .. } => true,
+        // 範囲形（`［＃中見出し］…［＃中見出し終わり］`）は中身が参照実装の
+        // バッファに素の String として残るので、中を見て判定する。後方参照形
+        // （`［＃「…」は中見出し］`）は String をタグに取り込むので残さない。
+        InlineKind::Style { children, .. }
+        | InlineKind::Midashi { children, .. }
+        | InlineKind::FontSize { children, .. }
+        | InlineKind::Tcy { children }
+        | InlineKind::Keigakomi { children }
+        | InlineKind::Yokogumi { children }
+        | InlineKind::Caption { children }
+        | InlineKind::Warigaki { children }
+        // 同一行で開閉するブロック形コマンドは、旧経路の BlockStart/BlockEnd に
+        // 対応するブロックマーカー。範囲形なので中身の String は残る。
+        | InlineKind::BlockInline { children, .. } => inline.range_form && has_inline_text(children),
+        // 参照実装で `Tag::Inline` 系。バッファに String を残さない
+        // （ルビ・画像・外字・アクセント・返り点・送り仮名・注記は自分でタグになる）。
+        // 行スコープ地付き（ChitsukiInline）は旧経路の LineJisage 相当のマーカー。
+        InlineKind::Ruby { .. }
+        | InlineKind::Img { .. }
+        | InlineKind::Gaiji { .. }
+        | InlineKind::Accent { .. }
+        | InlineKind::Kaeriten(_)
+        | InlineKind::Okurigana { .. }
+        | InlineKind::Note { .. }
+        | InlineKind::AnnotationEnd { .. }
+        | InlineKind::DakutenKatakana { .. }
+        | InlineKind::ChitsukiInline { .. } => false,
     }
 }
 
@@ -908,6 +961,8 @@ mod tests {
             "［＃中見出し］abc［＃中見出し終わり］",
             "［＃ここから太字］abc［＃ここで太字終わり］",
             "［＃縦中横］32［＃縦中横終わり］",
+            "［＃罫囲み］なにぬ［＃罫囲み終わり］",
+            "［＃横組み］はひふ［＃横組み終わり］",
         ] {
             let html = render(range_form);
             assert!(
@@ -915,13 +970,54 @@ mod tests {
                 "範囲形は包む: {range_form} → {html:?}"
             );
         }
-        for backref in ["abc［＃「abc」は中見出し］", "abc［＃「abc」は太字］"] {
+        // 後方参照形と、参照実装で `Tag::Inline` になる記法は包まない。
+        // いずれも参照実装に最小入力を与えて実測した（decimal な `_ => true` の
+        // catch-all があった頃はここが全部「包む」に倒れていた）。
+        for backref in [
+            "abc［＃「abc」は中見出し］",
+            "abc［＃「abc」は太字］",
+            "あいう［＃「あいう」は罫囲み］",
+            "かきく［＃「かきく」は横組み］",
+            "あいう［＃「あいう」はキャプション］",
+            "〔e'〕",
+            "［＃（し）］",
+            "［＃レ］",
+            "※［＃「口＋世」、第3水準1-15-6］",
+            "※［＃ゴシック体のハ、U+2F0B］",
+        ] {
             let html = render(backref);
             assert!(
                 !html.starts_with("<div class=\"burasage\""),
-                "後方参照形は包まない: {backref} → {html:?}"
+                "包まない: {backref} → {html:?}"
             );
         }
+    }
+
+    /// 外字・アクセントの実体参照は**大文字16進・最低4桁**（参照 `yml/jis2ucs.yml`
+    /// と `Tag::EmbedGaiji#to_s` の `"&#x#{@unicode};"`）。
+    ///
+    /// またオプションの切り分けは参照 `Tag::EmbedGaiji#to_s` / `Tag::Accent#to_s`
+    /// と同じで、JIS コード側は `use_jisx0213`、`U+` 指定側は `use_unicode` だけが
+    /// 効く。アクセントは `use_unicode` を見ない。以下はすべて参照実装で実測した。
+    #[test]
+    fn gaiji_and_accent_entities_follow_reference_options() {
+        let opts = |jisx0213: bool, unicode: bool| RenderOptions {
+            use_jisx0213: jisx0213,
+            use_unicode: unicode,
+            ..RenderOptions::default()
+        };
+        // JIS コードのみの外字: use_jisx0213 でだけ実体参照、use_unicode では画像。
+        let jis = "※［＃「口＋世」、第3水準1-15-6］";
+        assert_eq!(render_line_inline(jis, &opts(true, false)), "&#x5535;");
+        assert!(render_line_inline(jis, &opts(false, true)).starts_with("<img "));
+        assert!(render_line_inline(jis, &opts(false, false)).starts_with("<img "));
+        // `U+` 指定の外字: use_unicode でだけ実体参照、use_jisx0213 では注記。
+        let ucs = "※［＃ゴシック体のハ、U+2F0B］";
+        assert_eq!(render_line_inline(ucs, &opts(false, true)), "&#x2F0B;");
+        assert!(render_line_inline(ucs, &opts(true, false)).contains("<span class=\"notes\">"));
+        // アクセント: use_jisx0213 でだけ実体参照。use_unicode は効かない。
+        assert_eq!(render_line_inline("〔e'〕", &opts(true, false)), "&#x00E9;");
+        assert!(render_line_inline("〔e'〕", &opts(false, true)).starts_with("<img "));
     }
 
     /// ぶら下げが明示的に閉じられる行は、参照がその行の出力前にぶら下げを
