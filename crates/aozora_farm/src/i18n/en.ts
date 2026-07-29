@@ -5,6 +5,7 @@ export const en = {
   "panel.input": "Input",
   "btn.open-file": "Open File",
   "btn.save-text": "Save Text",
+  "btn.save-text-sjis": "Save as Shift_JIS",
 
   "panel.preview": "Preview",
   "preview.live": "Live",
@@ -20,6 +21,7 @@ export const en = {
   "status.converting": "Converting...",
   "status.converted": "Converted successfully",
   "status.text-saved": "Saved to {path}",
+  "status.text-saved-sjis": "Saved to {path} in Shift_JIS",
   "status.no-text": "No text to save",
   "status.copied": "HTML copied to clipboard",
   "status.saved": "Saved to {path}",
@@ -28,6 +30,9 @@ export const en = {
 
   "error.open-file": "Failed to open file: {error}",
   "error.save-file": "Failed to save: {error}",
+  "error.sjis-unencodable": "Not saved: these characters cannot be encoded in Shift_JIS: {chars}",
+  "error.sjis-unencodable-more": "Not saved: these characters cannot be encoded in Shift_JIS: {chars} and {rest} more",
+  "error.sjis-char": "\"{char}\" at line {line}, column {column}",
   "error.copy": "Failed to copy: {error}",
   "error.read-file": "Failed to read file: {error}",
   "error.convert": "Error: {error}",

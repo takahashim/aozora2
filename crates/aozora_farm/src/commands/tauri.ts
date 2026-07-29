@@ -111,6 +111,35 @@ export async function saveTextFile(content: string, defaultName: string): Promis
   return savePath
 }
 
+/** Shift_JIS で符号化できなかった文字（位置は 0 起点の行・char）。 */
+export interface UnencodableChar {
+  ch: string
+  line: number
+  column: number
+}
+
+export type SaveSjisError =
+  | { kind: 'unencodable'; chars: UnencodableChar[] }
+  | { kind: 'io'; message: string }
+
+/**
+ * テキストを Shift_JIS（CRLF）で保存する。改行の正規化・符号位置の正規化・符号化は
+ * Rust 側（save_text_sjis）が行う。ブラウザの TextEncoder は UTF-8 しか出せない。
+ *
+ * Shift_JIS にできない文字があると保存せずに reject する（SaveSjisError）。
+ */
+export async function saveTextFileSjis(content: string, defaultName: string): Promise<string | null> {
+  const savePath = await save({
+    defaultPath: defaultName,
+    filters: [{ name: 'Text Files', extensions: ['txt'] }]
+  })
+
+  if (!savePath) return null
+
+  await invoke('save_text_sjis', { path: savePath, content })
+  return savePath
+}
+
 export async function saveHtmlFile(content: string, defaultName: string): Promise<string | null> {
   const savePath = await save({
     defaultPath: defaultName,

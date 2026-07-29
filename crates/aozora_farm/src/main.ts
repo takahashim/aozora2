@@ -10,10 +10,12 @@ import {
 } from '@/editor'
 import { initPreview, updatePreview, setBaseDir, getHtml } from '@/preview'
 import { t, updateUI, toggleLang, onLangChange } from '@/i18n'
+import type { SaveSjisError } from '@/commands/tauri'
 import {
   initResourcePaths,
   openTextFile,
   saveTextFile,
+  saveTextFileSjis,
   saveHtmlFile,
   getDirectory,
   getFilename,
@@ -34,6 +36,7 @@ const fileInfo = document.getElementById('file-info')!
 const status = document.getElementById('status')!
 const openFileBtn = document.getElementById('open-file')!
 const saveTextBtn = document.getElementById('save-text')!
+const saveTextSjisBtn = document.getElementById('save-text-sjis')!
 const viewHtmlBtn = document.getElementById('view-html')!
 const copyHtmlBtn = document.getElementById('copy-html')!
 const saveHtmlBtn = document.getElementById('save-html')!
@@ -269,6 +272,50 @@ async function saveText(): Promise<void> {
   }
 }
 
+// Save text as Shift_JIS
+//
+// 青空文庫のファイルは Shift_JIS ＋ CRLF。変換は Rust 側（save_text_sjis）に任せる。
+// Shift_JIS にできない文字があるときは保存せず、直すべき箇所を位置つきで知らせる。
+async function saveTextSjis(): Promise<void> {
+  const content = getContent()
+  if (!content.trim()) {
+    setStatus(t('status.no-text'), 'error')
+    return
+  }
+
+  try {
+    const defaultName = currentFilename || 'untitled.txt'
+    const savePath = await saveTextFileSjis(content, defaultName)
+
+    if (savePath) {
+      _currentFilePath = savePath
+      currentFilename = getFilename(savePath)
+      setBaseDir(getDirectory(savePath))
+      fileInfo.textContent = t('file.info', { filename: currentFilename })
+      setStatus(t('status.text-saved-sjis', { path: savePath }), 'success')
+    }
+  } catch (error) {
+    setStatus(describeSaveSjisError(error), 'error')
+  }
+}
+
+/** 保存できなかった理由を1行で説明する。符号化できない文字は先頭 3 件まで挙げる。 */
+function describeSaveSjisError(error: unknown): string {
+  const detail = error as SaveSjisError | undefined
+  if (detail?.kind !== 'unencodable') {
+    return t('error.save-file', { error: String(detail?.kind === 'io' ? detail.message : error) })
+  }
+
+  const shown = detail.chars
+    .slice(0, 3)
+    .map((c) => t('error.sjis-char', { char: c.ch, line: String(c.line + 1), column: String(c.column + 1) }))
+    .join('、')
+  const rest = detail.chars.length - 3
+  return rest > 0
+    ? t('error.sjis-unencodable-more', { chars: shown, rest: String(rest) })
+    : t('error.sjis-unencodable', { chars: shown })
+}
+
 // Save HTML
 async function saveHtml(): Promise<void> {
   const html = getHtml()
@@ -349,6 +396,7 @@ function setupEventListeners(): void {
   refreshBtn.addEventListener('click', () => void refreshNow())
   liveToggle.addEventListener('change', () => setLive(liveToggle.checked))
   saveTextBtn.addEventListener('click', saveText)
+  saveTextSjisBtn.addEventListener('click', saveTextSjis)
   viewHtmlBtn.addEventListener('click', viewHtml)
   copyHtmlBtn.addEventListener('click', copyHtml)
   saveHtmlBtn.addEventListener('click', saveHtml)

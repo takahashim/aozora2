@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use aozora_core::analysis::{analyze as analyze_document, Analysis};
+use aozora_core::encoding::{encode_shift_jis, normalize_for_shift_jis, UnencodableChar};
 use aozora_core::html::{convert_editor, RenderOptions};
 use tauri::Manager;
 
@@ -44,6 +45,35 @@ fn analyze(input: &str) -> Result<Analysis, String> {
     Ok(analyze_document(input))
 }
 
+/// テキストを Shift_JIS で保存する。
+///
+/// 青空文庫のファイルは Shift_JIS ＋ CRLF なので、エディタの内容（UTF-8・LF）を
+/// 両方そろえてから書き出す。符号位置の揺れ（macOS の日本語入力が作る U+301C など）は
+/// [`normalize_for_shift_jis`] で寄せるが、Shift_JIS に無い文字（絵文字・JIS 外の漢字）は
+/// 外字注記 `※［＃…］` で書くべきものなので、置き換えず位置つきのエラーにする。
+#[tauri::command]
+fn save_text_sjis(path: &str, content: &str) -> Result<(), SaveSjisError> {
+    let crlf = content
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\n', "\r\n");
+    let bytes = encode_shift_jis(&normalize_for_shift_jis(&crlf))
+        .map_err(|chars| SaveSjisError::Unencodable { chars })?;
+    std::fs::write(path, bytes).map_err(|e| SaveSjisError::Io {
+        message: e.to_string(),
+    })
+}
+
+/// [`save_text_sjis`] の失敗。フロントは kind で分岐する。
+#[derive(serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum SaveSjisError {
+    /// Shift_JIS で符号化できない文字があった（保存していない）
+    Unencodable { chars: Vec<UnencodableChar> },
+    /// 書き出しに失敗した
+    Io { message: String },
+}
+
 /// Get the path to bundled resources
 #[tauri::command]
 fn get_resource_paths(app_handle: tauri::AppHandle) -> Result<ResourcePaths, String> {
@@ -76,6 +106,7 @@ fn main() {
             convert_to_html,
             convert_file_to_html,
             analyze,
+            save_text_sjis,
             get_resource_paths,
         ])
         .run(tauri::generate_context!())

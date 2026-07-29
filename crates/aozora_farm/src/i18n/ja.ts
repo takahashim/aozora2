@@ -5,6 +5,7 @@ export const ja = {
   "panel.input": "入力",
   "btn.open-file": "ファイルを開く",
   "btn.save-text": "テキストを保存",
+  "btn.save-text-sjis": "SJISで保存",
 
   "panel.preview": "プレビュー",
   "preview.live": "ライブ",
@@ -20,6 +21,7 @@ export const ja = {
   "status.converting": "変換中...",
   "status.converted": "変換完了",
   "status.text-saved": "{path} に保存しました",
+  "status.text-saved-sjis": "{path} に Shift_JIS で保存しました",
   "status.no-text": "保存するテキストがありません",
   "status.copied": "HTMLをクリップボードにコピーしました",
   "status.saved": "{path} に保存しました",
@@ -28,6 +30,9 @@ export const ja = {
 
   "error.open-file": "ファイルを開けませんでした: {error}",
   "error.save-file": "保存に失敗しました: {error}",
+  "error.sjis-unencodable": "Shift_JIS にできない文字があるため保存しませんでした: {chars}",
+  "error.sjis-unencodable-more": "Shift_JIS にできない文字があるため保存しませんでした: {chars}、ほか{rest}件",
+  "error.sjis-char": "{line}行{column}文字目の「{char}」",
   "error.copy": "コピーに失敗しました: {error}",
   "error.read-file": "ファイルの読み込みに失敗しました: {error}",
   "error.convert": "エラー: {error}",
