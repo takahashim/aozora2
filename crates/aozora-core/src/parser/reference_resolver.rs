@@ -12,14 +12,9 @@ use crate::tokenizer::tokenize;
 ///
 /// ルビの親文字抽出と、「〇〇」に傍点 形式の装飾コマンドを解決します。
 pub fn resolve_references(nodes: &mut Vec<Node>) {
-    // 1. ルビの親文字を解決
-    resolve_ruby_bases(nodes);
-
-    // 2. 注記付き範囲を解決（BlockStart/BlockEnd → Ruby）
-    resolve_annotation_ranges(nodes);
-
-    // 3. 装飾の前方参照を解決
-    resolve_style_references(nodes);
+    // 工程は [`resolve_references_collecting_failures`] と同一で、失敗リストが
+    // 要らないだけ。並べ直すと工程を足したとき片方だけ更新されうるので委譲する。
+    resolve_references_collecting_failures(nodes);
 }
 
 /// ルビ親文字解決の 2 パス目。中身は `resolve_ruby_bases` と同一で、呼ぶ位置だけが違う。
@@ -85,31 +80,42 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
             if *block_type == BlockType::AnnotationRange
                 || *block_type == BlockType::LeftAnnotationRange
             {
-                let is_left = *block_type == BlockType::LeftAnnotationRange;
+                let range_type = *block_type;
+                let is_left = range_type == BlockType::LeftAnnotationRange;
 
-                // 対応する終了を探す
+                // 対応する終了を探す。同種の開始が挟まったら深さを数える
+                // （参照は注記付き範囲を入れ子にでき、入れ子ルビを作る）。
+                // 深さを見ずに最初の終了で確定すると、外側の開始が内側の終了と
+                // ペアになり、外側の終了とその間の本文が範囲から落ちる。
+                let mut depth = 0usize;
                 let mut end_idx = None;
                 let mut annotation = None;
                 for (j, node) in nodes.iter().enumerate().skip(i + 1) {
-                    if let NodeKind::BlockEnd {
-                        block_type: bt,
-                        params,
-                        ..
-                    } = &node.kind
-                    {
-                        if (*bt == BlockType::AnnotationRange && !is_left)
-                            || (*bt == BlockType::LeftAnnotationRange && is_left)
-                        {
-                            end_idx = Some(j);
-                            annotation = params.annotation.clone();
-                            break;
+                    match &node.kind {
+                        NodeKind::BlockStart {
+                            block_type: bt, ..
+                        } if *bt == range_type => depth += 1,
+                        NodeKind::BlockEnd {
+                            block_type: bt,
+                            params,
+                            ..
+                        } if *bt == range_type => {
+                            if depth == 0 {
+                                end_idx = Some(j);
+                                annotation = params.annotation.clone();
+                                break;
+                            }
+                            depth -= 1;
                         }
+                        _ => {}
                     }
                 }
 
                 if let (Some(end_idx), Some(annotation)) = (end_idx, annotation) {
-                    // 開始から終了までの間のノードを収集
-                    let children: Vec<Node> = nodes[(i + 1)..end_idx].to_vec();
+                    // 開始から終了までの間のノードを収集し、内側の注記付き範囲を
+                    // 先に解決する（外側の子として入れ子ルビが入る）。
+                    let mut children: Vec<Node> = nodes[(i + 1)..end_idx].to_vec();
+                    resolve_annotation_ranges(&mut children);
                     // 注記テキストをパース（外字を含む場合があるため）
                     let range = nodes[i].span.union(nodes[end_idx].span);
                     let annotation_nodes = parse_annotation_text(&annotation, nodes[end_idx].span);
@@ -164,8 +170,13 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
 /// エディタ支援 `analysis` が「実際に解決できなかった参照」を **1 行 1 回**の解決で
 /// 知るために使う（参照ごとに resolve をやり直す二次的コストを避ける）。
 pub fn resolve_references_collecting_failures(nodes: &mut Vec<Node>) -> Vec<String> {
+    // 1. ルビの親文字を解決
     resolve_ruby_bases(nodes);
+
+    // 2. 注記付き範囲を解決（BlockStart/BlockEnd → Ruby）
     resolve_annotation_ranges(nodes);
+
+    // 3. 装飾の前方参照を解決
     let mut failed = Vec::new();
     resolve_style_references_collecting(nodes, &mut failed);
     failed
@@ -316,10 +327,16 @@ fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch,
 
     // 置換後、注記は start_idx + r の位置へ移動している。除去して、続きは
     // 注記の次のノードから（continue で再検査）。
+    //
+    // 置換したのは start_idx..=(*i-1) なので、注記自身は必ず残っており
+    // start_idx + r は常に範囲内になる。境界チェックではなく不変条件として書く。
     let annotation_idx = m.start_idx + r;
-    if annotation_idx < nodes.len() {
-        nodes.remove(annotation_idx);
-    }
+    debug_assert!(
+        annotation_idx < nodes.len(),
+        "置換後の注記位置が範囲外: {annotation_idx} >= {}",
+        nodes.len()
+    );
+    nodes.remove(annotation_idx);
     *i = annotation_idx;
 }
 
@@ -337,64 +354,30 @@ fn extract_plain_text(node: &Node) -> String {
     }
 }
 
-/// 注記テキストをノード列にパース
+/// 注記テキスト（`［＃「…」の注記付き終わり］` の「…」）をノード列にパースする。
 ///
-/// 外字表記（`※［＃...］`）を含むテキストをパースして、
-/// テキストノードと外字ノードの列に変換します。
+/// 参照実装は注記の中身を別の `TagParser` に渡して描画するので、ここでも本文と
+/// 同じ tokenize→parse→ルビ解決を通す（`lower::inline::note_content` と同じ作法）。
+/// 前方参照は注記の中では走らせない（参照実装と同じ）。
+///
+/// 以前はトークンのうち `Text` と `Gaiji` だけを拾って**残りを黙って捨てて**いた。
+/// そのため `［＃注記付き］内容［＃「ちゅう《き》」の注記付き終わり］` のルビが
+/// 丸ごと消えていた（参照は `<rt>` の中に入れ子のルビを作る）。
+///
+/// span は注記全体を各ノードに配る（注記内の相対位置は持たない）。
 fn parse_annotation_text(text: &str, span: Span) -> Vec<Node> {
-    use crate::gaiji::{parse_gaiji, GaijiResult};
-    use crate::token::TokenKind;
-
-    let tokens = tokenize(text);
-    let mut nodes = Vec::new();
-
-    for token in tokens {
-        match token.kind {
-            TokenKind::Text(s) => nodes.push(Node::text(&s, span)),
-            TokenKind::Gaiji {
-                description,
-                had_igeta,
-            } => {
-                let node = match parse_gaiji(&description) {
-                    GaijiResult::Unicode(s) => NodeKind::Gaiji {
-                        description: description.clone(),
-                        unicode: Some(s),
-                        jis_code: None,
-                        had_igeta,
-                    },
-                    GaijiResult::JisConverted { jis_code, unicode } => NodeKind::Gaiji {
-                        description: description.clone(),
-                        unicode: Some(unicode),
-                        jis_code: Some(jis_code),
-                        had_igeta,
-                    },
-                    GaijiResult::JisImage { jis_code } => NodeKind::Gaiji {
-                        description: description.clone(),
-                        unicode: None,
-                        jis_code: Some(jis_code),
-                        had_igeta,
-                    },
-                    GaijiResult::Unconvertible => NodeKind::Gaiji {
-                        description: description.clone(),
-                        unicode: None,
-                        jis_code: None,
-                        had_igeta,
-                    },
-                };
-                nodes.push(Node::new(node, span));
-            }
-            // その他のトークンは無視（注記内にはルビやコマンドは含まれない想定）
-            _ => {}
-        }
-    }
-
+    let mut nodes = crate::parser::parse(&tokenize(text));
+    resolve_inline_ruby(&mut nodes);
     nodes
+        .into_iter()
+        .map(|node| crate::node::inherit_span(node, span))
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::{InlineKind, RubyDirection, StyleType};
+    use crate::node::{BlockParams, InlineKind, RubyDirection, StyleType};
 
     fn text(value: &str) -> Node {
         Node::text(value, Span::new(0, value.chars().count()))
@@ -728,5 +711,81 @@ mod tests {
         assert_eq!(m.children.len(), 2);
         assert!(matches!(&m.children[0].kind, NodeKind::Text(s) if s == "Ｘ"));
         assert!(matches!(&m.children[1].kind, NodeKind::Style { .. }));
+    }
+
+    /// 注記付き範囲の中身は本文と同じ tokenize→parse→ルビ解決を通す。
+    /// 以前は Text と Gaiji 以外のトークンを捨てていたため、注記内のルビが
+    /// 丸ごと消えていた（参照は `<rt>` の中に入れ子のルビを作る）。
+    ///
+    /// 参照実装で実測:
+    /// `［＃注記付き］内容［＃「ちゅう《き》」の注記付き終わり］`
+    /// → `<rt><ruby><rb>ちゅう</rb>…<rt>き</rt>…</ruby></rt>`
+    #[test]
+    fn annotation_text_keeps_ruby_inside_the_annotation() {
+        let nodes = parse_annotation_text("ちゅう《き》", Span::new(3, 12));
+        assert_eq!(nodes.len(), 1, "{nodes:?}");
+        let NodeKind::Ruby { children, ruby, .. } = &nodes[0].kind else {
+            panic!("注記内のルビが落ちている: {nodes:?}");
+        };
+        assert!(matches!(&children[0].kind, NodeKind::Text(s) if s == "ちゅう"));
+        assert!(matches!(&ruby[0].kind, NodeKind::Text(s) if s == "き"));
+        // span は注記全体を配る（注記内の相対位置は持たない方針）。
+        assert_eq!(nodes[0].span, Span::new(3, 12));
+        assert_eq!(children[0].span, Span::new(3, 12));
+    }
+
+    /// 注記付き範囲は入れ子にできる。対応する終了は深さを数えて探し、
+    /// 内側を先に解決してから外側で包む（参照は入れ子ルビを作る）。
+    ///
+    /// 参照実装で実測:
+    /// `［＃注記付き］外［＃注記付き］内［＃「うち」の注記付き終わり］側［＃「そと」の注記付き終わり］`
+    /// → `<ruby><rb>外<ruby><rb>内</rb>…<rt>うち</rt></ruby>側</rb>…<rt>そと</rt></ruby>`
+    ///
+    /// 深さを見ずに最初の終了で確定すると、外側が内側の終了とペアになり
+    /// `側` と外側の注記が範囲から落ちる。
+    #[test]
+    fn nested_annotation_ranges_pair_by_depth() {
+        let start = || {
+            node(NodeKind::BlockStart {
+                block_type: BlockType::AnnotationRange,
+                params: BlockParams::default(),
+            })
+        };
+        let end = |annotation: &str| {
+            let params = BlockParams {
+                annotation: Some(annotation.to_string()),
+                ..BlockParams::default()
+            };
+            node(NodeKind::BlockEnd {
+                block_type: BlockType::AnnotationRange,
+                params,
+                explicit_close: false,
+            })
+        };
+        let mut nodes = vec![
+            start(),
+            text("外"),
+            start(),
+            text("内"),
+            end("うち"),
+            text("側"),
+            end("そと"),
+        ];
+        resolve_annotation_ranges(&mut nodes);
+
+        assert_eq!(nodes.len(), 1, "外側1つに畳まれる: {nodes:?}");
+        let NodeKind::Ruby { children, ruby, .. } = &nodes[0].kind else {
+            panic!("外側がルビになっていない: {nodes:?}");
+        };
+        assert!(matches!(&ruby[0].kind, NodeKind::Text(s) if s == "そと"));
+        // 親文字は [外, 内側ルビ, 側]。深さを数えないと `側` が落ちる。
+        assert_eq!(children.len(), 3, "{children:?}");
+        assert!(matches!(&children[0].kind, NodeKind::Text(s) if s == "外"));
+        assert!(matches!(&children[2].kind, NodeKind::Text(s) if s == "側"));
+        let NodeKind::Ruby { children: inner, ruby: inner_ruby, .. } = &children[1].kind else {
+            panic!("内側がルビになっていない: {children:?}");
+        };
+        assert!(matches!(&inner[0].kind, NodeKind::Text(s) if s == "内"));
+        assert!(matches!(&inner_ruby[0].kind, NodeKind::Text(s) if s == "うち"));
     }
 }

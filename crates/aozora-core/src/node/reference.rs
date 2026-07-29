@@ -166,7 +166,11 @@ impl InlineKind {
     }
 }
 
-fn inherit_span(mut node: Node, span: Span) -> Node {
+/// ノードとその子孫の span を、生成元の注記の span で塗り替える。
+///
+/// 注記から作ったノードは注記文字列内の相対位置しか持たないので、本文行の
+/// 絶対位置を持つ注記自身の span を配る（注記内の細かい位置は持たない方針）。
+pub(crate) fn inherit_span(mut node: Node, span: Span) -> Node {
     node.span = span;
     match &mut node.kind {
         NodeKind::Ruby { children, ruby, .. } => {

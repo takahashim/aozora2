@@ -9,6 +9,7 @@ mod style;
 
 pub use block::{BlockParams, BlockType};
 pub use midashi::{MidashiLevel, MidashiStyle};
+pub(crate) use reference::inherit_span;
 pub use reference::{InlineKind, RefSpec};
 pub use style::StyleType;
 
