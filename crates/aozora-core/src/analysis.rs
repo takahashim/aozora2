@@ -13,6 +13,7 @@
 //! 含まない半開区間。フロント（CodeMirror）側で行番号を +1 して用いる。
 
 use crate::ast::{Block, BlockKind};
+use crate::document::{classify_lines, LineSection};
 use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node, NodeKind, RefSpec};
 use crate::parser::reference_resolver::resolve_references_collecting_failures;
@@ -144,10 +145,35 @@ pub fn analyze(input: &str) -> Analysis {
         lines.pop();
     }
     let doc = parse_document_raw(&lines);
+    // 行番号はバッファのまま保ちつつ、その行で記法が効くかをセクションで判定する。
+    // ヘッダは参照実装がルビ `《》` と `｜` を剥がして生文字列として出し、注記セクション
+    // （罫線で囲まれた凡例）は出力に一切現れない。どちらもトークン・診断を出すと
+    // 「出力に反映されない記法」をエディタが色付けし、誤った警告まで出てしまう
+    // （凡例の `（例）小径《こみち》` がルビとして光る等）。
+    let sections = classify_lines(&lines);
 
     let mut analysis = Analysis::default();
 
-    for raw in &doc.lines {
+    for (raw, section) in doc.lines.iter().zip(&sections) {
+        if !section.applies_notation() {
+            // ヘッダに記法を書いても出力に出ないことは分かりにくい（書いた本人には
+            // 効いているように見える）ので、1行1件だけ理由を知らせる。
+            // 注記セクションは凡例に `《》：ルビ` 等が必ず出てくる定型文なので出さない
+            // （出すと全ての青空文庫ファイルで恒常的なノイズになる）。
+            if *section == LineSection::Header && raw.nodes.iter().any(|n| classify(n).is_some()) {
+                analysis.diagnostics.push(Diagnostic {
+                    range: Range {
+                        line: raw.line_no,
+                        start: 0,
+                        end: raw.source.chars().count(),
+                    },
+                    severity: Severity::Info,
+                    code: "notation-in-header",
+                    message: "ヘッダ（作品名・著者など）の記法は出力に反映されません（ルビ《》と｜は取り除かれます）".to_string(),
+                });
+            }
+            continue;
+        }
         // 前方参照はこの行のなかで解決される（ルビ親文字も含む）。生ノードでは未解決
         // なので、実際の解決を **1 行 1 回**走らせて、解決に失敗した参照の**位置**を
         // 得ておく。個々の参照を再解決する二次コストを避けるため。
@@ -522,9 +548,20 @@ fn text_of(children: &[Node]) -> String {
 mod tests {
     use super::*;
 
+    /// 本文だけを与えたいテスト用に、最小のヘッダ（作品名・著者・空行）を前置する。
+    /// ヘッダ行では記法が効かない（参照実装がルビを剥がして生出力する）ので、
+    /// 記法の解析を試すには本文セクションに置く必要がある。本文は 3 行目から。
+    const HEAD: &str = "作品名\n著者\n\n";
+    /// 本文の 0 起点行番号（[`HEAD`] を前置したとき）。
+    const BODY0: usize = 3;
+
+    fn analyze_body(body: &str) -> Analysis {
+        analyze(&format!("{HEAD}{body}"))
+    }
+
     #[test]
     fn ruby_becomes_semantic_token_with_char_span() {
-        let a = analyze("東京《とうきょう》");
+        let a = analyze_body("東京《とうきょう》");
         // base「東京」は Text、ルビノードは `《とうきょう》`=[2,9) を覆う。
         let ruby: Vec<_> = a
             .tokens
@@ -532,14 +569,14 @@ mod tests {
             .filter(|t| t.kind == SemTokenKind::Ruby)
             .collect();
         assert_eq!(ruby.len(), 1);
-        assert_eq!(ruby[0].range.line, 0);
+        assert_eq!(ruby[0].range.line, BODY0);
         assert_eq!(ruby[0].range.start, 2);
         assert_eq!(ruby[0].range.end, 9);
     }
 
     #[test]
     fn heading_becomes_symbol_and_token() {
-        let a = analyze("［＃大見出し］序章［＃大見出し終わり］");
+        let a = analyze_body("［＃大見出し］序章［＃大見出し終わり］");
         assert_eq!(a.symbols.len(), 1, "大見出しが 1 件シンボル化される");
         assert_eq!(a.symbols[0].level, 1);
         assert_eq!(a.symbols[0].text, "序章");
@@ -549,16 +586,16 @@ mod tests {
     #[test]
     fn unresolvable_annotation_becomes_diagnostic() {
         // 前方に対象が無い「傍点」注記は解決できず診断になる。
-        let a = analyze("［＃「存在しない語」に傍点］");
+        let a = analyze_body("［＃「存在しない語」に傍点］");
         assert_eq!(a.diagnostics.len(), 1);
         assert_eq!(a.diagnostics[0].severity, Severity::Warning);
         assert_eq!(a.diagnostics[0].code, "unresolved-reference");
-        assert_eq!(a.diagnostics[0].range.line, 0);
+        assert_eq!(a.diagnostics[0].range.line, BODY0);
     }
 
     #[test]
     fn ruby_token_carries_reading_detail() {
-        let a = analyze("東京《とうきょう》");
+        let a = analyze_body("東京《とうきょう》");
         let ruby = a
             .tokens
             .iter()
@@ -570,7 +607,7 @@ mod tests {
     #[test]
     fn gaiji_token_carries_char_detail() {
         // U+25CB は ○ に解決される。
-        let a = analyze("※［＃「丸印」、U+25CB］");
+        let a = analyze_body("※［＃「丸印」、U+25CB］");
         let gaiji = a
             .tokens
             .iter()
@@ -584,7 +621,7 @@ mod tests {
     #[test]
     fn valid_annotation_is_not_flagged() {
         // 対象「序章」が直前にある正当な見出し注記は誤検知しない。
-        let a = analyze("序章［＃「序章」は大見出し］");
+        let a = analyze_body("序章［＃「序章」は大見出し］");
         assert!(
             a.diagnostics
                 .iter()
@@ -622,7 +659,7 @@ mod tests {
     #[test]
     fn unresolvable_gaiji_becomes_diagnostic() {
         // 面区点も U+ も無い外字は文字・画像に解決できない。
-        let a = analyze("※［＃「謎の字」］");
+        let a = analyze_body("※［＃「謎の字」］");
         let g: Vec<_> = a
             .diagnostics
             .iter()
@@ -634,21 +671,21 @@ mod tests {
     #[test]
     fn resolvable_gaiji_is_not_flagged() {
         // U+ 指定つき外字は解決できるので診断しない。
-        let a = analyze("※［＃「丸印」、U+25CB］");
+        let a = analyze_body("※［＃「丸印」、U+25CB］");
         assert!(a.diagnostics.iter().all(|d| d.code != "unresolved-gaiji"));
     }
 
     #[test]
     fn unclosed_block_becomes_diagnostic() {
         // ［＃ここから字下げ］に対応する「終わり」が無い（ブロック命令は行頭）。
-        let a = analyze("［＃ここから２字下げ］\n本文だけ続く");
+        let a = analyze_body("［＃ここから２字下げ］\n本文だけ続く");
         let unclosed: Vec<_> = a
             .diagnostics
             .iter()
             .filter(|d| d.code == "unclosed-block")
             .collect();
         assert_eq!(unclosed.len(), 1);
-        assert_eq!(unclosed[0].range.line, 0);
+        assert_eq!(unclosed[0].range.line, BODY0);
         assert!(
             unclosed[0].message.contains("字下げ"),
             "{}",
@@ -658,7 +695,7 @@ mod tests {
 
     #[test]
     fn properly_closed_block_has_no_unclosed_diagnostic() {
-        let a = analyze("［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］");
+        let a = analyze_body("［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］");
         assert!(a.diagnostics.iter().all(|d| d.code != "unclosed-block"));
     }
 
@@ -666,21 +703,21 @@ mod tests {
     fn unclosed_accent_becomes_diagnostic() {
         // 対応する 〕 が同一行に無く行末まで延長した 〔…（複数行アクセントの1行目・4363相当）。
         // 変換は互換のため受理するが、検証用に Warning を出す。
-        let a = analyze("〔Pardonnez a` mon");
+        let a = analyze_body("〔Pardonnez a` mon");
         let acc: Vec<_> = a
             .diagnostics
             .iter()
             .filter(|d| d.code == "unclosed-accent")
             .collect();
         assert_eq!(acc.len(), 1);
-        assert_eq!(acc[0].range.line, 0);
+        assert_eq!(acc[0].range.line, BODY0);
         assert_eq!(acc[0].severity, Severity::Warning);
     }
 
     #[test]
     fn closed_accent_has_no_unclosed_diagnostic() {
         // 同一行で 〕 まで閉じているアクセントは診断しない。
-        let a = analyze("〔Cafe'《カフエ》〕");
+        let a = analyze_body("〔Cafe'《カフエ》〕");
         assert!(a.diagnostics.iter().all(|d| d.code != "unclosed-accent"));
     }
 
@@ -688,28 +725,28 @@ mod tests {
     fn nested_unclosed_bracket_is_not_flagged() {
         // 入れ子の未閉じ 〔 はリテラル（アクセントにならない）ので診断も出ない。
         // 〔訳者注 〔Beethoven e`〕: 外側だけアクセント、内側 〔 は本文（54931相当）。
-        let a = analyze("〔訳者注 〔Beethoven e`〕");
+        let a = analyze_body("〔訳者注 〔Beethoven e`〕");
         assert!(a.diagnostics.iter().all(|d| d.code != "unclosed-accent"));
     }
 
     #[test]
     fn multiline_block_produces_fold_range() {
         // 3行の字下げブロック（0: 開始, 1: 本文, 2: 終わり）。
-        let a = analyze("［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］");
+        let a = analyze_body("［＃ここから２字下げ］\n本文\n［＃ここで字下げ終わり］");
         assert_eq!(a.folds.len(), 1);
-        assert_eq!(a.folds[0].start_line, 0);
+        assert_eq!(a.folds[0].start_line, BODY0);
         assert!(a.folds[0].end_line >= 1);
     }
 
     #[test]
     fn single_line_has_no_fold() {
-        let a = analyze("ただの本文\nもう一行");
+        let a = analyze_body("ただの本文\nもう一行");
         assert!(a.folds.is_empty());
     }
 
     #[test]
     fn plain_text_yields_no_tokens_or_diagnostics() {
-        let a = analyze("ただの本文です");
+        let a = analyze_body("ただの本文です");
         assert!(a.tokens.is_empty());
         assert!(a.diagnostics.is_empty());
         assert!(a.symbols.is_empty());
@@ -717,13 +754,13 @@ mod tests {
 
     #[test]
     fn line_numbers_are_zero_based_per_buffer_line() {
-        let a = analyze("一行目\n東京《とうきょう》");
+        let a = analyze_body("一行目\n東京《とうきょう》");
         let ruby = a
             .tokens
             .iter()
             .find(|t| t.kind == SemTokenKind::Ruby)
             .expect("2 行目のルビ");
-        assert_eq!(ruby.range.line, 1, "0 起点で 2 行目 = 1");
+        assert_eq!(ruby.range.line, BODY0 + 1, "0 起点でバッファ行と一致する");
     }
 
     /// 解決に失敗した参照の識別は**位置**で行う。同じ注記が1行に2回あると、
@@ -733,7 +770,7 @@ mod tests {
     /// → 1つ目は前方に対象が無く失敗、2つ目は「あ」を消費して成功。
     #[test]
     fn duplicate_reference_reports_only_the_failing_one() {
-        let a = analyze("［＃「あ」は太字］あ［＃「あ」は太字］");
+        let a = analyze_body("［＃「あ」は太字］あ［＃「あ」は太字］");
         let d: Vec<_> = a
             .diagnostics
             .iter()
@@ -748,7 +785,7 @@ mod tests {
     /// `RefSpec` を足したとき色が黙って注記色に落ちないよう classify は網羅マッチ。
     #[test]
     fn dakuten_katakana_is_a_gaiji_token_with_detail() {
-        let a = analyze("ワ゛［＃1-7-82］");
+        let a = analyze_body("ワ゛［＃1-7-82］");
         let t = a
             .tokens
             .iter()
@@ -769,5 +806,63 @@ mod tests {
         assert_eq!(a.symbols[0].range.line, 3);
         // 末尾の改行が余分な行を作らないことも固定する。
         assert_eq!(analyze("あ\n").symbols.len(), 0);
+    }
+
+    /// ヘッダと注記セクションでは記法が効かない。
+    ///
+    /// - ヘッダ: 参照実装 `parse_header` はルビ `《》` と `｜` を**剥がして**から
+    ///   項目に割り当てる（タイトルの `《》` はルビにならない）。
+    /// - 注記セクション（罫線で囲まれた凡例）: 出力に一切現れない。
+    ///
+    /// どちらもトークンを出すと「出力に反映されない記法」が光り、診断まで出てしまう。
+    #[test]
+    fn header_and_chuuki_section_produce_no_tokens() {
+        let src = concat!(
+            "作品名\n",
+            "著者《ちょしゃ》\n",
+            "\n",
+            "-------------------------------------------------------\n",
+            "【テキスト中に現れる記号について】\n",
+            "\n",
+            "《》：ルビ\n",
+            "（例）小径《こみち》\n",
+            "（例）※［＃「魚＋師のつくり」、第4水準2-93-37］\n",
+            "-------------------------------------------------------\n",
+            "\n",
+            "本文の東京《とうきょう》です。\n",
+            "\n",
+            "底本：「テスト」\n",
+        );
+        let a = analyze(src);
+        // 光るのは本文行（11 行目）のルビ 1 件だけ。
+        assert_eq!(a.tokens.len(), 1, "{:?}", a.tokens);
+        assert_eq!(a.tokens[0].kind, SemTokenKind::Ruby);
+        assert_eq!(a.tokens[0].range.line, 11);
+        // 注記セクションの凡例には診断を出さない（全ファイル共通の定型文なので
+        // 出すと恒常的なノイズになる）。
+        assert!(
+            a.diagnostics.iter().all(|d| d.range.line < 3),
+            "注記セクションに診断が出ている: {:?}",
+            a.diagnostics
+        );
+    }
+
+    /// ヘッダの記法は黙って無視するのではなく、理由を Info で知らせる
+    /// （書いた本人には効いているように見えるため）。
+    #[test]
+    fn notation_in_header_is_explained() {
+        let a = analyze("作品名《さくひんめい》\n著者\n\n本文\n");
+        let info: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "notation-in-header")
+            .collect();
+        assert_eq!(info.len(), 1, "{:?}", a.diagnostics);
+        assert_eq!(info[0].range.line, 0);
+        assert_eq!(info[0].severity, Severity::Info);
+        // 記法の無いヘッダ行には出さない。
+        assert!(analyze("作品名\n著者\n\n本文\n")
+            .diagnostics
+            .is_empty());
     }
 }

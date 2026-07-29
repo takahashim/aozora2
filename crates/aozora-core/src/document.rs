@@ -11,6 +11,90 @@ enum SectionType {
     Chuuki,
     /// 本文
     Body,
+    /// 後付け（底本：／［＃本文終わり］以降）
+    Trailer,
+}
+
+/// バッファの各行が属するセクション（行番号を保ったまま返すための型）。
+///
+/// [`extract_body_lines`] はこの分類から本文行だけを取り出したもの。
+/// エディタ支援（`crate::analysis`）は「その行で記法が効くか」を**行番号を
+/// 保ったまま**知りたいので、同じ状態機械を書き直さずこの分類を共有する。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineSection {
+    /// ヘッダ（作品名・著者等）。参照実装 `parse_header` はルビ `《》` と `｜` を
+    /// **剥がして**から項目に割り当て、記法は一切処理しない。
+    Header,
+    /// 注記セクション（罫線で囲まれた凡例）。出力に一切現れない。
+    Chuuki,
+    /// 本文。
+    Body,
+    /// 後付け（本文終わり後・底本情報）。本文とは別セクションだが記法は効く。
+    Trailer,
+}
+
+impl LineSection {
+    /// この行で青空文庫記法が効く（＝解釈されて出力に反映される）か。
+    ///
+    /// ヘッダはルビを剥がした生文字列として出力され、注記セクションは
+    /// そもそも出力されないので、どちらも記法は効かない。
+    pub fn applies_notation(self) -> bool {
+        match self {
+            LineSection::Header | LineSection::Chuuki => false,
+            LineSection::Body | LineSection::Trailer => true,
+        }
+    }
+}
+
+/// 各行のセクションを行番号を保ったまま判定する（[`extract_body_lines`] の実体）。
+pub fn classify_lines(lines: &[&str]) -> Vec<LineSection> {
+    let mut out = Vec::with_capacity(lines.len());
+    let mut section = SectionType::Header;
+
+    for line in lines {
+        match section {
+            SectionType::Header => {
+                out.push(LineSection::Header);
+                // 空行でヘッダー終了
+                if line.is_empty() {
+                    section = SectionType::AfterHeader;
+                }
+            }
+            SectionType::AfterHeader => {
+                // ヘッダー終端の空行の「次の1行」だけで注記セクションかどうかが決まる。
+                // 罫線（-だけの行）なら注記セクション、それ以外はその行から本文。
+                if is_rule_line(line) {
+                    out.push(LineSection::Chuuki);
+                    section = SectionType::Chuuki;
+                } else if line.starts_with("底本：") {
+                    out.push(LineSection::Trailer);
+                    section = SectionType::Trailer;
+                } else {
+                    out.push(LineSection::Body);
+                    section = SectionType::Body;
+                }
+            }
+            SectionType::Chuuki => {
+                out.push(LineSection::Chuuki);
+                // 罫線で注記セクション終了
+                if is_rule_line(line) {
+                    section = SectionType::Body;
+                }
+            }
+            SectionType::Body => {
+                // 底本：または［＃本文終わり］で本文終了
+                if line.starts_with("底本：") || *line == "［＃本文終わり］" {
+                    out.push(LineSection::Trailer);
+                    section = SectionType::Trailer;
+                } else {
+                    out.push(LineSection::Body);
+                }
+            }
+            SectionType::Trailer => out.push(LineSection::Trailer),
+        }
+    }
+
+    out
 }
 
 /// 人物の種別
@@ -270,49 +354,20 @@ fn is_rule_line(line: &str) -> bool {
 /// assert_eq!(body, vec!["本文1行目"]);
 /// ```
 pub fn extract_body_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
+    let sections = classify_lines(lines);
     let mut result = Vec::new();
-    let mut section = SectionType::Header;
 
-    for line in lines {
-        match section {
-            SectionType::Header => {
-                // 空行でヘッダー終了
-                if line.is_empty() {
-                    section = SectionType::AfterHeader;
-                }
-            }
-            SectionType::AfterHeader => {
-                // ヘッダー終端の空行の「次の1行」だけで注記セクションかどうかが決まる。
-                // 罫線（-だけの行）なら注記セクション、それ以外はその行から本文。
-                // 本文が空行以外で始まる場合、参照実装は本文の先頭に <br /> を1つ出すので、
-                // 空行を1行足して同じ出力にする。
-                if is_rule_line(line) {
-                    section = SectionType::Chuuki;
-                } else {
-                    if line.starts_with("底本：") {
-                        break;
-                    }
-                    if !line.is_empty() {
-                        result.push("");
-                    }
-                    result.push(*line);
-                    section = SectionType::Body;
-                }
-            }
-            SectionType::Chuuki => {
-                // 罫線で注記セクション終了
-                if is_rule_line(line) {
-                    section = SectionType::Body;
-                }
-            }
-            SectionType::Body => {
-                // 底本：または［＃本文終わり］で本文終了
-                if line.starts_with("底本：") || *line == "［＃本文終わり］" {
-                    break;
-                }
-                result.push(*line);
-            }
+    for (i, line) in lines.iter().enumerate() {
+        if sections[i] != LineSection::Body {
+            continue;
         }
+        // 注記セクションを経ずに、本文が空行以外で始まる場合（＝直前がヘッダ終端の
+        // 空行）、参照実装は本文の先頭に <br /> を1つ出すので空行を1行足して揃える。
+        if result.is_empty() && i > 0 && sections[i - 1] == LineSection::Header && !line.is_empty()
+        {
+            result.push("");
+        }
+        result.push(*line);
     }
 
     result
