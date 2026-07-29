@@ -65,7 +65,11 @@ struct ResourcePaths {
 }
 
 fn main() {
-    let builder = tauri::Builder::default()
+    // ネイティブメニューはフロント（src/main.ts の setupMenu）が組んで setAsAppMenu で
+    // 設定する。ここで menu を設定しても上書きされるだけなので置かない。macOS の
+    // 起動直後（フロント初期化まで）は tauri の enable_macos_default_menu が
+    // Menu::default を自動で入れる。
+    tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
@@ -73,15 +77,7 @@ fn main() {
             convert_file_to_html,
             analyze,
             get_resource_paths,
-        ]);
-
-    // メニューは macOS のみ。macOS は Edit メニュー（コピー/切り取り/貼り付け/全選択/取り消し）
-    // が無いと Cmd+C/V/X が webview に届かない。Windows/Linux は WebView が Ctrl+C/V/X を
-    // 直接処理するのでメニュー不要（付けると不要なメニューバーが出て不自然）。
-    #[cfg(target_os = "macos")]
-    let builder = builder.menu(|handle| tauri::menu::Menu::default(handle));
-
-    builder
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

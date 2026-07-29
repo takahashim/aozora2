@@ -74,34 +74,41 @@ function closeAbout(): void {
 }
 
 // Setup application menu
+//
+// setAsAppMenu は Rust 側の既定メニュー（tauri は macOS で Menu::default を自動で
+// 入れる）を置き換えるので、コピー・ペースト等の標準項目もここで並べる必要がある。
+// macOS では Cmd+C/V/X はメニュー項目のキーエクイバレント経由で webview に届くため、
+// 項目が無いとショートカット自体が効かない。
+// 取り消す／やり直すは CodeMirror の history が beforeinput（historyUndo/historyRedo）
+// を拾うので、ネイティブ項目からでもエディタの履歴が動く。
 async function setupMenu(): Promise<void> {
   // App submenu
   const appSubmenu = await Submenu.new({
-    text: '青空ファーム',
+    text: t('app.title'),
     items: [
       await MenuItem.new({
         id: 'about',
-        text: 'このアプリについて',
+        text: t('menu.about'),
         action: () => showAbout(),
       }),
       await PredefinedMenuItem.new({ item: 'Separator' }),
-      await PredefinedMenuItem.new({ item: 'Quit', text: '終了' }),
+      await PredefinedMenuItem.new({ item: 'Quit', text: t('menu.quit') }),
     ],
   })
 
   // File submenu
   const fileSubmenu = await Submenu.new({
-    text: 'ファイル',
+    text: t('menu.file'),
     items: [
       await MenuItem.new({
         id: 'open_file',
-        text: 'ファイルを開く',
+        text: t('btn.open-file'),
         accelerator: 'CmdOrCtrl+O',
         action: () => openFile(),
       }),
       await MenuItem.new({
         id: 'save_text',
-        text: 'テキストを保存',
+        text: t('btn.save-text'),
         accelerator: 'CmdOrCtrl+S',
         action: () => saveText(),
       }),
@@ -110,25 +117,50 @@ async function setupMenu(): Promise<void> {
 
   // Edit submenu
   const editSubmenu = await Submenu.new({
-    text: '編集',
+    text: t('menu.edit'),
     items: [
+      await PredefinedMenuItem.new({ item: 'Undo', text: t('menu.undo') }),
+      await PredefinedMenuItem.new({ item: 'Redo', text: t('menu.redo') }),
+      await PredefinedMenuItem.new({ item: 'Separator' }),
+      await PredefinedMenuItem.new({ item: 'Cut', text: t('menu.cut') }),
+      await PredefinedMenuItem.new({ item: 'Copy', text: t('menu.copy') }),
+      await PredefinedMenuItem.new({ item: 'Paste', text: t('menu.paste') }),
+      await PredefinedMenuItem.new({ item: 'SelectAll', text: t('menu.select-all') }),
+      await PredefinedMenuItem.new({ item: 'Separator' }),
       await MenuItem.new({
         id: 'search',
-        text: '検索',
+        text: t('menu.find'),
         accelerator: 'CmdOrCtrl+F',
         action: () => openSearch(),
       }),
       await MenuItem.new({
         id: 'replace',
-        text: '置換',
+        text: t('menu.replace'),
         accelerator: 'CmdOrCtrl+Shift+F',
         action: () => openReplace(),
       }),
     ],
   })
 
+  // View submenu
+  const viewSubmenu = await Submenu.new({
+    text: t('menu.view'),
+    items: [await PredefinedMenuItem.new({ item: 'Fullscreen', text: t('menu.fullscreen') })],
+  })
+
+  // Window submenu
+  const windowSubmenu = await Submenu.new({
+    text: t('menu.window'),
+    items: [
+      await PredefinedMenuItem.new({ item: 'Minimize', text: t('menu.minimize') }),
+      await PredefinedMenuItem.new({ item: 'Maximize', text: t('menu.zoom') }),
+      await PredefinedMenuItem.new({ item: 'Separator' }),
+      await PredefinedMenuItem.new({ item: 'CloseWindow', text: t('menu.close-window') }),
+    ],
+  })
+
   const menu = await Menu.new({
-    items: [appSubmenu, fileSubmenu, editSubmenu],
+    items: [appSubmenu, fileSubmenu, editSubmenu, viewSubmenu, windowSubmenu],
   })
 
   await menu.setAsAppMenu()
@@ -162,6 +194,9 @@ async function init(): Promise<void> {
 
   // Listen for language changes to update about modal
   onLangChange(() => updateAboutModal())
+
+  // ネイティブメニューはラベルを差し替えられないので、言語切替のたびに組み直す。
+  onLangChange(() => void setupMenu())
 }
 
 // Debounced convert
