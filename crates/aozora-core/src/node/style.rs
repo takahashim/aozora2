@@ -102,6 +102,14 @@ impl StyleType {
                     .find(|(name, _)| *name == command)
                     .map(|(_, st)| *st)
             })
+            .or_else(|| {
+                // 参照 PAT_DIRECTION は `(左|下)に` を同じ方向として扱う
+                // （`「あ」の下に傍点` も sesame_dot_after。実測）。
+                // 正準名は `左に…` 側なので、`下に…` はそちらへ寄せて引く。
+                command
+                    .strip_prefix("下に")
+                    .and_then(|rest| Self::from_command(&format!("左に{rest}")))
+            })
     }
 
     /// 通常バリアントをAfterバリアントに変換（左側表示用）

@@ -108,9 +108,11 @@ fn try_parse_reference_at(content: &str, start: usize) -> Option<CommandResult> 
     let target = &content[start..end];
     let rest = &content[end + '」'.len_utf8()..];
 
-    // 接続詞を探す
-    // 「の左に」パターンを優先的にチェック
-    let (connector, spec, is_left) = parse_connector(target, rest)?;
+    let (connector, spec) = parse_connector(rest)?;
+    // 参照は (左|下)に「…」の(ルビ|注記|傍記) を前方参照より先に注記へ回す。
+    if is_rest_note_spec(spec) {
+        return None;
+    }
 
     // 句点コード指定は他の記法より先に見る（参照実装 exec_style と同じ順序）
     if let Some(jis_code) = super::utils::parse_kuten_gaiji(spec) {
@@ -123,10 +125,8 @@ fn try_parse_reference_at(content: &str, start: usize) -> Option<CommandResult> 
 
     // 以降の順序は参照実装 exec_style に合わせる。
     // 縦中横などのインライン要素は見出し・装飾より先に見る。
-    if !is_left {
-        if let Some(result) = try_parse_inline_element(target, spec) {
-            return Some(result);
-        }
+    if let Some(result) = try_parse_inline_element(target, spec) {
+        return Some(result);
     }
 
     // 見出しかどうか。参照実装 exec_frontref_command は接続詞に関係なく
@@ -134,9 +134,11 @@ fn try_parse_reference_at(content: &str, start: usize) -> Option<CommandResult> 
     // 「小沼農場」に大見出し（接続詞 に）も見出しにする。従来は connector=="は"
     // に限っていたため に/の の見出しを取りこぼし、後段で空の見出しブロックに
     // なっていた（対象が本文に残る）。
-    if !is_left {
-        if let Some(level) = MidashiLevel::from_command(spec) {
-            let style = MidashiStyle::from_command(spec);
+    {
+        // 見出しも部分一致なので、入れ子コマンドの中身は見ない。
+        let outer = without_nested_commands(spec);
+        if let Some(level) = MidashiLevel::from_command(&outer) {
+            let style = MidashiStyle::from_command(&outer);
             return Some(CommandResult::Midashi {
                 target: target.to_string(),
                 level,
@@ -156,18 +158,12 @@ fn try_parse_reference_at(content: &str, start: usize) -> Option<CommandResult> 
 
     // 注記ルビ（「対象」に「注記」の注記）
     // ただし「の左に」パターンは対象外（注記として出力）
-    if !is_left {
-        if let Some(result) = try_parse_annotation_ruby(target, spec) {
-            return Some(result);
-        }
+    if let Some(result) = try_parse_annotation_ruby(target, spec) {
+        return Some(result);
     }
 
     // 装飾タイプ
-    if let Some(mut style_type) = StyleType::from_command(spec) {
-        // 「の左に」パターンの場合は_After変種に変換
-        if is_left {
-            style_type = style_type.to_after_variant();
-        }
+    if let Some(style_type) = StyleType::from_command(spec) {
         return Some(CommandResult::Style {
             target: target.to_string(),
             connector: connector.to_string(),
@@ -226,30 +222,70 @@ fn try_parse_annotation_ruby(target: &str, spec: &str) -> Option<CommandResult> 
     })
 }
 
-/// 接続詞を解析し、(接続詞, 仕様部分, 左ルビフラグ) を返す
-fn parse_connector<'a>(_target: &str, rest: &'a str) -> Option<(&'static str, &'a str, bool)> {
-    // 接続詞は「対象」の直後に来る。文字列のどこかにあればよいことにすると、
-    // 「麾」の「毛」に代えて… のような注記で区切り位置を取り違える。
-    if let Some(spec) = rest.strip_prefix("の左に") {
-        if rest.contains("のルビ") {
-            // 左ルビパターンは別処理で返す
-            return None;
-        }
-        return Some(("の左に", spec, true));
-    }
-
+/// 接続詞を解析し、(接続詞, 仕様部分) を返す。
+///
+/// 参照 `PAT_FRONTREF = 「…」[にはの](「.+」の)*(.+)` の接続詞は **1 文字**で、
+/// `左に` は接続詞ではなく仕様の一部として `exec_style` に渡る。つまり
+/// `「あ」の左に縦中横` は縦中横が効き（方向は無視）、`「あ」の左に大見出し` は
+/// 見出しが効く（いずれも実測）。方向が意味を持つのは装飾だけで、
+/// それは `StyleType::from_command` が `左に傍点` を正準名として持つことで扱う。
+fn parse_connector(rest: &str) -> Option<(&'static str, &str)> {
     for connector in ["に", "は", "の"] {
         if let Some(spec) = rest.strip_prefix(connector) {
-            return Some((connector, spec, false));
+            return Some((connector, spec));
         }
     }
     None
+}
+
+/// 参照 `PAT_REST_NOTES = /(左|下)に「(.*)」の(ルビ|注記|傍記)/` に当たる指定か。
+///
+/// 参照の dispatch はこれを前方参照より**先**に見て注記へ回すので、
+/// 前方参照としては解決しない（`「あ」の左に「い」の注記` は注記）。
+fn is_rest_note_spec(spec: &str) -> bool {
+    let Some(rest) = spec
+        .strip_prefix("左に")
+        .or_else(|| spec.strip_prefix("下に"))
+    else {
+        return false;
+    };
+    rest.starts_with('「')
+        && ["」のルビ", "」の注記", "」の傍記"]
+            .iter()
+            .any(|p| rest.contains(p))
+}
+
+/// 入れ子コマンド `［…］` の範囲を取り除いた指定文字列。
+///
+/// 参照は入れ子の `［＃…］` を**先に解決**してタグにしてから外側の記法語を見るので、
+/// 外側からは内側の記法語が見えない。こちらは平坦な文字列照合なので、
+/// `contains` で見る前に入れ子を落とす。落とさないと
+/// `［＃「ｍ」の左に「52-［＃「52-」は縦中横］歳」］` の内側の「縦中横」を拾って、
+/// 外側を縦中横として解決してしまう（実文書 000311/15995 で発生）。
+fn without_nested_commands(spec: &str) -> std::borrow::Cow<'_, str> {
+    if !spec.contains('［') {
+        return std::borrow::Cow::Borrowed(spec);
+    }
+    let mut out = String::with_capacity(spec.len());
+    let mut pos = 0;
+    while pos < spec.len() {
+        let ch = spec[pos..].chars().next().expect("pos は char 境界");
+        if ch == '［' {
+            pos = skip_bracketed(spec, pos);
+            continue;
+        }
+        out.push(ch);
+        pos += ch.len_utf8();
+    }
+    std::borrow::Cow::Owned(out)
 }
 
 /// インライン要素（縦中横、罫囲み、横組み、キャプション）を解析
 fn try_parse_inline_element(target: &str, spec: &str) -> Option<CommandResult> {
     // 参照実装 exec_style は command.match? で部分一致を見る。
     // 「縦中横、行右小書き」のように後ろに指定が続くものも拾う。
+    // 入れ子コマンドの中身は参照からは見えないので落とす。
+    let spec = &*without_nested_commands(spec);
     if spec.contains("縦中横") {
         return Some(CommandResult::InlineTcy {
             target: target.to_string(),
@@ -472,6 +508,62 @@ mod tests {
                 target: "親文字".to_string(),
                 ruby: "ルビ".to_string(),
             })
+        );
+    }
+}
+
+#[cfg(test)]
+mod direction_tests {
+    use super::*;
+
+    /// `左に` は接続詞ではなく指定の一部。参照 PAT_FRONTREF の接続詞は
+    /// `[にはの]` の 1 文字で、`左に…` は exec_style へそのまま渡る。
+    /// つまり方向が意味を持つのは装飾だけで、縦中横・見出し・罫囲みなどは
+    /// 方向を無視して適用される。期待値はすべて参照実装で実測した。
+    #[test]
+    fn left_direction_applies_to_more_than_decorations() {
+        assert!(matches!(
+            try_parse_reference("「あ」の左に縦中横"),
+            Some(CommandResult::InlineTcy { .. })
+        ));
+        assert!(matches!(
+            try_parse_reference("「あ」の左に大見出し"),
+            Some(CommandResult::Midashi { .. })
+        ));
+        assert!(matches!(
+            try_parse_reference("「あ」の左に罫囲み"),
+            Some(CommandResult::InlineKeigakomi { .. })
+        ));
+        // 装飾は左向きの変種になる。`下に` も参照は同じ方向として扱う。
+        for content in ["「あ」の左に傍点", "「あ」の下に傍点"] {
+            let Some(CommandResult::Style { style_type, .. }) = try_parse_reference(content) else {
+                panic!("{content} が装飾にならない");
+            };
+            assert_eq!(style_type, StyleType::SesameDotAfter, "{content}");
+        }
+    }
+
+    /// `(左|下)に「…」の(ルビ|注記|傍記)` は参照が前方参照より先に注記へ回すので、
+    /// ここでは解決しない（None を返して注記にする）。
+    #[test]
+    fn left_annotation_forms_are_left_to_the_note_path() {
+        for content in [
+            "「あ」の左に「い」の注記",
+            "「あ」の左に「い」のルビ",
+            "「あ」の下に「い」の傍記",
+        ] {
+            assert_eq!(try_parse_reference(content), None, "{content}");
+        }
+    }
+
+    /// 入れ子コマンドの中身は参照からは見えない（先に解決されてタグになる）。
+    /// `contains` で拾うと外側を誤って解決する（実文書 000311/15995 で発生）。
+    #[test]
+    fn nested_commands_are_invisible_to_the_outer_spec() {
+        assert_eq!(
+            try_parse_reference("「ｍ」の左に「52-［＃「52-」は縦中横］歳」"),
+            None,
+            "内側の縦中横を拾ってはいけない"
         );
     }
 }
