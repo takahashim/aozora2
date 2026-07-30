@@ -67,6 +67,9 @@ pub fn classify_lines(lines: &[&str]) -> Vec<LineSection> {
                     out.push(LineSection::Chuuki);
                     section = SectionType::Chuuki;
                 } else if line.starts_with("底本：") {
+                    // 参照 judge_chuuki は罫線でも空行でもない行を見た時点で
+                    // `<br />` を 1 つ出してから本文へ移る。底本行もそこを通るので、
+                    // 本文が空でも改行が 1 つ入る（extract_body_lines が空行を補う）。
                     out.push(LineSection::Trailer);
                     section = SectionType::Trailer;
                 } else {
@@ -354,6 +357,16 @@ pub fn extract_body_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
     let sections = classify_lines(lines);
     let mut result = Vec::new();
 
+    // 本文が 1 行も無いまま後付けに入る場合（`作品名/著者//底本：…`）でも、
+    // 参照 judge_chuuki は `<br />` を 1 つ出している。空行 1 行として補う。
+    if !sections.contains(&LineSection::Body) {
+        if let Some(i) = sections.iter().position(|s| *s == LineSection::Trailer) {
+            if i > 0 && sections[i - 1] == LineSection::Header && !lines[i].is_empty() {
+                return vec![""];
+            }
+        }
+    }
+
     for (i, line) in lines.iter().enumerate() {
         if sections[i] != LineSection::Body {
             continue;
@@ -490,11 +503,13 @@ mod tests {
         assert_eq!(body, vec!["", "本文1行目", "本文2行目"]);
     }
 
+    /// 本文が 1 行も無くても、参照 judge_chuuki は罫線でも空行でもない行
+    /// （ここでは底本行）を見た時点で `<br />` を 1 つ出してから本文へ移る。
+    /// 空行 1 行として補わないと main_text が空になり、参照と 1 行ずれる。
     #[test]
-    fn test_empty_body() {
+    fn test_empty_body_still_emits_one_break() {
         let lines = vec!["タイトル", "", "底本：青空文庫"];
-        let body = extract_body_lines(&lines);
-        assert!(body.is_empty());
+        assert_eq!(extract_body_lines(&lines), vec![""]);
     }
 
     /// ヘッダー終端の次が空行なら、その空行自体が本文の先頭の <br /> になる

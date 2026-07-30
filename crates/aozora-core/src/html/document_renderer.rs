@@ -95,12 +95,14 @@ impl<'a> DocumentRenderer<'a> {
     pub fn render_metadata_section(&self, output: &mut String, header_info: &HeaderInfo) {
         output.push_str("<div class=\"metadata\">\r\n");
 
-        if let Some(title) = &header_info.title {
-            output.push_str(&format!(
-                "<h1 class=\"title\">{}</h1>\r\n",
-                self.header_text(title)
-            ));
-        }
+        // 参照 Header#to_html は題名が無くても h1 を出す（`<h1 class="title"></h1>`）。
+        // 他の項目（原題・副題・著者など）は out_header_info が有無で分岐するのに対し、
+        // 題名だけは常に出る。空行だけの文書で差が出る。
+        let title = header_info.title.as_deref().unwrap_or("");
+        output.push_str(&format!(
+            "<h1 class=\"title\">{}</h1>\r\n",
+            self.header_text(title)
+        ));
 
         if let Some(original_title) = &header_info.original_title {
             output.push_str(&format!(
