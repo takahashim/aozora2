@@ -83,14 +83,14 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 stack.close_block(|kind, s| block_close_kind(explicit, kind, s));
             }
             LineKind::Closes(closes) => apply_closes(&mut stack, &nodes, &closes, line_no),
-            LineKind::LineWrap(kind) => {
+            LineKind::LineWrap(kinds) => {
                 // ［＃N字下げ］text／行スコープ地付き: 行全体を div で1行に包む。
                 // 先頭の行スコープマーカー1個（LineJisage、または is_block=false の
                 // 行スコープ BlockStart）だけを取り除き、残りは to_inlines に渡す
                 // （行内の見出しコマンド範囲などはそちらが畳む）。
                 let rest = strip_line_scope_marker(nodes);
                 stack.push(Block::LineWrap {
-                    kind,
+                    kinds,
                     inline: to_inlines(&rest),
                     line: line_no,
                 });
@@ -193,6 +193,34 @@ fn push_content_line(stack: &mut BlockStack, nodes: &[Node], line_no: usize) {
     stack.push_line(inline, brk, line_no);
 }
 
+/// 行単位字下げ `［＃N字下げ］` の幅を**ソース順に**集める。ルビ親文字の中も見る。
+///
+/// `｜［＃２字下げ］あいう《るび》` のように `｜` の直後に書かれると、
+/// トークナイザが親文字（`PrefixedRuby` の base）に取り込んでしまい、
+/// トップレベルからは見えなくなる。参照実装の `apply_jisage` はルビの状態に
+/// 関わらず `@buffer` へ unshift するので、行全体が字下げ div に包まれる。
+fn collect_line_jisage(nodes: &[Node]) -> Vec<u32> {
+    let mut out = Vec::new();
+    for node in nodes {
+        match &node.kind {
+            NodeKind::LineJisage { width } => out.push(*width),
+            NodeKind::Ruby { children, .. } => out.extend(collect_line_jisage(children)),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// 行単位字下げのマーカーをすべて取り除く（ルビ親文字の中も）。
+fn remove_line_jisage(nodes: &mut Vec<Node>) {
+    nodes.retain(|n| !matches!(&n.kind, NodeKind::LineJisage { .. }));
+    for node in nodes.iter_mut() {
+        if let NodeKind::Ruby { children, .. } = &mut node.kind {
+            remove_line_jisage(children);
+        }
+    }
+}
+
 /// 行スコープ包みを起こしたマーカー1個を取り除いた残りのノード列を返す。
 ///
 /// ［＃N字下げ］（`LineJisage`）は**行内のどこにあっても**1個、行スコープの
@@ -204,13 +232,11 @@ fn push_content_line(stack: &mut BlockStack, nodes: &[Node], line_no: usize) {
 /// （`［＃ここから太字］…［＃N字下げ］…［＃ここで太字終わり］`）があるので、
 /// 列を分割すると `to_inlines` が対を見つけられなくなる。
 fn strip_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
-    // まず LineJisage を1個だけ落とす（参照 apply_jisage の位置除去）。
-    if let Some(pos) = nodes
-        .iter()
-        .position(|n| matches!(&n.kind, NodeKind::LineJisage { .. }))
-    {
+    // LineJisage は**すべて**落とす（それぞれが 1 枚の div になる。参照 apply_jisage）。
+    // ルビ親文字の中に入り込んでいることがあるので、そこも見る。
+    if !collect_line_jisage(&nodes).is_empty() {
         let mut rest = nodes;
-        rest.remove(pos);
+        remove_line_jisage(&mut rest);
         return rest;
     }
     // 先頭が行スコープ BlockStart（is_block=false の Jisage/Chitsuki）なら落とす。
@@ -426,7 +452,8 @@ enum LineKind {
     /// 参照は開始タグをその場に出し、同じ行に内容を続ける。
     BlockOpenWithTail(usize, BlockKind),
     /// 行スコープの1行包み（同行に本文あり）。字下げ／地付き。
-    LineWrap(BlockKind),
+    /// 行を包むブロック（外側→内側の順）。`［＃N字下げ］` は1行に複数書ける。
+    LineWrap(Vec<BlockKind>),
     /// 内容行。
     Content,
 }
@@ -546,16 +573,17 @@ fn classify_line(nodes: &[Node]) -> LineKind {
             width: Some(*width),
         });
     }
-    if let Some(Node {
-        kind: NodeKind::LineJisage { width },
-        ..
-    }) = nodes
-        .iter()
-        .find(|n| matches!(&n.kind, NodeKind::LineJisage { .. }))
-    {
-        return LineKind::LineWrap(BlockKind::Jisage {
-            width: Some(*width),
-        });
+    let jisage_widths = collect_line_jisage(nodes);
+    if !jisage_widths.is_empty() {
+        // 参照 apply_jisage は見つけるたびバッファ先頭へ unshift するので、
+        // **後に書いたものほど外側**になる。外側→内側の順に並べ替える。
+        return LineKind::LineWrap(
+            jisage_widths
+                .into_iter()
+                .rev()
+                .map(|w| BlockKind::Jisage { width: Some(w) })
+                .collect(),
+        );
     }
     // 行スコープ地付き／字上げ ［＃地付き］text（先頭が is_block=false の Chitsuki）。
     // 参照 renderer は先頭ノードで判定し、行末でブロックを閉じる（1行包み）。
@@ -565,9 +593,9 @@ fn classify_line(nodes: &[Node]) -> LineKind {
     }) = nodes.first()
     {
         if !params.is_block && *block_type == BlockType::Chitsuki {
-            return LineKind::LineWrap(BlockKind::Chitsuki {
+            return LineKind::LineWrap(vec![BlockKind::Chitsuki {
                 width: params.width.unwrap_or(0),
-            });
+            }]);
         }
     }
     LineKind::Content
@@ -856,5 +884,33 @@ mod position_tests {
                 ..
             }
         ));
+    }
+
+    /// `［＃N字下げ］` は 1 行に複数書ける。参照 apply_jisage は見つけるたび
+    /// バッファ先頭へ unshift するので、**後に書いたものほど外側**の div になる。
+    /// また `｜` の直後に書くとトークナイザがルビ親文字へ取り込むが、参照は
+    /// ルビの状態に関わらず行を包む。どちらも参照実装で実測した。
+    #[test]
+    fn line_jisage_can_repeat_and_hide_in_ruby_base() {
+        let body = |line: &str| {
+            let src = format!("作品名\r\n著者\r\n\r\n{line}\r\n\r\n底本：「テスト」\r\n");
+            crate::html::convert(&src, &crate::html::RenderOptions::default())
+        };
+        // 後に書いた ５字下げ が外側。
+        let twice = body("［＃２字下げ］あ［＃５字下げ］い");
+        assert!(
+            twice.contains(
+                "<div class=\"jisage_5\" style=\"margin-left: 5em\">\
+                 <div class=\"jisage_2\" style=\"margin-left: 2em\">あい</div></div>"
+            ),
+            "{twice}"
+        );
+        // ｜ の直後（ルビ親文字の中）でも行を包む。
+        let in_ruby = body("｜［＃２字下げ］あいう《るび》");
+        assert!(
+            in_ruby.contains("<div class=\"jisage_2\" style=\"margin-left: 2em\"><ruby>"),
+            "{in_ruby}"
+        );
+        assert!(in_ruby.contains("</ruby></div>"), "{in_ruby}");
     }
 }

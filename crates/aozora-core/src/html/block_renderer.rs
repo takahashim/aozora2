@@ -240,29 +240,37 @@ impl<'a> BlockRenderer<'a> {
                 open,
                 ..
             } => self.render_nested(kind, children, *close, *open, out),
-            Block::LineWrap { kind, inline, .. } => {
+            Block::LineWrap { kinds, inline, .. } => {
                 // 行全体をブロック div で1行に包む（行スコープ字下げ／地付き）。
                 // 開き直後の改行も内側 <br /> も出さず、行末に `\r\n` のみ。
-                if let Some(open) = block_open_tag(kind, self.options.quirks.empty_indent_css) {
-                    // 後付けでは閉じタグを出さない（参照 tail_output は general_output と
-                    // 違って閉じタグの配列を持たない）。行末は tail の規則で決める。
-                    if self.in_tail {
-                        let mut line = open;
-                        self.render_inlines(inline, &mut line);
-                        self.push_tail_line(&line, out);
-                        return;
+                // kinds は外側から内側の順（`［＃N字下げ］` は 1 行に複数書ける）。
+                let mut line = String::new();
+                let mut opened = 0usize;
+                for kind in kinds {
+                    match block_open_tag(kind, self.options.quirks.empty_indent_css) {
+                        Some(open) => {
+                            line.push_str(&open);
+                            opened += 1;
+                        }
+                        None => {
+                            // LineWrap になるのは行スコープの字下げ・地付きだけ（Lowerer の
+                            // `LineKind::LineWrap` は Jisage / Chitsuki しか作らない）ので、
+                            // どちらも block_open_tag が Some を返す。ここは到達しない。
+                            debug_assert!(false, "LineWrap に div 非包みの種類が来た: {kind:?}");
+                        }
                     }
-                    out.push_str(&open);
-                    self.render_inlines(inline, out);
-                    out.push_str("</div>\r\n");
-                } else {
-                    // LineWrap になるのは行スコープの字下げ・地付きだけ（Lowerer の
-                    // `LineKind::LineWrap` は Jisage / Chitsuki しか作らない）ので、
-                    // どちらも block_open_tag が Some を返す。ここは到達しない。
-                    debug_assert!(false, "LineWrap に div 非包みの種類が来た: {kind:?}");
-                    self.render_inlines(inline, out);
-                    out.push_str("\r\n");
                 }
+                self.render_inlines(inline, &mut line);
+                if self.in_tail {
+                    // 後付けは閉じタグを出さない（参照 tail_output）。
+                    self.push_tail_line(&line, out);
+                    return;
+                }
+                for _ in 0..opened {
+                    line.push_str("</div>");
+                }
+                line.push_str("\r\n");
+                out.push_str(&line);
             }
         }
     }

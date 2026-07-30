@@ -64,8 +64,12 @@ pub enum Block {
     /// div で包む：`<div class="…">{inline}</div>\r\n`。複数行 Nested と違い、
     /// 開きタグ直後の `\r\n` も内側 `<br />` も出ない。
     LineWrap {
-        /// ブロックの種類（Jisage / Chitsuki など）
-        kind: BlockKind,
+        /// 行を包むブロックの種類。**外側から内側の順**。
+        ///
+        /// `［＃N字下げ］` は 1 行に複数書けて、参照 apply_jisage は見つけるたび
+        /// バッファの先頭へ unshift するので、**後に書いたものほど外側**になる
+        /// （`［＃２字下げ］あ［＃５字下げ］い` → `<div jisage_5><div jisage_2>あい`）。
+        kinds: Vec<BlockKind>,
         /// 行の内容（インライン列）
         inline: Vec<Inline>,
         /// この行の由来（本文 0 起点の行番号）＝位置情報。
@@ -396,13 +400,13 @@ impl PartialEq for Block {
                     && open == other_open
             }
             (
-                Block::LineWrap { kind, inline, .. },
+                Block::LineWrap { kinds, inline, .. },
                 Block::LineWrap {
-                    kind: other_kind,
+                    kinds: other_kinds,
                     inline: other_inline,
                     ..
                 },
-            ) => kind == other_kind && inline == other_inline,
+            ) => kinds == other_kinds && inline == other_inline,
             // 種類が違えば不等。`_ => false` と書くと変種を足したとき
             // **同じ値どうしが不等**になり（反射律違反）、しかも気付けない。
             // 左側だけを列挙すればタプル空間を網羅でき、変種追加が
