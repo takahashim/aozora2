@@ -23,11 +23,26 @@ fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
+/// 期待値ファイルの接尾辞と、それに対応する変換オプション（大文字系外字の出し方）。
+///
+/// オラクルハーネスは既定オプションでしか回らないので、`--use-jisx0213` /
+/// `--use-unicode` の経路を守れるのはここだけ。実際この経路には、実体参照を
+/// 10 進で出していた不具合があった（参照は大文字16進。docs/spec-encoding.md §8.1）。
+const VARIANTS: &[(&str, bool, bool)] = &[
+    ("", false, false),
+    ("_jisx0213", true, false),
+    ("_unicode", false, true),
+];
+
 /// サンプルテストケース
 struct SampleTestCase {
     name: String,
     input_path: PathBuf,
     expected_path: PathBuf,
+    /// JIS X 0213 外字を数値実体参照で出すか
+    use_jisx0213: bool,
+    /// Unicode 外字を数値実体参照で出すか
+    use_unicode: bool,
 }
 
 impl SampleTestCase {
@@ -64,7 +79,9 @@ impl SampleTestCase {
     fn run_test(&self) -> TestResult {
         let options = RenderOptions::new()
             .with_gaiji_dir("../../../gaiji/")
-            .with_css_files(vec!["../../aozora.css".to_string()]);
+            .with_css_files(vec!["../../aozora.css".to_string()])
+            .with_jisx0213(self.use_jisx0213)
+            .with_unicode(self.use_unicode);
 
         let expected_bytes = fs::read(&self.expected_path).expect("Failed to read expected file");
         let actual_bytes = self.convert_to_shift_jis(&options);
@@ -254,13 +271,18 @@ fn get_all_samples() -> Vec<SampleTestCase> {
             let path = entry.path();
             if path.extension().map(|e| e == "txt").unwrap_or(false) {
                 let name = path.file_stem().unwrap().to_string_lossy().to_string();
-                let expected_path = fixtures.join(format!("{}.html", name));
-                if expected_path.exists() {
-                    samples.push(SampleTestCase {
-                        name,
-                        input_path: path,
-                        expected_path,
-                    });
+                // 1 つの入力から、期待値が置かれている変換オプションぶんだけ作る。
+                for (suffix, jisx0213, unicode) in VARIANTS {
+                    let expected_path = fixtures.join(format!("{name}{suffix}.html"));
+                    if expected_path.exists() {
+                        samples.push(SampleTestCase {
+                            name: format!("{name}{suffix}"),
+                            input_path: path.clone(),
+                            expected_path,
+                            use_jisx0213: *jisx0213,
+                            use_unicode: *unicode,
+                        });
+                    }
                 }
             }
         }
@@ -320,18 +342,22 @@ fn test_chukiichiran_kinyurei() {
     let input_path = fixtures.join("chukiichiran_kinyurei.txt");
     let expected_path = fixtures.join("chukiichiran_kinyurei.html");
 
-    if !input_path.exists() {
-        eprintln!("Skipping test: sample not found at {:?}", input_path);
-        return;
-    }
+    // 入力は fixtures にコミットされている（参照実装 aozora2html の sample/ 由来）。
+    // 無ければ黙って飛ばさず落とす。飛ばすと「検査したつもり」になる。
+    assert!(
+        input_path.exists(),
+        "入力がありません: {input_path:?}（aozora2html の sample/ から持ってくる）"
+    );
 
     let sample = SampleTestCase {
         name: "chukiichiran_kinyurei".to_string(),
         input_path,
         expected_path,
+        use_jisx0213: false,
+        use_unicode: false,
     };
 
-    run_sample_test(&sample, false);
+    run_sample_test(&sample, true);
 }
 
 /// すべてのサンプルをテスト（サマリー表示用）

@@ -394,6 +394,11 @@
   **偽の一致は起きない**（置換が起きればバイト列が変わり `different` になる）。
   ただしハーネスは `had_errors` を捨てるので、不一致の原因が符号化器かどうかの
   切り分けはできない。`compatibility_test.rs` は `had_errors` を assert して切り分ける。
+- **変換オプションの経路は fixture が受け持つ**。オラクルは既定オプションでしか
+  回らないので、`--use-jisx0213` / `--use-unicode` を守れるのは
+  `crates/aozora2/tests/fixtures/chukiichiran_kinyurei_{jisx0213,unicode}.html`
+  だけである（参照実装 aozora2html の `sample/` 由来）。実際この経路には実体参照を
+  10 進で出していた不具合があり、この fixture は再現させると落ちることを確認済み。
 - 次の層は依然として**オラクルの外**であり、別に不変条件として書く必要がある。
   - 出力エンコーディングの選択と、宣言との整合（[2.4](#24-html-の出力エンコーディング未整備)）。
     ハーネスは常に Shift_JIS で符号化するので、CLI の `--encoding utf-8` 経路は通らない。
