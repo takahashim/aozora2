@@ -2,7 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use aozora_core::analysis::{analyze as analyze_document, Analysis};
-use aozora_core::encoding::{encode_shift_jis, normalize_for_shift_jis, UnencodableChar};
+use aozora_core::encoding::{
+    encode_shift_jis, normalize_for_shift_jis, CharsetPolicy, UnencodableChar,
+};
 use aozora_core::html::{convert_editor, RenderOptions};
 use tauri::Manager;
 
@@ -60,7 +62,10 @@ fn save_shift_jis(path: &str, content: &str) -> Result<(), SaveSjisError> {
         .replace("\r\n", "\n")
         .replace('\r', "\n")
         .replace('\n', "\r\n");
-    let bytes = encode_shift_jis(&normalize_for_shift_jis(&crlf))
+    // 方針は既定（CP932）。半角カナや NEC/IBM 拡張を含む既存ファイルを開いて
+    // 保存し直すだけで失敗しないようにする。青空文庫形式として直接書くべきでない
+    // 文字は保存を止めるのではなく、エディタの診断（non-x0208-char）で知らせる。
+    let bytes = encode_shift_jis(&normalize_for_shift_jis(&crlf), CharsetPolicy::default())
         .map_err(|chars| SaveSjisError::Unencodable { chars })?;
     std::fs::write(path, bytes).map_err(|e| SaveSjisError::Io {
         message: e.to_string(),

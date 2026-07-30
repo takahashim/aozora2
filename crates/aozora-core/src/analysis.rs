@@ -14,6 +14,7 @@
 
 use crate::ast::{Block, BlockKind};
 use crate::document::{classify_lines, LineSection};
+use crate::encoding::{is_directly_writable, normalize_char_for_shift_jis};
 use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node, NodeKind, RefSpec};
 use crate::parser::reference_resolver::resolve_references_collecting_failures;
@@ -153,6 +154,31 @@ pub fn analyze(input: &str) -> Analysis {
     let sections = classify_lines(&lines);
 
     let mut analysis = Analysis::default();
+
+    // 青空文庫形式では JIS X 0208 の外の文字は外字注記 `※［＃…］` で書く。
+    // 保存は止めない（CP932 で符号化できる限り既存ファイルは往復できる方が良い）
+    // ので、直すべき箇所はここで知らせる。セクションを問わず全行が対象。
+    for (line_no, line) in lines.iter().enumerate() {
+        for (column, ch) in line.chars().enumerate() {
+            // 保存時に寄せる符号位置（macOS 入力の U+301C・U+2014 など）は
+            // そのままでは書けなくても入力としては問題ないので警告しない。
+            if is_directly_writable(normalize_char_for_shift_jis(ch)) {
+                continue;
+            }
+            analysis.diagnostics.push(Diagnostic {
+                range: Range {
+                    line: line_no,
+                    start: column,
+                    end: column + 1,
+                },
+                severity: Severity::Warning,
+                code: "non-x0208-char",
+                message: format!(
+                    "JIS X 0208 にない文字です（外字注記 ※［＃…］で書いてください）: {ch}"
+                ),
+            });
+        }
+    }
 
     for (raw, section) in doc.lines.iter().zip(&sections) {
         if !section.applies_notation() {
@@ -859,5 +885,49 @@ mod tests {
         assert_eq!(info[0].severity, Severity::Info);
         // 記法の無いヘッダ行には出さない。
         assert!(analyze("作品名\n著者\n\n本文\n").diagnostics.is_empty());
+    }
+
+    /// JIS X 0208 の外の文字は外字注記で書くべきなので警告する。保存は止めない
+    /// （既存ファイルには半角カナや NEC 拡張を含むものが実在し、開いて保存し直す
+    /// だけで失敗しては困る）ぶん、位置つきで知らせる役目がここにある。
+    #[test]
+    fn non_x0208_characters_are_reported() {
+        // ⅹ は CP932 の NEC 特殊文字。実在文書 001149/43551 に出てくる。
+        let a = analyze_body("Id. c. ⅹ. p. 348");
+        let d: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "non-x0208-char")
+            .collect();
+        assert_eq!(d.len(), 1, "{:?}", a.diagnostics);
+        assert_eq!(d[0].range.line, BODY0);
+        assert_eq!(d[0].range.start, 7);
+        assert_eq!(d[0].range.end, 8);
+        assert_eq!(d[0].severity, Severity::Warning);
+    }
+
+    /// 記法が効かないヘッダ・注記セクションでも、文字コードの警告は出す
+    /// （ファイル全体が Shift_JIS で書き出されるため）。
+    #[test]
+    fn non_x0208_is_reported_in_every_section() {
+        let a = analyze("作品名ⅰ\n著者\n\n本文");
+        let d: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "non-x0208-char")
+            .collect();
+        assert_eq!(d.len(), 1, "{:?}", a.diagnostics);
+        assert_eq!(d[0].range.line, 0);
+    }
+
+    /// 普通の日本語には出さない。
+    #[test]
+    fn plain_japanese_has_no_charset_diagnostic() {
+        let a = analyze_body("吾輩は猫である。名前はまだ無い。ＡＢＣ１２３—〜");
+        assert!(
+            a.diagnostics.iter().all(|d| d.code != "non-x0208-char"),
+            "{:?}",
+            a.diagnostics
+        );
     }
 }

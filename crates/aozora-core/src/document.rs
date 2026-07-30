@@ -807,6 +807,9 @@ mod tests {
             "底本：「ほんもの」",
         ];
         assert_eq!(extract_body_lines(&lines), vec!["本文です。"]);
-        assert_eq!(extract_bibliographical_lines(&lines), vec!["底本：「ほんもの」"]);
+        assert_eq!(
+            extract_bibliographical_lines(&lines),
+            vec!["底本：「ほんもの」"]
+        );
     }
 }

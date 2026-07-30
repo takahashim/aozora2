@@ -127,7 +127,6 @@ impl StyleType {
             other => other,
         }
     }
-
 }
 
 #[cfg(test)]
