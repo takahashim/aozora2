@@ -60,8 +60,12 @@ impl BlockType {
             Some(BlockType::Jizume)
         } else if command.contains("罫囲み") {
             Some(BlockType::Keigakomi)
-        // 参照実装は終了時に「開始コマンドが終了コマンド名を含むか」で照合するため、
-        // 「中見出終わり」のように送り仮名を欠く表記も見出しとして扱う
+        // 参照実装の INDENT_TYPE[:midashi] は送り仮名込みの「見出し」で、
+        // detect_command_mode もそれで照合する。つまり `［＃ここで中見出終わり］`
+        // のように送り仮名を欠く終了は参照では**閉じられず**、
+        // 「見出し中に本文が終了しました」でエラー停止する（実測）。
+        // ここが「見出」と緩いのは参照より広く受理する側の差で、参照が停止する
+        // 入力には正解が無いので出力の食い違いにはならない。
         } else if command.contains("見出") {
             Some(BlockType::Midashi)
         } else if command.contains("横組み") {

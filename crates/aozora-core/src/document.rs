@@ -182,9 +182,15 @@ pub fn extract_header_info(lines: &[&str]) -> HeaderInfo {
     }
     let header_lines: Vec<&str> = stripped.iter().map(|s| s.as_str()).collect();
 
+    // 参照実装 Header#build_header_info は `header_info = { title: @header[0] }` から
+    // 始めて `case @header.length` の 2〜6 だけを足す。else が無いので、1 行と
+    // **7 行以上はタイトルだけ**になる（Ruby の case は該当なしで何もしない）。
     match header_lines.len() {
         0 => {}
-        1 => {
+        // 7 行以上をここに含めるのが要点。6 行と同様に処理すると、空行を欠く文書で
+        // 注記セクションの罫線が「原副題」に、凡例の箇条書きが「著者」になる
+        // （実コーパスで 000124/658 が該当し、<title> にも混入していた）。
+        1 | 7.. => {
             info.title = Some(header_lines[0].to_string());
         }
         2 => {
@@ -226,15 +232,6 @@ pub fn extract_header_info(lines: &[&str]) -> HeaderInfo {
             process_person(header_lines[4], &mut info);
         }
         6 => {
-            info.title = Some(header_lines[0].to_string());
-            info.original_title = Some(header_lines[1].to_string());
-            info.subtitle = Some(header_lines[2].to_string());
-            info.original_subtitle = Some(header_lines[3].to_string());
-            info.author = Some(header_lines[4].to_string());
-            process_person(header_lines[5], &mut info);
-        }
-        _ => {
-            // 7行以上は6行と同様に処理
             info.title = Some(header_lines[0].to_string());
             info.original_title = Some(header_lines[1].to_string());
             info.subtitle = Some(header_lines[2].to_string());
@@ -373,51 +370,36 @@ pub fn extract_body_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
     result
 }
 
+/// 後付け（[`LineSection::Trailer`]）の開始位置。本文を終わらせた行そのものを指す。
+///
+/// 後付けが after_text か底本情報かは**この1行だけ**で決まる（`［＃本文終わり］`
+/// なら after_text、`底本：` なら底本情報）。本文より前に同じ文字列があっても
+/// 反応しないよう、走査ではなくセクション分類から取る。
+fn trailer_start(lines: &[&str]) -> Option<usize> {
+    classify_lines(lines)
+        .iter()
+        .position(|s| *s == LineSection::Trailer)
+}
+
 /// 文書から本文終わり後のテキスト（after_text）を抽出
 ///
-/// `［＃本文終わり］` から `底本：` までの行を抽出します。
-/// `［＃本文終わり］` がない場合は空のVecを返します。
+/// `［＃本文終わり］` の**次の行から最後まで**を返す（マーカー自身は含めない）。
+/// 底本情報もここに含まれる。参照実装は `［＃本文終わり］` で後付けセクションへ
+/// 移り、そのあとの `底本：` は新しいセクションを開かないため
+/// （実測: `<div class="after_text">` の中に底本行がそのまま入る）。
+/// `［＃本文終わり］` が無い場合は空。
 pub fn extract_after_text_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
-    let mut result = Vec::new();
-    let mut in_after_text = false;
-
-    for line in lines {
-        if *line == "［＃本文終わり］" {
-            in_after_text = true;
-            continue; // ［＃本文終わり］自体は含めない
-        }
-        if in_after_text {
-            result.push(*line);
-        }
-    }
-
-    result
+    let start = trailer_start(lines).filter(|i| lines[*i] == "［＃本文終わり］");
+    start.map_or_else(Vec::new, |i| lines[i + 1..].to_vec())
 }
 
 /// 文書から底本情報（bibliographical information）を抽出
 ///
-/// 「底本：」で始まる行から最後までを抽出します。
-///
-/// `［＃本文終わり］` が先にある場合は空を返す。参照実装では
-/// `［＃本文終わり］` の時点で後付けのセクションに移り、そのあとの
-/// 「底本：」は新しいセクションを開かずそのまま後付けに入るため。
+/// `底本：` で始まる行から最後までを返す。
+/// `［＃本文終わり］` で後付けに入った場合は after_text 側がすべて受け持つので空。
 pub fn extract_bibliographical_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
-    let mut result = Vec::new();
-    let mut in_biblio = false;
-
-    for line in lines {
-        if *line == "［＃本文終わり］" {
-            return Vec::new();
-        }
-        if line.starts_with("底本：") {
-            in_biblio = true;
-        }
-        if in_biblio {
-            result.push(*line);
-        }
-    }
-
-    result
+    let start = trailer_start(lines).filter(|i| lines[*i].starts_with("底本："));
+    start.map_or_else(Vec::new, |i| lines[i..].to_vec())
 }
 
 #[cfg(test)]
@@ -755,5 +737,76 @@ mod tests {
             henyaku: None,
         };
         assert_eq!(info.html_title(), "著者名 訳者訳 タイトル");
+    }
+
+    /// 参照実装 `Header#build_header_info` の `case @header.length` には else が無く、
+    /// 2〜6 行だけを扱う。1 行と **7 行以上はタイトルだけ**になる。
+    ///
+    /// 実コーパスでは 000124/658（小熊秀雄全集）が該当する。ヘッダに空行が無く
+    /// 注記セクションの罫線までがヘッダ扱いになる文書で、6 行と同様に処理すると
+    /// 罫線が「原副題」に、凡例の箇条書きが「著者」になり `<title>` にも混入した。
+    /// この文書はオラクルの対象外なので、ここで固定する。
+    #[test]
+    fn header_of_seven_or_more_lines_keeps_only_the_title() {
+        let lines = vec![
+            "小熊秀雄全集",
+            "―３―",
+            "詩集２　中期詩篇",
+            "--------------------------------------------------",
+            "［表記について］",
+            "●ルビは「漢字《ルビ》」の形式で処理した。",
+            "●［＃］は、入力者注を示す。",
+            "--------------------------------------------------",
+            "",
+            "本文",
+        ];
+        let info = extract_header_info(&lines);
+        assert_eq!(info.title.as_deref(), Some("小熊秀雄全集"));
+        assert_eq!(info.original_title, None);
+        assert_eq!(info.subtitle, None);
+        assert_eq!(info.original_subtitle, None);
+        assert_eq!(info.author, None);
+        // <title> にもタイトルだけが入る。
+        assert_eq!(info.html_title(), "小熊秀雄全集");
+    }
+
+    /// `［＃本文終わり］` があると、底本情報も含めて後付けがすべて after_text に入る
+    /// （参照実装で実測: `<div class="after_text">` の中に底本行がそのまま並ぶ）。
+    #[test]
+    fn after_text_swallows_the_colophon() {
+        let lines = vec![
+            "作品名",
+            "著者",
+            "",
+            "本文です。",
+            "［＃本文終わり］",
+            "あとがき行。",
+            "",
+            "底本：「テスト」",
+            "入力：だれか",
+        ];
+        assert_eq!(
+            extract_after_text_lines(&lines),
+            vec!["あとがき行。", "", "底本：「テスト」", "入力：だれか"]
+        );
+        assert!(extract_bibliographical_lines(&lines).is_empty());
+    }
+
+    /// 後付けの判定はセクション分類から取るので、本文より前に同じ文字列があっても
+    /// 反応しない（注記セクションの凡例に `底本：` を書いても後付けにならない）。
+    #[test]
+    fn trailer_is_detected_by_section_not_by_scanning() {
+        let lines = vec![
+            "作品名",
+            "著者",
+            "",
+            "----------",
+            "凡例に底本：と書いてある",
+            "----------",
+            "本文です。",
+            "底本：「ほんもの」",
+        ];
+        assert_eq!(extract_body_lines(&lines), vec!["本文です。"]);
+        assert_eq!(extract_bibliographical_lines(&lines), vec!["底本：「ほんもの」"]);
     }
 }

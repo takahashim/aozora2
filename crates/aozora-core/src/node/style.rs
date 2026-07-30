@@ -1,90 +1,81 @@
 //! 装飾タイプ定義
 
-/// 装飾タイプ
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum StyleType {
-    // 傍点系（右・上）
-    SesameDot,
-    WhiteSesameDot,
-    BlackCircle,
-    WhiteCircle,
-    BlackTriangle,
-    WhiteTriangle,
-    Bullseye,
-    Fisheye,
-    Saltire,
+/// 装飾の種類・記法語・レジストリを**1つの宣言**から生成する。
+///
+/// enum と `ALL_STYLE_TYPES` と `command_name` を別々に書くと、バリアントを
+/// 足したときレジストリだけ漏れても**コンパイラもテストも気付かない**。
+/// `command_name` の網羅 match が強制するのは「名前を与えること」だけで、
+/// レジストリへの追加は誰も強制しないからで、round-trip テストも
+/// `ALL_STYLE_TYPES` を回す以上そこに無いものは検査できない。
+/// その状態でも `from_command` が黙って `None` を返すだけなので、
+/// その記法は永久に認識されず注記に落ちる。3者を同時に生成して構造的に防ぐ。
+macro_rules! style_types {
+    ($( $(#[$meta:meta])* $variant:ident => $name:literal ),+ $(,)?) => {
+        /// 装飾タイプ
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub enum StyleType {
+            $( $(#[$meta])* $variant, )+
+        }
 
-    // 傍点系（左・下）
-    SesameDotAfter,
-    WhiteSesameDotAfter,
-    BlackCircleAfter,
-    WhiteCircleAfter,
-    BlackTriangleAfter,
-    WhiteTriangleAfter,
-    BullseyeAfter,
-    FisheyeAfter,
-    SaltireAfter,
+        /// 全バリアントの単一レジストリ（[`style_types!`] が enum と同時に生成する）。
+        const ALL_STYLE_TYPES: &[StyleType] = &[ $( StyleType::$variant, )+ ];
 
-    // 傍線系（右・上）
-    UnderlineSolid,
-    UnderlineDouble,
-    UnderlineDotted,
-    UnderlineDashed,
-    UnderlineWave,
-
-    // 傍線系（左・下）
-    OverlineSolid,
-    OverlineDouble,
-    OverlineDotted,
-    OverlineDashed,
-    OverlineWave,
-
-    // 文字スタイル
-    Bold,
-    Italic,
-    Subscript,
-    Superscript,
+        impl StyleType {
+            /// 正準の記法語（`［＃「…」に傍点］` の「傍点」）。
+            pub fn command_name(&self) -> &'static str {
+                match self {
+                    $( StyleType::$variant => $name, )+
+                }
+            }
+        }
+    };
 }
 
-/// 全バリアントの単一レジストリ。command_name（網羅 match）とともに
-/// 記法語↔バリアントの唯一の台帳をなす。from_command はここから導出する。
-/// バリアントを増やしたらここへ追加すること（漏れは round-trip テストが検出）。
-const ALL_STYLE_TYPES: &[StyleType] = &[
-    StyleType::SesameDot,
-    StyleType::WhiteSesameDot,
-    StyleType::BlackCircle,
-    StyleType::WhiteCircle,
-    StyleType::BlackTriangle,
-    StyleType::WhiteTriangle,
-    StyleType::Bullseye,
-    StyleType::Fisheye,
-    StyleType::Saltire,
-    StyleType::SesameDotAfter,
-    StyleType::WhiteSesameDotAfter,
-    StyleType::BlackCircleAfter,
-    StyleType::WhiteCircleAfter,
-    StyleType::BlackTriangleAfter,
-    StyleType::WhiteTriangleAfter,
-    StyleType::BullseyeAfter,
-    StyleType::FisheyeAfter,
-    StyleType::SaltireAfter,
-    StyleType::UnderlineSolid,
-    StyleType::UnderlineDouble,
-    StyleType::UnderlineDotted,
-    StyleType::UnderlineDashed,
-    StyleType::UnderlineWave,
-    StyleType::OverlineSolid,
-    StyleType::OverlineDouble,
-    StyleType::OverlineDotted,
-    StyleType::OverlineDashed,
-    StyleType::OverlineWave,
-    StyleType::Bold,
-    StyleType::Italic,
-    StyleType::Subscript,
-    StyleType::Superscript,
-];
+style_types! {
+    // 傍点系（右・上）
+    SesameDot => "傍点",
+    WhiteSesameDot => "白ゴマ傍点",
+    BlackCircle => "丸傍点",
+    WhiteCircle => "白丸傍点",
+    BlackTriangle => "黒三角傍点",
+    WhiteTriangle => "白三角傍点",
+    Bullseye => "二重丸傍点",
+    Fisheye => "蛇の目傍点",
+    Saltire => "ばつ傍点",
 
-/// 入力別名（記法語 → 正準バリアント）。正準記法語は command_name にあるので
+    // 傍点系（左・下）
+    SesameDotAfter => "左に傍点",
+    WhiteSesameDotAfter => "左に白ゴマ傍点",
+    BlackCircleAfter => "左に丸傍点",
+    WhiteCircleAfter => "左に白丸傍点",
+    BlackTriangleAfter => "左に黒三角傍点",
+    WhiteTriangleAfter => "左に白三角傍点",
+    BullseyeAfter => "左に二重丸傍点",
+    FisheyeAfter => "左に蛇の目傍点",
+    SaltireAfter => "左にばつ傍点",
+
+    // 傍線系（右・上）
+    UnderlineSolid => "傍線",
+    UnderlineDouble => "二重傍線",
+    UnderlineDotted => "鎖線",
+    UnderlineDashed => "破線",
+    UnderlineWave => "波線",
+
+    // 傍線系（左・下）
+    OverlineSolid => "左に傍線",
+    OverlineDouble => "左に二重傍線",
+    OverlineDotted => "左に鎖線",
+    OverlineDashed => "左に破線",
+    OverlineWave => "左に波線",
+
+    // 文字スタイル
+    Bold => "太字",
+    Italic => "斜体",
+    Subscript => "下付き小文字",
+    Superscript => "上付き小文字",
+}
+
+/// 入力別名（記法語 → 正準バリアント）。正準記法語は [`style_types!`] が持つので
 /// ここには「別表記の入力」だけを置く（出力＝command_name には現れない）。
 const STYLE_ALIASES: &[(&str, StyleType)] = &[
     ("行左小書き", StyleType::Subscript),
@@ -98,8 +89,8 @@ impl StyleType {
     }
 
     /// コマンド名から装飾タイプを取得。
-    /// 正準記法語は command_name（唯一の真実源）から逆引きし、別表記は
-    /// STYLE_ALIASES で補う。二重表を持たない。
+    /// 正準記法語は [`Self::command_name`]（[`style_types!`] が生成する唯一の
+    /// 真実源）から逆引きし、別表記は [`STYLE_ALIASES`] で補う。二重表を持たない。
     pub fn from_command(command: &str) -> Option<Self> {
         ALL_STYLE_TYPES
             .iter()
@@ -137,43 +128,6 @@ impl StyleType {
         }
     }
 
-    /// コマンド名を取得
-    pub fn command_name(&self) -> &'static str {
-        match self {
-            StyleType::SesameDot => "傍点",
-            StyleType::WhiteSesameDot => "白ゴマ傍点",
-            StyleType::BlackCircle => "丸傍点",
-            StyleType::WhiteCircle => "白丸傍点",
-            StyleType::BlackTriangle => "黒三角傍点",
-            StyleType::WhiteTriangle => "白三角傍点",
-            StyleType::Bullseye => "二重丸傍点",
-            StyleType::Fisheye => "蛇の目傍点",
-            StyleType::Saltire => "ばつ傍点",
-            StyleType::SesameDotAfter => "左に傍点",
-            StyleType::WhiteSesameDotAfter => "左に白ゴマ傍点",
-            StyleType::BlackCircleAfter => "左に丸傍点",
-            StyleType::WhiteCircleAfter => "左に白丸傍点",
-            StyleType::BlackTriangleAfter => "左に黒三角傍点",
-            StyleType::WhiteTriangleAfter => "左に白三角傍点",
-            StyleType::BullseyeAfter => "左に二重丸傍点",
-            StyleType::FisheyeAfter => "左に蛇の目傍点",
-            StyleType::SaltireAfter => "左にばつ傍点",
-            StyleType::UnderlineSolid => "傍線",
-            StyleType::UnderlineDouble => "二重傍線",
-            StyleType::UnderlineDotted => "鎖線",
-            StyleType::UnderlineDashed => "破線",
-            StyleType::UnderlineWave => "波線",
-            StyleType::OverlineSolid => "左に傍線",
-            StyleType::OverlineDouble => "左に二重傍線",
-            StyleType::OverlineDotted => "左に鎖線",
-            StyleType::OverlineDashed => "左に破線",
-            StyleType::OverlineWave => "左に波線",
-            StyleType::Bold => "太字",
-            StyleType::Italic => "斜体",
-            StyleType::Subscript => "下付き小文字",
-            StyleType::Superscript => "上付き小文字",
-        }
-    }
 }
 
 #[cfg(test)]
@@ -187,12 +141,14 @@ mod tests {
         assert_eq!(StyleType::from_command("未知"), None);
     }
 
-    /// レジストリ ALL_STYLE_TYPES に載っていないバリアントは from_command で
-    /// 逆引きできない（記法として認識されない）。command_name（網羅 match）は
-    /// コンパイラが全バリアントを強制するので、両者が一致することで
-    /// 「レジストリに全バリアントが載っている」ことを保証する。
+    /// 記法語 → バリアント → 記法語 が一巡することを固定する。
+    ///
+    /// 「レジストリに全バリアントが載っていること」はこのテストでは保証できない
+    /// （`ALL_STYLE_TYPES` を回す以上、そこに無いものは検査対象にならない）。
+    /// それは [`style_types!`] が enum とレジストリを同時に生成することで
+    /// 構造的に保証している。ここが見るのは記法語の対応そのもの。
     #[test]
-    fn test_registry_covers_every_variant_and_round_trips() {
+    fn test_command_names_round_trip() {
         for st in StyleType::all() {
             let name = st.command_name();
             assert_eq!(
