@@ -24,10 +24,19 @@ enum Commands {
     Html(commands::html::Args),
 }
 
-fn main() -> io::Result<()> {
+fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
-    match cli.command {
+    let result: io::Result<()> = match cli.command {
         Commands::Strip(args) => commands::strip::run(args),
         Commands::Html(args) => commands::html::run(args),
+    };
+    match result {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        // `io::Result` を main から返すと Debug 表記（`Custom { kind: …, error: "…" }`）で
+        // 出てしまうので、人が読む文面だけを標準エラーに出す。
+        Err(e) => {
+            eprintln!("エラー: {e}");
+            std::process::ExitCode::FAILURE
+        }
     }
 }

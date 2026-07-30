@@ -216,8 +216,9 @@ pub fn encode_shift_jis(
     Ok(bytes.into_owned())
 }
 
-/// 方針で許されない文字を位置つきで拾う。
-fn chars_not_allowed(text: &str, policy: CharsetPolicy) -> Vec<UnencodableChar> {
+/// 方針で許されない文字を位置つきで拾う。書き出さずに検査だけしたいとき
+/// （CLI の --charset など）にも使う。
+pub fn chars_not_allowed(text: &str, policy: CharsetPolicy) -> Vec<UnencodableChar> {
     let mut found = Vec::new();
     for (line, line_text) in text.split('\n').enumerate() {
         for (column, ch) in line_text.chars().enumerate() {
