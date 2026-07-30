@@ -114,6 +114,59 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
     (stack.top, diags)
 }
 
+/// 行スコープ包み（`［＃N字下げ］` と行頭の地付き）を取り出して、包む種類と
+/// マーカーを除いたノード列を返す。
+///
+/// `classify_line` は `［＃ここで…終わり］` を含む行を先に `Closes` として扱うので、
+/// 行スコープ包みの判定まで来ない。参照実装は `apply_jisage` が閉じの有無に関わらず
+/// バッファへ unshift するだけなので、**同じ行に閉じがあっても包みは効く**
+/// （`［＃２字下げ］あいう［＃ここで字下げ終わり］` → `<div class="jisage_2">あいう</div>`）。
+/// そのため閉じ行の断片にもこれを当てる。
+fn take_line_scope_wrap(nodes: &[Node]) -> (Vec<BlockKind>, Vec<Node>) {
+    let widths = collect_line_jisage(nodes);
+    if !widths.is_empty() {
+        // 後に書いたものほど外側（参照 apply_jisage の unshift）。
+        let kinds = widths
+            .into_iter()
+            .rev()
+            .map(|width| BlockKind::Jisage { width })
+            .collect();
+        let mut rest = nodes.to_vec();
+        remove_line_jisage(&mut rest);
+        return (kinds, rest);
+    }
+    if let Some(Node {
+        kind: NodeKind::BlockStart { block_type, params },
+        ..
+    }) = nodes.first()
+    {
+        if !params.is_block && *block_type == BlockType::Chitsuki {
+            return (
+                vec![BlockKind::Chitsuki {
+                    width: params.width.unwrap_or(0),
+                }],
+                nodes[1..].to_vec(),
+            );
+        }
+    }
+    (Vec::new(), nodes.to_vec())
+}
+
+/// 閉じ行の断片を1つ積む。行スコープ包みがあれば [`Block::LineWrap`] にする。
+fn push_close_segment(stack: &mut BlockStack, nodes: &[Node], brk: Break, line_no: usize) {
+    let (kinds, rest) = take_line_scope_wrap(nodes);
+    if kinds.is_empty() {
+        stack.push_line(to_inlines(nodes), brk, line_no);
+    } else {
+        stack.push(Block::LineWrap {
+            kinds,
+            inline: to_inlines(&rest),
+            line: line_no,
+        });
+    }
+}
+
+/// 余った終わりのマーカーは `to_inlines` が落とす。
 /// 「終わり」を含む行（単独行でないもの）を畳む。
 ///
 /// 参照は行を逐次出力するので、1行に複数の「終わり」があればその順に閉じる
@@ -122,7 +175,6 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
 /// 後続本文があるならその行が出す。
 ///
 /// 開いている数より「終わり」が多い行（参照実装はエラーで停止する）は余りを無視する。
-/// 余った終わりのマーカーは `to_inlines` が落とす。
 fn apply_closes(stack: &mut BlockStack, nodes: &[Node], closes: &[(usize, bool)], line_no: usize) {
     // 閉じられる開きが1つも無ければ閉じタグは出ないので、行をまとめて内容行にする。
     let closable = closes.len().min(stack.depth());
@@ -138,7 +190,7 @@ fn apply_closes(stack: &mut BlockStack, nodes: &[Node], closes: &[(usize, bool)]
 
     for (n, (idx, explicit)) in closes.iter().enumerate() {
         // 閉じタグより前の本文。行末の改行は閉じタグ以降が出す。
-        let segment = (seg_start < *idx).then(|| to_inlines(&nodes[seg_start..*idx]));
+        let segment = (seg_start < *idx).then_some(&nodes[seg_start..*idx]);
         // 参照は閉じタグを buffer に積む（＝本文の続き）ので、本文は閉じるブロックの
         // 内側に出る。ただしぶら下げだけは閉じで indent_stack から降りてしまい
         // per-line の包みが効かなくなるので、その行の本文はブロックの外に出す。
@@ -155,12 +207,12 @@ fn apply_closes(stack: &mut BlockStack, nodes: &[Node], closes: &[(usize, bool)]
 
         if closing_burasage {
             stack.close_block(close_kind);
-            if let Some(inline) = segment {
-                stack.push_line(inline, Break::NoNewline, line_no);
+            if let Some(seg) = segment {
+                push_close_segment(stack, seg, Break::NoNewline, line_no);
             }
         } else {
-            if let Some(inline) = segment {
-                stack.push_line(inline, Break::NoNewline, line_no);
+            if let Some(seg) = segment {
+                push_close_segment(stack, seg, Break::NoNewline, line_no);
             }
             stack.close_block(close_kind);
         }
@@ -170,9 +222,9 @@ fn apply_closes(stack: &mut BlockStack, nodes: &[Node], closes: &[(usize, bool)]
     // 最後の閉じの後ろに残った本文を同じ行に出す。
     if has_tail {
         let explicit = closes.iter().any(|(_, e)| *e);
-        let inline = to_inlines(&nodes[last_close + 1..]);
-        let brk = content_break(&inline, explicit);
-        stack.push_line(inline, brk, line_no);
+        let tail = &nodes[last_close + 1..];
+        let brk = content_break(&to_inlines(tail), explicit);
+        push_close_segment(stack, tail, brk, line_no);
     }
 }
 
@@ -937,6 +989,41 @@ mod position_tests {
         assert!(
             jizume.contains("<div class=\"jizume_\" style=\"width: em\">"),
             "{jizume}"
+        );
+    }
+
+    /// `［＃N字下げ］` や行スコープ地付きは、同じ行に `［＃ここで…終わり］` が
+    /// あっても行を包む。classify_line は「終わり」を含む行を先に Closes として
+    /// 扱うので、行スコープ包みの判定まで来ないのが原因だった。
+    /// 参照 apply_jisage は閉じの有無に関わらずバッファへ unshift するだけ（実測）。
+    #[test]
+    fn line_scope_wrap_survives_a_close_on_the_same_line() {
+        let body = |lines: &[&str]| {
+            let src = format!(
+                "作品名\r\n著者\r\n\r\n{}\r\n\r\n底本：「テスト」\r\n",
+                lines.join("\r\n")
+            );
+            crate::html::convert(&src, &crate::html::RenderOptions::default())
+        };
+        let jisage = body(&[
+            "［＃ここから２字下げ、折り返して４字下げ］",
+            "まえ。",
+            "［＃２字下げ］あいう［＃ここで字下げ終わり］",
+        ]);
+        assert!(
+            jisage.contains("<div class=\"jisage_2\" style=\"margin-left: 2em\">あいう</div>"),
+            "{jisage}"
+        );
+        let chitsuki = body(&[
+            "［＃ここから２字下げ］",
+            "まえ。",
+            "［＃地付き］あいう［＃ここで字下げ終わり］",
+        ]);
+        assert!(
+            chitsuki.contains(
+                "chitsuki_0\" style=\"text-align:right; margin-right: 0em\">あいう</div>"
+            ),
+            "{chitsuki}"
         );
     }
 }
