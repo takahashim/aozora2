@@ -146,7 +146,10 @@ pub enum BlockKind {
     /// 地付き／字上げ（chitsuki）。右寄せ、右マージン em。
     Chitsuki { width: u32 },
     /// 字詰め。幅 em。
-    Jizume { width: u32 },
+    /// 字詰め。幅 em。幅が空（`［＃ここから字詰め］` の数字なし）のとき None。
+    /// 参照は空幅で `class="jizume_" style="width: em"`（不正CSS）を出す
+    /// （Quirk empty_indent_css）。
+    Jizume { width: Option<u32> },
     /// ぶら下げ（折り返し字下げ）。参照実装の per-line モデルでは外側 div を作らず、
     /// 各内容行を個別の `<div class="burasage" style="margin-left: {wrap_width}em;
     /// text-indent: {text_indent}em;">` で包む（空行は素の `<br />`）。

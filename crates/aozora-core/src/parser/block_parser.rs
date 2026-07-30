@@ -178,9 +178,12 @@ pub fn try_parse_line_indent(content: &str) -> Option<CommandResult> {
     // 参照実装 apply_jisage は convert_japanese_number 後に `(\d*)字下げ` を取る。
     // 漢数字「一字下げ」も 1 として読み、`一字下げ忘れか？200-14` のような
     // 校正注記も参照実装同様 jisage_1 になる（後続の 200-14 は巻き込まない）。
+    // 参照の正規表現は `(\d*)字下げ` で**数字なしにも一致する**（幅が空になる）。
+    // 空幅は不正な CSS `margin-left: em` を生むが、参照がそう出すので幅 None で通す
+    // （Quirk empty_indent_css）。ここで None を返して注記化すると div ごと消える。
     let normalized = convert_japanese_number(content);
     let width =
-        extract_number_before(&normalized, "字下げ").or_else(|| extract_number(&normalized))?;
+        extract_number_before(&normalized, "字下げ").or_else(|| extract_number(&normalized));
     Some(CommandResult::LineIndent { width })
 }
 
@@ -340,7 +343,7 @@ mod tests {
     #[test]
     fn test_parse_line_indent() {
         let result = try_parse_line_indent("3字下げ");
-        assert_eq!(result, Some(CommandResult::LineIndent { width: 3 }));
+        assert_eq!(result, Some(CommandResult::LineIndent { width: Some(3) }));
     }
 
     #[test]

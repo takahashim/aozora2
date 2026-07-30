@@ -160,8 +160,9 @@ pub enum NodeKind {
     /// 行に単独ならその行から複数行ブロックになり、テキストが同じ行にあれば
     /// 行全体をこの字下げで包む（参照実装 apply_jisage の unshift 相当）。
     LineJisage {
-        /// 字下げ幅（em）
-        width: u32,
+        /// 字下げ幅（em）。`［＃字下げ］` のように数字が無ければ None
+        /// （参照はそのとき不正な CSS `margin-left: em` を出す。Quirk empty_indent_css）。
+        width: Option<u32>,
     },
 
     /// 注記付き範囲の終了マーカー（外字を含む可能性がある）

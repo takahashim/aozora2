@@ -199,7 +199,7 @@ fn push_content_line(stack: &mut BlockStack, nodes: &[Node], line_no: usize) {
 /// トークナイザが親文字（`PrefixedRuby` の base）に取り込んでしまい、
 /// トップレベルからは見えなくなる。参照実装の `apply_jisage` はルビの状態に
 /// 関わらず `@buffer` へ unshift するので、行全体が字下げ div に包まれる。
-fn collect_line_jisage(nodes: &[Node]) -> Vec<u32> {
+fn collect_line_jisage(nodes: &[Node]) -> Vec<Option<u32>> {
     let mut out = Vec::new();
     for node in nodes {
         match &node.kind {
@@ -569,9 +569,7 @@ fn classify_line(nodes: &[Node]) -> LineKind {
         ..
     }] = nodes
     {
-        return LineKind::BlockOpen(BlockKind::Jisage {
-            width: Some(*width),
-        });
+        return LineKind::BlockOpen(BlockKind::Jisage { width: *width });
     }
     let jisage_widths = collect_line_jisage(nodes);
     if !jisage_widths.is_empty() {
@@ -581,7 +579,7 @@ fn classify_line(nodes: &[Node]) -> LineKind {
             jisage_widths
                 .into_iter()
                 .rev()
-                .map(|w| BlockKind::Jisage { width: Some(w) })
+                .map(|width| BlockKind::Jisage { width })
                 .collect(),
         );
     }
@@ -612,7 +610,9 @@ pub(crate) fn block_kind_of(
             width: params.width,
         }),
         BlockType::Chitsuki => Some(BlockKind::Chitsuki { width: w() }),
-        BlockType::Jizume => Some(BlockKind::Jizume { width: w() }),
+        BlockType::Jizume => Some(BlockKind::Jizume {
+            width: params.width,
+        }),
         BlockType::Keigakomi => Some(BlockKind::Keigakomi),
         BlockType::Yokogumi => Some(BlockKind::Yokogumi),
         BlockType::Caption => Some(BlockKind::Caption),
@@ -912,5 +912,26 @@ mod position_tests {
             "{in_ruby}"
         );
         assert!(in_ruby.contains("</ruby></div>"), "{in_ruby}");
+    }
+
+    /// 幅の数字が無い `［＃字下げ］` `［＃ここから字詰め］` も参照は受理し、
+    /// 空幅のまま不正な CSS を出す（Quirk empty_indent_css）。注記化すると
+    /// div ごと消えてしまう。期待値は参照実装で実測した。
+    #[test]
+    fn empty_width_indent_commands_are_accepted() {
+        let body = |line: &str| {
+            let src = format!("作品名\r\n著者\r\n\r\n{line}\r\n\r\n底本：「テスト」\r\n");
+            crate::html::convert(&src, &crate::html::RenderOptions::default())
+        };
+        let jisage = body("［＃字下げ］あいう");
+        assert!(
+            jisage.contains("<div class=\"jisage_\" style=\"margin-left: em\">あいう</div>"),
+            "{jisage}"
+        );
+        let jizume = body("［＃ここから字詰め］\r\nあいう\r\n［＃ここで字詰め終わり］");
+        assert!(
+            jizume.contains("<div class=\"jizume_\" style=\"width: em\">"),
+            "{jizume}"
+        );
     }
 }

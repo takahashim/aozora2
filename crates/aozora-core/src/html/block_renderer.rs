@@ -112,9 +112,12 @@ fn block_open_tag(kind: &BlockKind, empty_indent_css: bool) -> Option<String> {
         BlockKind::Chitsuki { width } => Some(format!(
             "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">"
         )),
-        BlockKind::Jizume { width } => Some(format!(
-            "<div class=\"jizume_{width}\" style=\"width: {width}em\">"
-        )),
+        // 空幅（None）は参照が `jizume_` / `width: em`（不正CSS, Quirk）を出す。
+        BlockKind::Jizume { width } => Some(match width {
+            Some(w) => format!("<div class=\"jizume_{w}\" style=\"width: {w}em\">"),
+            None if empty_indent_css => "<div class=\"jizume_\" style=\"width: em\">".to_string(),
+            None => "<div class=\"jizume\">".to_string(),
+        }),
         BlockKind::Keigakomi => {
             Some("<div class=\"keigakomi\" style=\"border: solid 1px\">".to_string())
         }
@@ -959,9 +962,10 @@ fn inline_has_text(inline: &Inline) -> bool {
         InlineKind::Text(s) => !s.is_empty(),
         // 参照 apply_warichu は状態を持たず、開閉を素の文字列でバッファに積む。
         InlineKind::Warichu { .. } => true,
-        // 範囲形（`［＃中見出し］…［＃中見出し終わり］`）は中身が参照実装の
-        // バッファに素の String として残るので、中を見て判定する。後方参照形
-        // （`［＃「…」は中見出し］`）は String をタグに取り込むので残さない。
+        // 範囲形（`［＃中見出し］…［＃中見出し終わり］`）は、参照実装が**開始タグの
+        // 文字列そのもの**を push_char でバッファへ積むので、中身が空でも String が
+        // 残る（`［＃傍点］［＃傍点終わり］` もぶら下げに包まれる。実測）。
+        // 後方参照形（`［＃「…」は中見出し］`）は String をタグに取り込むので残さない。
         InlineKind::Style { children, .. }
         | InlineKind::Midashi { children, .. }
         | InlineKind::FontSize { children, .. }
@@ -972,7 +976,10 @@ fn inline_has_text(inline: &Inline) -> bool {
         | InlineKind::Warigaki { children }
         // 同一行で開閉するブロック形コマンドは、旧経路の BlockStart/BlockEnd に
         // 対応するブロックマーカー。範囲形なので中身の String は残る。
-        | InlineKind::BlockInline { children, .. } => inline.range_form && has_inline_text(children),
+        | InlineKind::BlockInline { children, .. } => {
+            let _ = children;
+            inline.range_form
+        }
         // 参照実装で `Tag::Inline` 系。バッファに String を残さない
         // （ルビ・画像・外字・アクセント・返り点・送り仮名・注記は自分でタグになる）。
         // 行スコープ地付き（ChitsukiInline）は旧経路の LineJisage 相当のマーカー。
@@ -1056,6 +1063,10 @@ mod tests {
             BlockRenderer::new(&RenderOptions::default()).render_body(&blocks)
         };
         for range_form in [
+            // 中身が空でも包む。参照は開始タグの文字列そのものをバッファへ積むので、
+            // String が残る（実測）。
+            "［＃傍点］［＃傍点終わり］",
+            "［＃中見出し］［＃中見出し終わり］",
             "［＃中見出し］abc［＃中見出し終わり］",
             "［＃ここから太字］abc［＃ここで太字終わり］",
             "［＃縦中横］32［＃縦中横終わり］",

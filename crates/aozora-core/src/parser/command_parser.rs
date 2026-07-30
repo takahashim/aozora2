@@ -52,7 +52,7 @@ pub enum CommandResult {
     },
 
     /// 行単位字下げ
-    LineIndent { width: u32 },
+    LineIndent { width: Option<u32> },
 
     /// 行単位地付き/地から
     LineChitsuki { width: u32 },
@@ -606,7 +606,7 @@ mod tests {
     #[test]
     fn test_parse_line_indent() {
         let result = parse_command("3字下げ");
-        assert_eq!(result, CommandResult::LineIndent { width: 3 });
+        assert_eq!(result, CommandResult::LineIndent { width: Some(3) });
     }
 
     #[test]
@@ -666,7 +666,7 @@ mod tests {
     #[test]
     fn test_parse_line_indent_fullwidth() {
         let result = parse_command("３字下げ");
-        assert_eq!(result, CommandResult::LineIndent { width: 3 });
+        assert_eq!(result, CommandResult::LineIndent { width: Some(3) });
     }
 
     #[test]
