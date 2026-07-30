@@ -16,6 +16,7 @@ use std::path::PathBuf;
 
 use aozora_core::encoding::decode_to_utf8;
 use aozora_core::html::{self, RenderOptions};
+use encoding_rs::SHIFT_JIS;
 
 /// fixturesディレクトリのパス
 fn fixtures_dir() -> PathBuf {
@@ -30,38 +31,63 @@ struct SampleTestCase {
 }
 
 impl SampleTestCase {
-    /// 入力ファイルを読み込んでHTMLに変換
-    fn convert(&self, options: &RenderOptions) -> String {
+    /// 入力を変換し、**Shift_JIS のバイト列**にして返す。
+    ///
+    /// 「バイト一致」は Shift_JIS のバイト列で定義される（docs/spec-encoding.md §8.1）。
+    /// UTF-8 に直して比べると、両実装の対応表が一部で鏡像になっているため
+    /// （`81 60` を参照実装は U+301C、本実装は U+FF5E として持つ）、正しく
+    /// 動いていても一致しえない場合がある。
+    fn convert_to_shift_jis(&self, options: &RenderOptions) -> Vec<u8> {
         let bytes = fs::read(&self.input_path).expect("Failed to read input file");
         let input = decode_to_utf8(&bytes);
-        html::convert(&input, options)
+        let html = html::convert(&input, options);
+        let (encoded, _, had_errors) = SHIFT_JIS.encode(&html);
+        assert!(
+            !had_errors,
+            "{}: Shift_JIS に符号化できない文字が出力に混ざった（入力が Shift_JIS なら \
+             復号→符号化は恒等になるはず。docs/spec-encoding.md §3.6）",
+            self.name
+        );
+        encoded.into_owned()
     }
 
-    /// 期待出力ファイルを読み込む
-    fn read_expected(&self) -> String {
-        let bytes = fs::read(&self.expected_path).expect("Failed to read expected file");
-        decode_to_utf8(&bytes)
+    /// 入力が Shift_JIS か（UTF-8 として妥当でなければ Shift_JIS とみなす）。
+    ///
+    /// 入力が UTF-8 だと復号→符号化が恒等にならず、バイト比較は正当に失敗しうる
+    /// （docs/spec-encoding.md §3.6）。その場合だけ UTF-8 同士の比較に落とす。
+    fn input_is_shift_jis(&self) -> bool {
+        let bytes = fs::read(&self.input_path).expect("Failed to read input file");
+        std::str::from_utf8(&bytes).is_err()
     }
 
     /// テストを実行
     fn run_test(&self) -> TestResult {
-        let expected = self.read_expected();
-
         let options = RenderOptions::new()
             .with_gaiji_dir("../../../gaiji/")
             .with_css_files(vec!["../../aozora.css".to_string()]);
 
-        let actual = self.convert(&options);
+        let expected_bytes = fs::read(&self.expected_path).expect("Failed to read expected file");
+        let actual_bytes = self.convert_to_shift_jis(&options);
 
-        if actual == expected {
-            TestResult::Passed
+        let passed = if self.input_is_shift_jis() {
+            actual_bytes == expected_bytes
         } else {
-            let unified_diff = compute_unified_diff(&actual, &expected, &self.name);
-            TestResult::Failed {
-                actual_line_count: actual.lines().count(),
-                expected_line_count: expected.lines().count(),
-                unified_diff,
-            }
+            // 入力が UTF-8 のときだけ近似（UTF-8 同士）で比べる。
+            decode_to_utf8(&actual_bytes) == decode_to_utf8(&expected_bytes)
+        };
+
+        if passed {
+            return TestResult::Passed;
+        }
+
+        // 差分は読めるように UTF-8 へ直してから作る（判定はあくまでバイト列）。
+        let actual = decode_to_utf8(&actual_bytes);
+        let expected = decode_to_utf8(&expected_bytes);
+        let unified_diff = compute_unified_diff(&actual, &expected, &self.name);
+        TestResult::Failed {
+            actual_line_count: actual.lines().count(),
+            expected_line_count: expected.lines().count(),
+            unified_diff,
         }
     }
 }
@@ -313,15 +339,20 @@ fn test_chukiichiran_kinyurei() {
 fn test_all_samples() {
     let samples = get_all_samples();
 
-    if samples.is_empty() {
-        eprintln!("No samples found in fixtures directory");
-        return;
-    }
+    // 入力（.txt）が無いとサンプルは 0 件になり、このテストは何も検査しないまま
+    // 通ってしまう。実際 .gitignore の `*.txt` に巻き込まれて長らく空回りしていた
+    // ので、空なら落として気付けるようにする。
+    assert!(
+        !samples.is_empty(),
+        "fixtures に入力（.txt）と期待値（.html）の対がありません。\
+         .gitignore の `*.txt` に巻き込まれていないか確認してください"
+    );
 
     eprintln!("\n=== Compatibility Test Summary ===\n");
 
     for sample in &samples {
-        run_sample_test(sample, false);
+        // 不一致は落とす。false にすると報告するだけで通ってしまう。
+        run_sample_test(sample, true);
     }
 
     eprintln!("\n=== End of Summary ===\n");

@@ -8,3 +8,5 @@
 /tmp/
 *.txt
 !README.md
+# 互換性テストの入力（期待値 .html と対で必要。無いとテストが黙って空回りする）
+!crates/aozora2/tests/fixtures/*.txt
