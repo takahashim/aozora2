@@ -160,16 +160,21 @@ pub enum CommandResult {
     Unknown(String),
 }
 
-/// コマンド文字列を解析
+/// コマンド文字列を解析する。
+///
+/// **分岐の順序が仕様そのもの**で、参照実装 `dispatch_aozora_command` の
+/// 判定順を写している。前の分岐に当たった時点で決まるので、並べ替えると
+/// 別の記法として解釈される（例: 折り返し字下げは「字下げ」より先、
+/// 画像は前方参照より先）。番号は上から順の通し番号で、意味は持たない。
 pub fn parse_command(content: &str) -> CommandResult {
-    // 参照実装 apply_rest_notes は命令文字列をそのまま EditorNote にするので、
-    // どのパターンにも当たらず注記化する場合は前後空白（全角空白 U+3000 含む）を
-    // 保つ（例:「降った来た」はママ　 の末尾全角空白）。パターン照合には trim した
-    // ものを使い、最終フォールバックの注記だけ原文を使う。
-    let original = content;
-    let content = content.trim();
+    // 照合は**原文のまま**行う。参照実装 dispatch_aozora_command は命令文字列を
+    // そのまま照合するので、前後に空白があれば `PAT_REF`（`^「.+」`）も
+    // `command == '傍点'` も外れて注記になる（`［＃ 「あいう」に傍点 ］` は注記。実測）。
+    // 注記化するときに前後空白（全角空白 U+3000 含む）が保たれるのは、
+    // apply_rest_notes が命令文字列をそのまま EditorNote にするためで、
+    // ここで trim しなければ自然にそうなる。
 
-    // 0. ぶら下げ（折り返して）。参照実装 dispatch_aozora_command は
+    // 1. ぶら下げ（折り返して）。参照実装 dispatch_aozora_command は
     //    ORIKAESHI_COMMAND（折り返して）を他のどの分岐より先に判定して
     //    apply_burasage へ回す。`ここから` の有無に関係なくぶら下げになる
     //    （例:「［＃改行天付き、折り返して５字下げ］」）ので最初に見る。
@@ -183,14 +188,14 @@ pub fn parse_command(content: &str) -> CommandResult {
         }
     }
 
-    // 1. 左ルビパターン（後方参照より先にチェック）
+    // 2. 左ルビパターン（後方参照より先にチェック）
     if content.contains("の左に") && content.contains("のルビ") {
         if let Some(result) = try_parse_left_ruby(content) {
             return result;
         }
     }
 
-    // 2. 画像。参照実装の dispatch_aozora_command は fig…png の判定を
+    // 3. 画像。参照実装の dispatch_aozora_command は fig…png の判定を
     //    前方参照より先に置くので、ここでも先に見る。
     // 参照の dispatch は `/fig\d+_\d+\.png/` を含む注記を画像ルートへ回し、
     // PAT_IMAGE（`…）入る`）は末尾アンカー無しなので `入る。` のように後続文字が
@@ -202,17 +207,17 @@ pub fn parse_command(content: &str) -> CommandResult {
         }
     }
 
-    // 3. 後方参照パターン: 「対象」に/は/の 装飾
+    // 4. 後方参照パターン: 「対象」に/は/の 装飾
     if let Some(result) = try_parse_reference(content) {
         return result;
     }
 
-    // 3. ブロック開始: ここから...
+    // 5. ブロック開始: ここから...
     if content.starts_with("ここから") {
         return parse_block_start(content);
     }
 
-    // 4. ブロック終了: ここで...
+    // 6. ブロック終了: ここで...
     // 参照実装 dispatch は「ここで」で始まる命令を exec_block_end_command へ回し、
     // detect_command_mode がキーワード（字下げ等）だけを見て閉じる。終止語（終わり）
     // の綴りは不問で、「字下げ終り」（送り仮名欠き）や「字下げ終わり」」（余分な 」）
@@ -222,63 +227,63 @@ pub fn parse_command(content: &str) -> CommandResult {
         return parse_block_end(content);
     }
 
-    // 5. 注記付き範囲パターン
+    // 7. 注記付き範囲パターン
     if let Some(result) = try_parse_annotation_range(content) {
         return result;
     }
 
-    // 6. 傍記パターン（「対象」に「注記」の傍記）
+    // 8. 傍記パターン（「対象」に「注記」の傍記）
     if let Some(result) = try_parse_side_note(content) {
         return result;
     }
 
-    // 7. インライン終了: ...終わり
+    // 9. インライン終了: ...終わり
     if content.ends_with("終わり") {
         return parse_inline_end(content);
     }
 
-    // 6. 行単位字下げ: N字下げ
+    // 10. 行単位字下げ: N字下げ
     if let Some(result) = try_parse_line_indent(content) {
         return result;
     }
 
-    // 7. 行単位地付き/地から
+    // 11. 行単位地付き/地から
     if let Some(result) = try_parse_line_chitsuki(content) {
         return result;
     }
 
-    // 8. 濁点付き片仮名（`ワ゛［＃1-7-82］`）。参照 dispatch_aozora_command は
+    // 12. 濁点付き片仮名（`ワ゛［＃1-7-82］`）。参照 dispatch_aozora_command は
     //    前方参照（PAT_REF）の後・返り点の前に置くので、ここでも同じ位置にする。
     if let Some(num) = dakuten_katakana_num(content) {
         return CommandResult::DakutenKatakana { num };
     }
 
-    // 9. 返り点
+    // 13. 返り点
     if is_kaeriten(content) {
         return CommandResult::Kaeriten(content.to_string());
     }
 
-    // 9. 訓点送り仮名
+    // 14. 訓点送り仮名
     if let Some(okurigana) = try_parse_okurigana(content) {
         return CommandResult::Okurigana(okurigana);
     }
 
-    // 10. 訓点送り仮名（説明付き）
+    // 15. 訓点送り仮名（説明付き）
     if content.starts_with("訓点送り仮名") {
         return CommandResult::Note(content.to_string());
     }
 
-    // 12. 縦中横
+    // 16. 縦中横
     if content == "縦中横" {
         return CommandResult::TcyStart;
     }
 
-    // 13. 割り注
+    // 17. 割り注
     if content == "割り注" {
         return CommandResult::WarichuStart;
     }
 
-    // 13.5. 罫囲み（インライン）
+    // 18. 罫囲み（インライン）
     if content == "罫囲み" {
         return CommandResult::BlockStart {
             block_type: BlockType::Keigakomi,
@@ -286,7 +291,7 @@ pub fn parse_command(content: &str) -> CommandResult {
         };
     }
 
-    // 13.6. 横組み（インライン）
+    // 19. 横組み（インライン）
     if content == "横組み" {
         return CommandResult::BlockStart {
             block_type: BlockType::Yokogumi,
@@ -294,7 +299,7 @@ pub fn parse_command(content: &str) -> CommandResult {
         };
     }
 
-    // 13.7. 割書（インライン）。参照 WARIGAKI_COMMAND='割書' → <span class="warigaki">。
+    // 20. 割書（インライン）。参照 WARIGAKI_COMMAND='割書' → <span class="warigaki">。
     if content == "割書" {
         return CommandResult::BlockStart {
             block_type: BlockType::Warigaki,
@@ -302,28 +307,28 @@ pub fn parse_command(content: &str) -> CommandResult {
         };
     }
 
-    // 14. 装飾開始
+    // 21. 装飾開始
     if let Some(style_type) = StyleType::from_command(content) {
         return CommandResult::StyleStart { style_type };
     }
 
-    // 15. キャプション開始
+    // 22. キャプション開始
     if content == "キャプション" {
         return CommandResult::CaptionStart;
     }
 
-    // 16. 見出し開始
+    // 23. 見出し開始
     if let Some(result) = try_parse_midashi_start(content) {
         return result;
     }
 
-    // 17. インラインフォントサイズ開始
+    // 24. インラインフォントサイズ開始
     if let Some(result) = try_parse_font_size_start(content) {
         return result;
     }
 
     // その他は注記（原文のまま。前後空白を保つ）
-    CommandResult::Note(original.to_string())
+    CommandResult::Note(content.to_string())
 }
 
 /// 注記付き範囲パターンを解析
@@ -360,39 +365,36 @@ fn try_parse_annotation_range(content: &str) -> Option<CommandResult> {
     None
 }
 
-/// 傍記パターンを解析（「対象」に「注記」の傍記）
+/// 傍記パターンを解析（`「対象」に「注記」の傍記`）。
+///
+/// 参照 `PAT_BOUKI = /「(.)」の傍記/` は**注記が 1 文字**のときだけ当たる
+/// （`「あ」に「××」の傍記` や `「あ」に「」の傍記` は注記になる。実測）。
+/// 対象は貪欲に取る——`「あ「い」う」に「×」の傍記` の対象は `あ「い」う`（実測）。
+/// そのため末尾から順に剥がしていく。
 fn try_parse_side_note(content: &str) -> Option<CommandResult> {
-    if !content.ends_with("の傍記") {
+    let rest = content.strip_suffix("の傍記")?;
+    // 注記は末尾の `「…」`。`」` は直前に無ければならない（後続文字は許さない）。
+    let inner = rest.strip_suffix('」')?;
+    let annotation_start = inner.rfind('「')?;
+    let annotation = &inner[annotation_start + '「'.len_utf8()..];
+    if annotation.chars().count() != 1 {
         return None;
     }
-
-    let rest = content.trim_end_matches("の傍記");
-
-    // 「対象」に「注記」 形式を解析
-    let first_start = rest.find('「')?;
-    let first_end = rest.find('」')?;
-    if first_end <= first_start {
-        return None;
-    }
-
-    let target = &rest[first_start + '「'.len_utf8()..first_end];
-
-    // 「に「」パターンを探す
-    let after_first = &rest[first_end + '」'.len_utf8()..];
-    if !after_first.starts_with('に') {
-        return None;
-    }
-
-    let annotation_part = after_first.trim_start_matches('に');
-    let annotation = extract_bracket_content(annotation_part)?;
-
+    // 対象は `「…」に` の中身。先頭の `「` から取るので `」` を含んでいてもよい。
+    let before = inner[..annotation_start].strip_suffix('に')?;
+    let target_body = before.strip_suffix('」')?;
+    let target_start = target_body.find('「')?;
     Some(CommandResult::SideNote {
-        target: target.to_string(),
+        target: target_body[target_start + '「'.len_utf8()..].to_string(),
         annotation: annotation.to_string(),
     })
 }
 
-/// 「...」の内容を抽出
+/// `「...」` の中身を取り出す。閉じは**最後の** `」` を使う（貪欲）。
+///
+/// 参照の注記付き終わりは `「…」の注記付き終わり` を貪欲に取るので、
+/// `「ちゅ」う」の注記付き終わり` の注記は `ちゅ」う` になる（実測）。
+/// 最初の `」` で切ると `ちゅ` になってしまう。
 fn extract_bracket_content(s: &str) -> Option<&str> {
     let start = s.find('「')?;
     let end = s.rfind('」')?;
@@ -679,5 +681,59 @@ mod tests {
 
         let result = parse_command("地から3字上げ");
         assert_eq!(result, CommandResult::LineChitsuki { width: 3 });
+    }
+
+    /// 照合は原文のまま行う。参照 dispatch_aozora_command は命令文字列を
+    /// そのまま照合するので、前後に空白があればどの記法にも当たらず注記になる
+    /// （半角・全角とも実測）。trim して照合していた頃は傍点として解釈していた。
+    #[test]
+    fn surrounding_spaces_make_the_command_a_note() {
+        for content in [
+            " 「あいう」に傍点 ",
+            "\u{3000}「あいう」に傍点\u{3000}",
+            " 傍点",
+            "傍点 ",
+        ] {
+            assert_eq!(
+                parse_command(content),
+                CommandResult::Note(content.to_string()),
+                "{content:?} は注記になる"
+            );
+        }
+        // 空白が無ければ従来どおり記法として解釈する。
+        assert!(matches!(
+            parse_command("傍点"),
+            CommandResult::StyleStart { .. }
+        ));
+    }
+
+    /// 傍記は参照 `PAT_BOUKI = /「(.)」の傍記/` に合わせ、**注記が 1 文字**の
+    /// ときだけ成立する。対象は貪欲に取る（`「あ「い」う」…` の対象は `あ「い」う`）。
+    /// 期待値はすべて参照実装で実測した。
+    #[test]
+    fn side_note_takes_one_char_annotation_and_a_greedy_target() {
+        assert_eq!(
+            parse_command("「工場」に「×」の傍記"),
+            CommandResult::SideNote {
+                target: "工場".to_string(),
+                annotation: "×".to_string()
+            }
+        );
+        // 対象に 」 が入っていても先頭の 「 から取る。
+        assert_eq!(
+            parse_command("「あ「い」う」に「×」の傍記"),
+            CommandResult::SideNote {
+                target: "あ「い」う".to_string(),
+                annotation: "×".to_string()
+            }
+        );
+        // 注記が 1 文字でなければ傍記にならない（注記になる）。
+        for content in ["「あ」に「××」の傍記", "「あ」に「」の傍記"] {
+            assert_eq!(
+                parse_command(content),
+                CommandResult::Note(content.to_string()),
+                "{content:?} は傍記にしない"
+            );
+        }
     }
 }
