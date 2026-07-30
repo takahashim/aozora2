@@ -51,16 +51,55 @@ const SHIFT_JIS_EQUIVALENTS: &[(char, char)] = &[
     ('\u{00AC}', '\u{FFE2}'), // ¬ → 全角否定
 ];
 
-/// Shift_JIS で符号化できなかった文字と、その位置（0 起点の行・char 桁）。
+/// 本文に直接書けない（外字注記で書くべき）文字と、その位置（0 起点の行・char 桁）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct UnencodableChar {
-    /// 符号化できなかった文字
+    /// 本文に直接書けない文字
     pub ch: char,
     /// 行番号（0 起点）
     pub line: usize,
     /// 行内の char 位置（0 起点）
     pub column: usize,
+}
+
+/// 青空文庫形式の本文に**直接書ける**文字か。許すのは ASCII と JIS X 0208 だけ。
+///
+/// JIS X 0208 の外の文字は外字注記 `※［＃…］` で書くのが青空文庫形式のルールなので、
+/// 直接書かれていれば入力の誤りとして扱う。除かれるのは次のもの。
+///
+/// - **JIS X 0201**（半角カナ、および 1 バイトに割り当てられる `¥` U+00A5 と
+///   `‾` U+203E）。バイト列としては Shift_JIS で表せるが X 0208 ではない。
+/// - **CP932 の拡張**（NEC 特殊文字 区13 の ①Ⅰ㈱㎜、NEC 選定 IBM 拡張 区89-92、
+///   IBM 拡張 区115-119 の 﨑 など）。WHATWG/CP932 は符号化できるが X 0208 ではなく、
+///   参照実装 aozora2html が使う Ruby の `Encoding::Shift_JIS` も符号化できない。
+/// - **JIS X 0213 の追加分**（第3・第4水準の漢字、濁点付き片仮名 ヷヸヹヺ など）。
+///
+/// 判定は符号化して**区点**を見る。X 0208 は面 1 の区 1〜8（記号・英数・かな・
+/// ギリシャ・キリル・罫線）＋区 16〜84（第1・第2水準漢字）で、CP932 の拡張は
+/// いずれもこの区の外に置かれているため、区の範囲だけで切り分けられる。
+pub fn is_directly_writable(c: char) -> bool {
+    if c.is_ascii() {
+        return true;
+    }
+    let mut buf = [0u8; 4];
+    let (bytes, _, had_errors) = SHIFT_JIS.encode(c.encode_utf8(&mut buf));
+    if had_errors || bytes.len() != 2 {
+        // 2 バイトにならないものは X 0201（半角カナ・¥・‾）か符号化不能。
+        return false;
+    }
+    matches!(shift_jis_ku(bytes[0], bytes[1]), 1..=8 | 16..=84)
+}
+
+/// Shift_JIS の 2 バイトから区（1〜119）を求める。
+fn shift_jis_ku(lead: u8, trail: u8) -> u32 {
+    let lead_offset = if lead <= 0x9F { 0x81 } else { 0xC1 };
+    let ku = (lead - lead_offset) as u32 * 2 + 1;
+    if trail >= 0x9F {
+        ku + 1
+    } else {
+        ku
+    }
 }
 
 /// Shift_JIS で符号化できない符号位置を、同じ文字を表す符号化可能な符号位置に寄せる。
@@ -79,28 +118,34 @@ pub fn normalize_for_shift_jis(text: &str) -> String {
         .collect()
 }
 
-/// Shift_JIS に符号化する。符号化できない文字が1つでもあればエラーにする。
+/// Shift_JIS に符号化する。ASCII と JIS X 0208 以外の文字が 1 つでもあればエラーにする。
+///
+/// 判定は [`is_directly_writable`]。CP932 として符号化できるかではなく**青空文庫形式で
+/// 直接書けるか**で切るので、①や﨑のような CP932 拡張も拒否する（参照実装 aozora2html が
+/// 使う Ruby の `Encoding::Shift_JIS` と同じ線引き）。
 ///
 /// encoding_rs の `encode` は WHATWG 仕様どおり、符号化できない文字を数値文字参照
-/// （`&#12316;` 等）の**文字列**に置き換える。青空文庫形式では JIS にない文字は
-/// 外字注記 `※［＃…］` で書く約束なので、黙って置き換えず、直すべき箇所として
-/// 位置つきで返す。
+/// （`&#12316;` 等）の**文字列**に置き換える。黙って置き換えず、直すべき箇所として
+/// 位置つきで返すため、符号化の前に全文を検査する。
 pub fn encode_shift_jis(text: &str) -> Result<Vec<u8>, Vec<UnencodableChar>> {
-    let (bytes, _, had_errors) = SHIFT_JIS.encode(text);
-    if !had_errors {
-        return Ok(bytes.into_owned());
+    let rejected = chars_not_directly_writable(text);
+    if !rejected.is_empty() {
+        return Err(rejected);
     }
-    Err(unencodable_chars(text))
+    let (bytes, _, had_errors) = SHIFT_JIS.encode(text);
+    debug_assert!(
+        !had_errors,
+        "検査を通った文字列は符号化できるはず（X 0208 判定と符号化器の食い違い）"
+    );
+    Ok(bytes.into_owned())
 }
 
-/// 符号化できない文字を位置つきで拾う（Shift_JIS は文字単位で状態を持たないので、
-/// 1文字ずつ試して判定できる）。
-fn unencodable_chars(text: &str) -> Vec<UnencodableChar> {
+/// 本文に直接書けない文字を位置つきで拾う。
+fn chars_not_directly_writable(text: &str) -> Vec<UnencodableChar> {
     let mut found = Vec::new();
     for (line, line_text) in text.split('\n').enumerate() {
         for (column, ch) in line_text.chars().enumerate() {
-            let (_, _, had_errors) = SHIFT_JIS.encode(ch.encode_utf8(&mut [0u8; 4]));
-            if had_errors {
+            if !is_directly_writable(ch) {
                 found.push(UnencodableChar { ch, line, column });
             }
         }
@@ -179,6 +224,72 @@ mod tests {
                 },
                 UnencodableChar {
                     ch: '🎌',
+                    line: 1,
+                    column: 6
+                },
+            ]
+        );
+    }
+
+    /// ASCII と JIS X 0208 は直接書ける。
+    #[test]
+    fn test_directly_writable_accepts_ascii_and_x0208() {
+        for c in [
+            'a', '1', '<', '&', 'あ', 'ア', '亜', '熙', '々', '※', '●', '≒', '　', 'Α', 'а',
+        ] {
+            assert!(
+                is_directly_writable(c),
+                "{c:?} は直接書ける（ASCII か X 0208）"
+            );
+        }
+    }
+
+    /// CP932 の拡張（NEC 特殊文字・IBM 拡張）は符号化できてしまうが、X 0208 では
+    /// ないので拒否する。参照実装の Ruby `Encoding::Shift_JIS` と同じ線引き。
+    #[test]
+    fn test_directly_writable_rejects_cp932_extensions() {
+        for c in ['①', 'Ⅰ', '㈱', '㎜', '﨑'] {
+            let mut buf = [0u8; 4];
+            let (bytes, _, had_errors) = SHIFT_JIS.encode(c.encode_utf8(&mut buf));
+            assert!(
+                !had_errors,
+                "{c:?} は CP932 では符号化できる（前提が崩れている）"
+            );
+            assert_eq!(bytes.len(), 2);
+            assert!(!is_directly_writable(c), "{c:?} は X 0208 外なので拒否する");
+        }
+    }
+
+    /// JIS X 0201（半角カナ・1 バイトの ¥ と ‾）も拒否する。
+    #[test]
+    fn test_directly_writable_rejects_x0201() {
+        for c in ['ｱ', 'ﾞ', '｡', '\u{00A5}', '\u{203E}'] {
+            assert!(!is_directly_writable(c), "{c:?} は X 0201 なので拒否する");
+        }
+    }
+
+    /// X 0213 の追加分（第3・第4水準、濁点付き片仮名）も拒否する。
+    #[test]
+    fn test_directly_writable_rejects_x0213_additions() {
+        for c in ['睜', '𥥔', 'ヷ'] {
+            assert!(!is_directly_writable(c), "{c:?} は X 0208 外なので拒否する");
+        }
+    }
+
+    /// 拒否した文字は符号化せず、位置つきで返す。
+    #[test]
+    fn test_encode_rejects_with_positions() {
+        let err = encode_shift_jis("１行目\n２行目に①と睜").expect_err("拒否される");
+        assert_eq!(
+            err,
+            vec![
+                UnencodableChar {
+                    ch: '①',
+                    line: 1,
+                    column: 4
+                },
+                UnencodableChar {
+                    ch: '睜',
                     line: 1,
                     column: 6
                 },

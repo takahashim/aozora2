@@ -123,33 +123,38 @@ export type SaveSjisError =
   | { kind: 'io'; message: string }
 
 /**
- * テキストを Shift_JIS（CRLF）で保存する。改行の正規化・符号位置の正規化・符号化は
- * Rust 側（save_text_sjis）が行う。ブラウザの TextEncoder は UTF-8 しか出せない。
+ * Shift_JIS（CRLF）で保存する。改行の正規化・符号位置の正規化・符号化は Rust 側
+ * （save_shift_jis）が行う。ブラウザの TextEncoder は UTF-8 しか出せない。
  *
  * Shift_JIS にできない文字があると保存せずに reject する（SaveSjisError）。
  */
-export async function saveTextFileSjis(content: string, defaultName: string): Promise<string | null> {
-  const savePath = await save({
-    defaultPath: defaultName,
-    filters: [{ name: 'Text Files', extensions: ['txt'] }]
-  })
+async function saveWithSjis(
+  content: string,
+  defaultName: string,
+  filter: { name: string; extensions: string[] }
+): Promise<string | null> {
+  const savePath = await save({ defaultPath: defaultName, filters: [filter] })
 
   if (!savePath) return null
 
-  await invoke('save_text_sjis', { path: savePath, content })
+  await invoke('save_shift_jis', { path: savePath, content })
   return savePath
 }
 
+/** 本文テキストを Shift_JIS で保存する。 */
+export async function saveTextFileSjis(content: string, defaultName: string): Promise<string | null> {
+  return saveWithSjis(content, defaultName, { name: 'Text Files', extensions: ['txt'] })
+}
+
+/**
+ * 変換した HTML を保存する。出力は Shift_JIS。
+ *
+ * HTML の先頭は `<?xml version="1.0" encoding="Shift_JIS"?>` と
+ * `charset=Shift_JIS` を宣言しているので、UTF-8 で書くと宣言と実バイト列が
+ * 食い違い、宣言を尊重するブラウザで本文が文字化けする。
+ */
 export async function saveHtmlFile(content: string, defaultName: string): Promise<string | null> {
-  const savePath = await save({
-    defaultPath: defaultName,
-    filters: [{ name: 'HTML Files', extensions: ['html'] }]
-  })
-
-  if (!savePath) return null
-
-  await writeTextFile(savePath, content)
-  return savePath
+  return saveWithSjis(content, defaultName, { name: 'HTML Files', extensions: ['html'] })
 }
 
 export function toAssetUrl(path: string): string {

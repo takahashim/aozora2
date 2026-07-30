@@ -335,7 +335,8 @@ async function saveHtml(): Promise<void> {
       setStatus(t('status.saved', { path: savePath }), 'success')
     }
   } catch (error) {
-    setStatus(t('error.save-file', { error: String(error) }), 'error')
+    // HTML も Shift_JIS で書くので、符号化できない文字の報せ方はテキスト保存と同じ。
+    setStatus(describeSaveSjisError(error), 'error')
   }
 }
 

@@ -45,14 +45,17 @@ fn analyze(input: &str) -> Result<Analysis, String> {
     Ok(analyze_document(input))
 }
 
-/// テキストを Shift_JIS で保存する。
+/// Shift_JIS ＋ CRLF で保存する。本文テキストと変換後の HTML の両方で使う。
 ///
-/// 青空文庫のファイルは Shift_JIS ＋ CRLF なので、エディタの内容（UTF-8・LF）を
-/// 両方そろえてから書き出す。符号位置の揺れ（macOS の日本語入力が作る U+301C など）は
-/// [`normalize_for_shift_jis`] で寄せるが、Shift_JIS に無い文字（絵文字・JIS 外の漢字）は
-/// 外字注記 `※［＃…］` で書くべきものなので、置き換えず位置つきのエラーにする。
+/// 青空文庫のファイルは Shift_JIS ＋ CRLF で、HTML も `<?xml encoding="Shift_JIS"?>` を
+/// 宣言する。エディタの内容（UTF-8・LF）を両方そろえてから書き出す。符号位置の揺れ
+/// （macOS の日本語入力が作る U+301C など）は [`normalize_for_shift_jis`] で寄せるが、
+/// Shift_JIS に無い文字（絵文字・JIS 外の漢字）は外字注記 `※［＃…］` で書くべきものなので、
+/// 置き換えず位置つきのエラーにする。
+///
+/// HTML は既に CRLF なので改行の正規化は素通しになる（べき等）。
 #[tauri::command]
-fn save_text_sjis(path: &str, content: &str) -> Result<(), SaveSjisError> {
+fn save_shift_jis(path: &str, content: &str) -> Result<(), SaveSjisError> {
     let crlf = content
         .replace("\r\n", "\n")
         .replace('\r', "\n")
@@ -64,7 +67,7 @@ fn save_text_sjis(path: &str, content: &str) -> Result<(), SaveSjisError> {
     })
 }
 
-/// [`save_text_sjis`] の失敗。フロントは kind で分岐する。
+/// [`save_shift_jis`] の失敗。フロントは kind で分岐する。
 #[derive(serde::Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum SaveSjisError {
@@ -106,7 +109,7 @@ fn main() {
             convert_to_html,
             convert_file_to_html,
             analyze,
-            save_text_sjis,
+            save_shift_jis,
             get_resource_paths,
         ])
         .run(tauri::generate_context!())
