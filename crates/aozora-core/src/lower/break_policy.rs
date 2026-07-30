@@ -54,14 +54,95 @@ fn block_kind_emits_closing_tag(kind: &BlockKind) -> bool {
     }
 }
 
+/// 通常見出し（同行・窓でない）が行のどこかに現れるか。入れ子の中まで見る。
+///
+/// 参照実装は見出しコマンドに**出会った時点で** `@terprip = false` を立てる
+/// （`aozora2html.rb` の OMIDASHI/NAKAMIDASHI/KOMIDASHI_COMMAND と、後方参照形の
+/// `midashi_type = :normal` の枝）。行末に来たかどうかは関係ない**行単位の旗**なので、
+/// 末尾だけを見る [`line_emits_closing_block_tag`] では次のような行を取りこぼす。
+///
+/// - `［＃中見出し］あいう［＃中見出し終わり］つづき。` … 見出しの後ろに本文が続く
+/// - `｜［＃中見出し］あいう［＃中見出し終わり］《るび》` … 見出しがルビ親文字の中
+///
+/// 同行見出し・窓見出しは参照も旗を立てないので対象外。
+fn contains_normal_midashi(inlines: &[Inline]) -> bool {
+    inlines.iter().any(|inline| match &inline.kind {
+        InlineKind::Midashi { style, .. } => *style == MidashiStyle::Normal,
+        InlineKind::BlockInline {
+            kind: BlockKind::Midashi { style, .. },
+            ..
+        } => *style == MidashiStyle::Normal,
+        // 入れ子（ルビ親文字・装飾の中など）も見る。
+        InlineKind::Ruby { base, ruby, .. } => {
+            contains_normal_midashi(base) || contains_normal_midashi(ruby)
+        }
+        InlineKind::Style { children, .. }
+        | InlineKind::FontSize { children, .. }
+        | InlineKind::Tcy { children }
+        | InlineKind::Keigakomi { children }
+        | InlineKind::Yokogumi { children }
+        | InlineKind::Caption { children }
+        | InlineKind::Warigaki { children }
+        | InlineKind::ChitsukiInline { children, .. }
+        | InlineKind::BlockInline { children, .. } => contains_normal_midashi(children),
+        InlineKind::Text(_)
+        | InlineKind::Gaiji { .. }
+        | InlineKind::Accent { .. }
+        | InlineKind::Img { .. }
+        | InlineKind::Kaeriten(_)
+        | InlineKind::Okurigana { .. }
+        | InlineKind::DakutenKatakana { .. }
+        | InlineKind::Note { .. }
+        | InlineKind::AnnotationEnd { .. }
+        | InlineKind::Warichu { .. } => false,
+    })
+}
+
 /// 内容行の行末改行。
 ///
 /// `［＃ここで…終わり］` を含む行（`has_explicit_close`）と、行末がブロックの閉じタグに
-/// なる行では参照が `@terprip` を倒すので `<br />` を出さない。
+/// なる行では参照が `@terprip` を倒すので `<br />` を出さない。通常見出しは位置に
+/// よらず旗を倒すので別に見る（[`contains_normal_midashi`]）。
 pub fn content_break(inline: &[Inline], has_explicit_close: bool) -> Break {
-    if has_explicit_close || line_emits_closing_block_tag(inline) {
+    if has_explicit_close || line_emits_closing_block_tag(inline) || contains_normal_midashi(inline)
+    {
         Break::None
     } else {
         Break::Br
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::html::{convert, RenderOptions};
+
+    /// 通常見出しは**行のどこにあっても**行末 `<br />` を抑制する。
+    /// 参照実装は見出しコマンドに出会った時点で `@terprip = false` を立てるためで、
+    /// 末尾だけを見ていた頃は見出しの後ろに本文が続く行を取りこぼしていた。
+    /// 期待値は参照実装に同じ入力を与えて実測した。
+    #[test]
+    fn normal_midashi_suppresses_line_break_wherever_it_appears() {
+        let body = |line: &str| {
+            let src = format!("作品名\r\n著者\r\n\r\n{line}\r\n\r\n底本：「テスト」\r\n");
+            convert(&src, &RenderOptions::default())
+        };
+        // 見出しの後ろに本文が続く（末尾は Text）。
+        let after = body("［＃中見出し］あいう［＃中見出し終わり］つづき。");
+        assert!(
+            after.contains("</h4>つづき。\r\n"),
+            "見出しの後ろに本文が続いても <br /> を出さない: {after:?}"
+        );
+        // 後方参照形でも同じ。
+        let backref = body("あいう［＃「あいう」は中見出し］つづき。");
+        assert!(backref.contains("</h4>つづき。\r\n"), "{backref:?}");
+        // 見出しがルビ親文字の中にあっても効く。
+        let in_ruby = body("｜［＃中見出し］あいう［＃中見出し終わり］《るび》");
+        assert!(
+            in_ruby.contains("</ruby>\r\n"),
+            "ルビに包まれた見出しでも <br /> を出さない: {in_ruby:?}"
+        );
+        // 同行見出し・窓見出しは参照も旗を立てないので <br /> が付く。
+        let dogyo = body("あいう［＃「あいう」は同行大見出し］つづき。");
+        assert!(dogyo.contains("つづき。<br />"), "{dogyo:?}");
     }
 }

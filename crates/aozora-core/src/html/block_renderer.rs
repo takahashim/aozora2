@@ -56,6 +56,46 @@ fn numeric_entities(s: &str) -> String {
     s.chars().map(|c| format!("&#x{:04X};", c as u32)).collect()
 }
 
+/// 後付け（底本情報・本文終わり後）の行末に `<br />` を足すか。
+///
+/// 参照実装 `tail_output` は本文の `general_output` とはまったく別の規則で、
+/// **描画済みの行文字列**を正規表現で見て決める（`aozora2html.rb:1287`）。
+///
+/// ```text
+/// (<br />$|</p>$|</h\d>$|<div.*>$|</div>$|^<[^>]*>$)
+/// ```
+///
+/// 当たれば `<br />` を足さない。行がまるごと1つのタグ（`^<[^>]*>$`）という枝が
+/// あるので、外字画像だけの行や挿絵だけの行が該当する。ここは AST の
+/// [`Break`] では表せない——「描画してみないと分からない」のが参照の仕様そのもの
+/// なので、描画した側（＝この関数）で判定する。
+fn tail_line_needs_br(line: &str) -> bool {
+    let bytes = line.as_bytes();
+    // `</h\d>$`
+    let ends_with_hn = bytes.len() >= 5 && {
+        let n = bytes.len();
+        bytes[n - 1] == b'>'
+            && bytes[n - 2].is_ascii_digit()
+            && bytes[n - 3] == b'h'
+            && bytes[n - 4] == b'/'
+            && bytes[n - 5] == b'<'
+    };
+    // `<div.*>$`（「どこかに <div があって、末尾が > 」。開いたままの div が該当）
+    let div_and_ends_with_gt = line.ends_with('>') && line.contains("<div");
+    // `^<[^>]*>$`（行全体がちょうど1つのタグ）
+    let whole_line_is_one_tag = line.len() >= 2
+        && line.starts_with('<')
+        && line.ends_with('>')
+        && !line[1..line.len() - 1].contains('>');
+
+    !(line.ends_with("<br />")
+        || line.ends_with("</p>")
+        || ends_with_hn
+        || div_and_ends_with_gt
+        || line.ends_with("</div>")
+        || whole_line_is_one_tag)
+}
+
 /// ブロックの開始タグ（`\r\n` を含まない）。複数行 Nested は末尾に `\r\n` を足し、
 /// 行スコープ包み（[`Block::LineWrap`]）はそのまま内容を続ける。None は div 非包み。
 fn block_open_tag(kind: &BlockKind, empty_indent_css: bool) -> Option<String> {
@@ -175,6 +215,12 @@ impl<'a> BlockRenderer<'a> {
 
     fn render_block(&mut self, block: &Block, out: &mut String) {
         match block {
+            Block::Line { inline, brk, .. } if self.in_tail => {
+                // 後付けは参照 tail_output が別規則で描く（[`tail_line_needs_br`]）。
+                let mut line = String::new();
+                self.render_inlines(inline, &mut line);
+                self.push_tail_line(&line, out);
+            }
             Block::Line { inline, brk, .. } => {
                 // 行末 <br /> の要否は Lower 時に確定済み（brk）。バックエンドは木を
                 // 状態なしに歩くだけで、描画済みHTMLの詮索はしない。
@@ -198,6 +244,14 @@ impl<'a> BlockRenderer<'a> {
                 // 行全体をブロック div で1行に包む（行スコープ字下げ／地付き）。
                 // 開き直後の改行も内側 <br /> も出さず、行末に `\r\n` のみ。
                 if let Some(open) = block_open_tag(kind, self.options.quirks.empty_indent_css) {
+                    // 後付けでは閉じタグを出さない（参照 tail_output は general_output と
+                    // 違って閉じタグの配列を持たない）。行末は tail の規則で決める。
+                    if self.in_tail {
+                        let mut line = open;
+                        self.render_inlines(inline, &mut line);
+                        self.push_tail_line(&line, out);
+                        return;
+                    }
                     out.push_str(&open);
                     self.render_inlines(inline, out);
                     out.push_str("</div>\r\n");
@@ -211,6 +265,15 @@ impl<'a> BlockRenderer<'a> {
                 }
             }
         }
+    }
+
+    /// 後付けの 1 行を出す。行末 `<br />` は [`tail_line_needs_br`] が決める。
+    fn push_tail_line(&self, line: &str, out: &mut String) {
+        out.push_str(line);
+        if tail_line_needs_br(line) {
+            out.push_str("<br />");
+        }
+        out.push_str("\r\n");
     }
 
     fn render_nested(
@@ -446,7 +509,10 @@ impl<'a> BlockRenderer<'a> {
                     "<div class=\"chitsuki_{width}\" style=\"text-align:right; margin-right: {width}em\">"
                 ));
                 self.render_inlines(children, out);
-                out.push_str("</div>");
+                // 後付けでは閉じない（参照 tail_output は閉じタグの配列を持たない）。
+                if !self.in_tail {
+                    out.push_str("</div>");
+                }
             }
             InlineKind::BlockInline { kind, children } => {
                 // 同行で開閉するブロック形。見出しは h4/a＋id、その他は div で包む。
@@ -960,7 +1026,11 @@ mod tests {
         let blocks = lower_to_blocks(&raw);
         let new_inner = BlockRenderer::new(&RenderOptions::default()).render_body(&blocks);
 
-        assert_eq!(new_inner, old_inner, "\n新:{new_inner:?}\n旧:{old_inner:?}");
+        assert_eq!(
+            new_inner, old_inner,
+            "\n新:{new_inner:?}
+旧:{old_inner:?}"
+        );
     }
 
     /// ぶら下げの per-line 包みは、参照 `TextBuffer#blank_type` と同じく
@@ -1154,5 +1224,49 @@ mod tests {
         assert_body_matches(
             "題\r\n著\r\n\r\n［＃ここから２字上げ］\r\n右寄\r\n［＃ここで字上げ終わり］\r\n［＃ここから20字詰め］\r\n詰\r\n［＃ここで字詰め終わり］\r\n底本：テスト\r\n",
         );
+    }
+
+    /// 後付け（底本情報）は参照 `tail_output` が本文とは別の規則で描く。
+    /// 行末 `<br />` は**描画済みの行文字列**で決まり、閉じタグは出さない。
+    /// 以下はすべて参照実装に同じ入力を与えて実測した。
+    #[test]
+    fn tail_section_follows_tail_output_rules() {
+        let convert_tail = |line: &str| {
+            let src = format!("作品名\r\n著者\r\n\r\n本文。\r\n\r\n底本：「テスト」\r\n{line}\r\n");
+            let html = convert(&src, &RenderOptions::default());
+            let open = "<div class=\"bibliographical_information\">";
+            let start = html.find(open).expect("底本セクション") + open.len();
+            let end = html[start..].find("</div>").expect("閉じ") + start;
+            html[start..end].to_string()
+        };
+
+        // 行がまるごと 1 つのタグ（^<[^>]*>$）→ <br /> を足さない。
+        let gaiji = convert_tail("※［＃「口＋世」、第3水準1-15-6］");
+        assert!(
+            gaiji.contains("class=\"gaiji\" />\r\n"),
+            "外字だけの行に <br /> を足さない: {gaiji:?}"
+        );
+        // </h\d>$ → 足さない。
+        let midashi = convert_tail("あいう［＃「あいう」は同行大見出し］");
+        assert!(
+            midashi.contains("</h3>\r\n"),
+            "見出しで終わる行に <br /> を足さない: {midashi:?}"
+        );
+        // 行スコープ字下げは開いたまま（閉じタグを出さない）。<div.*>$ に当たるので
+        // <br /> も足さない。
+        let jisage = convert_tail("［＃２字下げ］あいう");
+        assert!(
+            jisage.contains("<div class=\"jisage_2\" style=\"margin-left: 2em\">あいう<br />"),
+            "後付けの行スコープ字下げは閉じない: {jisage:?}"
+        );
+        // 行内地付きも閉じない。
+        let chitsuki = convert_tail("あいう［＃地付き］");
+        assert!(
+            chitsuki.contains("margin-right: 0em\">\r\n"),
+            "後付けの地付きは閉じない: {chitsuki:?}"
+        );
+        // 普通の本文行にはこれまでどおり <br /> を足す。
+        let plain = convert_tail("ただの行。");
+        assert!(plain.contains("ただの行。<br />"), "{plain:?}");
     }
 }
