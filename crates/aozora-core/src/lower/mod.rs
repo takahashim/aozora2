@@ -254,8 +254,9 @@ fn strip_line_scope_marker(nodes: Vec<Node>) -> Vec<Node> {
 
 /// ぶら下げの中で閉じるとき、閉じタグが per-line の burasage div に包まれる種類か。
 ///
-/// 参照実装 `is_decoration_block_close` 相当。字下げ・地付き・ぶら下げ自身・見出しは
-/// 該当しない（それらの閉じは String を残さない）。
+/// 参照 explicit_close は @tag_stack から取り出した閉じタグを push_chars で
+/// バッファへ積むので、閉じタグが String として残りぶら下げの包みに入る。
+/// 字下げ・地付き・ぶら下げ自身は該当しない（それらの閉じは String を残さない）。
 fn is_burasage_wrapped_close(k: &BlockKind) -> bool {
     matches!(
         k,
@@ -266,6 +267,10 @@ fn is_burasage_wrapped_close(k: &BlockKind) -> bool {
             | BlockKind::Futoji
             | BlockKind::Shatai
             | BlockKind::Jizume { .. }
+            // 見出しブロックの閉じ `</a></hN>` も同じ（参照 explicit_close は
+            // @tag_stack から取り出した閉じタグを push_chars でバッファへ積むので
+            // String が残り、ぶら下げの per-line 包みに入る。実測）。
+            | BlockKind::Midashi { .. }
     )
 }
 

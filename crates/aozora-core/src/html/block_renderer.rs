@@ -313,7 +313,19 @@ impl<'a> BlockRenderer<'a> {
             for child in children {
                 self.render_block(child, out);
             }
-            out.push_str(&format!("</a></{tag}>\r\n"));
+            // 閉じ `</a></hN>` も互換メタデータに従う。ぶら下げの直下で閉じるときは
+            // 参照が閉じタグをバッファへ積むので、その行が per-line の burasage div に
+            // 包まれる（CloseKind::BurasageWrapped）。
+            let close_tag = format!("</a></{tag}>");
+            match close {
+                CloseKind::BurasageWrapped(geometry) => {
+                    let (margin, text_indent) = self.burasage_style(geometry);
+                    out.push_str(&format!(
+                        "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">{close_tag}</div>\r\n"
+                    ));
+                }
+                _ => out.push_str(&format!("{close_tag}\r\n")),
+            }
             return;
         }
         // 閉じタグの出力形は互換メタデータ（CloseKind）で決める。
@@ -1287,5 +1299,34 @@ mod tests {
         // 普通の本文行にはこれまでどおり <br /> を足す。
         let plain = convert_tail("ただの行。");
         assert!(plain.contains("ただの行。<br />"), "{plain:?}");
+    }
+
+    /// ぶら下げの直下で見出しブロックが閉じる行は、閉じタグ `</a></hN>` が
+    /// per-line の burasage div に包まれる。
+    ///
+    /// 参照 explicit_close は @tag_stack から取り出した閉じタグを push_chars で
+    /// バッファへ積むので String が残り、ぶら下げの包み判定（TextBuffer#blank_type）
+    /// に入る。装飾系ブロック（罫囲み等）と同じ扱いで、見出しだけ外れていた。
+    /// 期待値は参照実装で実測した。
+    #[test]
+    fn midashi_block_close_is_wrapped_by_burasage() {
+        let src = concat!(
+            "作品名\r\n著者\r\n\r\n",
+            "［＃ここから２字下げ、折り返して４字下げ］\r\n",
+            "外側。\r\n",
+            "［＃ここから中見出し］\r\n",
+            "内側。\r\n",
+            "［＃ここで中見出し終わり］\r\n",
+            "［＃ここで字下げ終わり］\r\n",
+            "\r\n底本：「テスト」\r\n",
+        );
+        let html = convert(src, &RenderOptions::default());
+        assert!(
+            html.contains(
+                "<div class=\"burasage\" style=\"margin-left: 4em; text-indent: -2em;\">\
+                 </a></h4></div>"
+            ),
+            "見出しブロックの閉じがぶら下げに包まれない: {html}"
+        );
     }
 }
