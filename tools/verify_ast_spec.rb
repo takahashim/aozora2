@@ -16,8 +16,9 @@
 #   - 文書全体の器のキーの食い違い
 #   - フィクスチャが一度も作らない構成子（＝例が無く、上の照合が効かない）
 #
-# 型は JSON の型（数値・文字列・真偽・列・オブジェクト・null）まで見る。
-# `Nat` が負でないか、`Text` の中身が何かまでは見ない。そこは人が読む。
+# 型は JSON の型（数値・文字列・真偽・列・オブジェクト・null）まで見る。加えて
+# `Nat` は値が 0 以上であることも見る（仕様 2 章の定義）。`Text` の中身が何か、
+# `end` が `start` 以上かといった意味の検査はしない。そこは人が読む。
 
 require 'json'
 require 'set'
@@ -62,6 +63,7 @@ class Spec
     text = without_appendix(File.read(path))
     read_bnf(text)
     read_tables(text)
+    read_bullets(text)
   end
 
   private
@@ -89,6 +91,14 @@ class Spec
     fields = parse_fields(body)
     add(name, fields.keys.to_set)
     (@field_types[name] ||= {}).merge!(fields) { |_k, a, b| a || b }
+  end
+
+  # 箇条書きで定義されている型（`- \`Span\` は \`{"start": Nat, "end": Nat}\`。`）。
+  # `Span` は表にも BNF にも出ないので、ここで拾わないと start/end が照合されない。
+  def read_bullets(text)
+    text.scan(/^-\s*`([A-Z][A-Za-z]*)`\s*は\s*`\{(.*?)\}`/) do |name, body|
+      add_with_fields(name, body.gsub('"', ''))
+    end
   end
 
   def read_tables(text)
@@ -166,11 +176,12 @@ end
 
 # 交換形式の構成子は `{"kind": 名前, "value": 内容}` の形（value 省略あり）。
 class Actual
-  attr_reader :shapes, :field_types, :string_values, :envelope
+  attr_reader :shapes, :field_types, :int_min, :string_values, :envelope
 
   def initialize(tree)
     @shapes = {}             # 構成子名 → 形の集合
     @field_types = {}        # 構成子名 → フィールド名 → 実際の JSON の型名の集合
+    @int_min = {}            # 構成子名 → フィールド名 → 現れた整数の最小値
     @string_values = Set.new # 文字列として出た列挙値（被覆の計算にだけ使う）
     @envelope = Set.new
     Dir[File.join(FIXTURES, '*.json')].sort.each do |path|
@@ -196,6 +207,12 @@ class Actual
         (@shapes[node['kind']] ||= Set.new) << (value.is_a?(Hash) ? value.keys.to_set : nil)
         record_types(node['kind'], value)
       end
+      # 位置は `kind` を持たない素のオブジェクトなので、キー名から拾って登録する
+      # （仕様は箇条書きで `Span = {"start": Nat, "end": Nat}` と定義している）。
+      if (span = node['span']).is_a?(Hash)
+        (@shapes['Span'] ||= Set.new) << span.keys.to_set
+        record_types('Span', span)
+      end
       # 文字列になった列挙値（`"brk": "Br"`）は構成子として現れない。仕様の書き方
       # （`| MidashiLevel | "Naka"（中）… |`）とは照合できないので、被覆を数えるためだけに控える。
       node.each do |k, v|
@@ -211,7 +228,11 @@ class Actual
     return unless value.is_a?(Hash)
 
     seen = (@field_types[name] ||= {})
-    value.each { |k, v| (seen[k] ||= Set.new) << v.class.name }
+    mins = (@int_min[name] ||= {})
+    value.each do |k, v|
+      (seen[k] ||= Set.new) << v.class.name
+      mins[k] = [mins[k], v].compact.min if v.is_a?(Integer)
+    end
   end
 end
 
@@ -271,10 +292,18 @@ def type_problems(spec, actual)
         next
       end
       bad = seen.reject { |t| allowed.include?(t) || t == 'NilClass' }
-      next if bad.empty?
+      unless bad.empty?
+        problems << "#{name}.#{field}: 仕様は `#{annotation}`（#{allowed.join('/')}）" \
+                    "だが、実際は #{bad.sort.join('/')}"
+        next
+      end
 
-      problems << "#{name}.#{field}: 仕様は `#{annotation}`（#{allowed.join('/')}）" \
-                  "だが、実際は #{bad.sort.join('/')}"
+      # `Nat` は 0 以上の整数（2 章）。型だけでなく値も見る。0 は実在する
+      # （span の起点・行番号・`地付き` の幅 0）ので、下限は 0 であって 1 ではない。
+      min = actual.int_min.dig(name, field)
+      if annotation.delete('`').chomp('?') == 'Nat' && min && min.negative?
+        problems << "#{name}.#{field}: 仕様は `Nat`（0 以上）だが、#{min} が現れている"
+      end
     end
   end
   problems
