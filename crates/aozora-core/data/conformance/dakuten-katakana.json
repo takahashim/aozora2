@@ -1,0 +1,105 @@
+{
+  "note": "濁点付き片仮名（面区点 1-7-82〜85）",
+  "source": "ワ゛［＃1-7-82］ヰ゛［＃1-7-83］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "ワ゛"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 11,
+              "start": 2
+            },
+            "value": {
+              "raw": "1-7-82",
+              "spec": {
+                "kind": "DakutenKatakana",
+                "value": {
+                  "num": "2"
+                }
+              },
+              "target": "ワ゛"
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 13,
+              "start": 11
+            },
+            "value": "ヰ゛"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 22,
+              "start": 13
+            },
+            "value": {
+              "raw": "1-7-83",
+              "spec": {
+                "kind": "DakutenKatakana",
+                "value": {
+                  "num": "3"
+                }
+              },
+              "target": "ヰ゛"
+            }
+          }
+        ],
+        "source": "ワ゛［＃1-7-82］ヰ゛［＃1-7-83］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "DakutenKatakana",
+              "range_form": false,
+              "span": {
+                "end": 11,
+                "start": 0
+              },
+              "value": {
+                "num": "2"
+              }
+            },
+            {
+              "kind": "DakutenKatakana",
+              "range_form": false,
+              "span": {
+                "end": 22,
+                "start": 11
+              },
+              "value": {
+                "num": "3"
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

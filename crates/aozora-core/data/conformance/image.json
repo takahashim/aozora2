@@ -1,6 +1,6 @@
 {
-  "note": "画像（キャプション付き）",
-  "source": "［＃「図の説明」のキャプション付きの図（fig01.png、横1×縦2）入る］",
+  "note": "挿絵と写真（`fig<数字>_<数字>.png` を含む注記だけが画像になる）",
+  "source": "［＃「挿絵の説明」のキャプション付きの図（fig01_02.png、横100×縦200）入る］\n［＃川辺の写真（fig01_03.png）入る］",
   "raw_ast": {
     "format": "aozora-rawast",
     "lines": [
@@ -10,19 +10,41 @@
           {
             "kind": "Img",
             "span": {
-              "end": 39,
+              "end": 47,
               "start": 0
             },
             "value": {
-              "alt": "「図の説明」のキャプション付きの図",
-              "filename": "fig01.png",
-              "height": 2,
+              "alt": "「挿絵の説明」のキャプション付きの図",
+              "filename": "fig01_02.png",
+              "height": 200,
               "is_photo": false,
-              "width": 1
+              "width": 100
             }
           }
         ],
-        "source": "［＃「図の説明」のキャプション付きの図（fig01.png、横1×縦2）入る］",
+        "source": "［＃「挿絵の説明」のキャプション付きの図（fig01_02.png、横100×縦200）入る］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Img",
+            "span": {
+              "end": 24,
+              "start": 0
+            },
+            "value": {
+              "alt": "川辺の写真",
+              "filename": "fig01_03.png",
+              "height": null,
+              "is_photo": true,
+              "width": null
+            }
+          }
+        ],
+        "source": "［＃川辺の写真（fig01_03.png）入る］",
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
@@ -40,19 +62,43 @@
               "kind": "Img",
               "range_form": false,
               "span": {
-                "end": 39,
+                "end": 47,
                 "start": 0
               },
               "value": {
-                "alt": "「図の説明」のキャプション付きの図",
-                "filename": "fig01.png",
-                "height": 2,
+                "alt": "「挿絵の説明」のキャプション付きの図",
+                "filename": "fig01_02.png",
+                "height": 200,
                 "is_photo": false,
-                "width": 1
+                "width": 100
               }
             }
           ],
           "line": 0
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Img",
+              "range_form": false,
+              "span": {
+                "end": 24,
+                "start": 0
+              },
+              "value": {
+                "alt": "川辺の写真",
+                "filename": "fig01_03.png",
+                "height": null,
+                "is_photo": true,
+                "width": null
+              }
+            }
+          ],
+          "line": 1
         }
       }
     ],

@@ -1,0 +1,210 @@
+{
+  "note": "ぶら下げの直下で装飾ブロックが閉じる行（閉じタグがぶら下げ div に包まれる）",
+  "source": "［＃ここから１字下げ、折り返して３字下げ］\n［＃ここから横組み］\n中身\n［＃ここで横組み終わり］\n［＃ここで字下げ終わり］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 21,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Burasage",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": true,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": 1,
+                "wrap_width": 3
+              }
+            }
+          }
+        ],
+        "source": "［＃ここから１字下げ、折り返して３字下げ］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 10,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Yokogumi",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": true,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここから横組み］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "中身"
+          }
+        ],
+        "source": "中身",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
+        "nodes": [
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 12,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Yokogumi",
+              "explicit_close": true,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここで横組み終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 4,
+        "nodes": [
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 12,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Jisage",
+              "explicit_close": true,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここで字下げ終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Nested",
+        "value": {
+          "children": [
+            {
+              "kind": "Nested",
+              "value": {
+                "children": [
+                  {
+                    "kind": "Line",
+                    "value": {
+                      "brk": "Br",
+                      "inline": [
+                        {
+                          "kind": "Text",
+                          "range_form": false,
+                          "span": {
+                            "end": 2,
+                            "start": 0
+                          },
+                          "value": "中身"
+                        }
+                      ],
+                      "line": 2
+                    }
+                  }
+                ],
+                "close": {
+                  "kind": "BurasageWrapped",
+                  "value": {
+                    "width": 1,
+                    "wrap_width": 3
+                  }
+                },
+                "kind": {
+                  "kind": "Yokogumi"
+                },
+                "line": 1,
+                "open": "Newline"
+              }
+            }
+          ],
+          "close": {
+            "kind": "Newline"
+          },
+          "kind": {
+            "kind": "Burasage",
+            "value": {
+              "width": 1,
+              "wrap_width": 3
+            }
+          },
+          "line": 0,
+          "open": "NoBreak"
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

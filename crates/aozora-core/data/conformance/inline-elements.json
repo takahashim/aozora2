@@ -1,0 +1,488 @@
+{
+  "note": "縦中横・罫囲み・横組み・キャプション・割書（範囲形のインライン要素）",
+  "source": "12［＃縦中横］34［＃縦中横終わり］\n［＃罫囲み］囲［＃罫囲み終わり］\n［＃横組み］56［＃横組み終わり］\n［＃キャプション］図の説明［＃キャプション終わり］\n［＃割書］夏期演説［＃割書終わり］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "12"
+          },
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 8,
+              "start": 2
+            },
+            "value": {
+              "block_type": "Tcy",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 10,
+              "start": 8
+            },
+            "value": "34"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 19,
+              "start": 10
+            },
+            "value": {
+              "block_type": "Tcy",
+              "explicit_close": false,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "12［＃縦中横］34［＃縦中横終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 6,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Keigakomi",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 7,
+              "start": 6
+            },
+            "value": "囲"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 16,
+              "start": 7
+            },
+            "value": {
+              "block_type": "Keigakomi",
+              "explicit_close": false,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃罫囲み］囲［＃罫囲み終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 6,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Yokogumi",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 8,
+              "start": 6
+            },
+            "value": "56"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 17,
+              "start": 8
+            },
+            "value": {
+              "block_type": "Yokogumi",
+              "explicit_close": false,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃横組み］56［＃横組み終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 9,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Caption",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 13,
+              "start": 9
+            },
+            "value": "図の説明"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 25,
+              "start": 13
+            },
+            "value": {
+              "block_type": "Caption",
+              "explicit_close": false,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃キャプション］図の説明［＃キャプション終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 4,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 5,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Warigaki",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 9,
+              "start": 5
+            },
+            "value": "夏期演説"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 17,
+              "start": 9
+            },
+            "value": {
+              "block_type": "Warigaki",
+              "explicit_close": false,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃割書］夏期演説［＃割書終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "value": "12"
+            },
+            {
+              "kind": "Tcy",
+              "range_form": true,
+              "span": {
+                "end": 19,
+                "start": 2
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 10,
+                      "start": 8
+                    },
+                    "value": "34"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 0
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Keigakomi",
+              "range_form": true,
+              "span": {
+                "end": 16,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 7,
+                      "start": 6
+                    },
+                    "value": "囲"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 1
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Yokogumi",
+              "range_form": true,
+              "span": {
+                "end": 17,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 8,
+                      "start": 6
+                    },
+                    "value": "56"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 2
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Caption",
+              "range_form": true,
+              "span": {
+                "end": 25,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 13,
+                      "start": 9
+                    },
+                    "value": "図の説明"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 3
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Warigaki",
+              "range_form": true,
+              "span": {
+                "end": 17,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 9,
+                      "start": 5
+                    },
+                    "value": "夏期演説"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 4
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

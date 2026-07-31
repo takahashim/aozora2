@@ -43,6 +43,13 @@ def add(out, name, fields)
   (out[name] ||= Set.new) << fields
 end
 
+# `X = …` の左辺は型の名前であって構成子ではない（`Node` `Break` `CloseKind` など）。
+# 被覆の報告から外すために覚えておく。
+TYPE_NAMES = Set.new
+
+# 文字列として出た列挙値。被覆の計算にだけ使う（[`actual_constructors`] 参照）。
+STRING_VALUES = Set.new
+
 # `{ base: Inline*, ruby: Inline*, direction, keep_gaiji_notes_in_base: Bool }` から
 # フィールド名を拾う。仕様は型を省いて名前だけ書くことがある（`direction`）。
 def field_names(body)
@@ -108,6 +115,7 @@ def constructors_from_bnf(text, out)
 
     if (m = line.match(/\A\s*(\w+)\s*=\s*(.*)$/))
       flush.call
+      TYPE_NAMES << m[1]
       buffer = [m[1], m[2].strip]
     elsif buffer && line.strip.start_with?('|')
       buffer[1] += " #{line.strip}"
@@ -137,6 +145,12 @@ def actual_constructors(node, out = {})
       value = node['value']
       fields = value.is_a?(Hash) ? value.keys.to_set : nil
       (out[node['kind']] ||= Set.new) << fields
+    end
+    # 文字列になった列挙値（`"brk": "Br"`）は構成子として現れない。仕様の書き方
+    # （`| \`MidashiLevel\` | \`"Naka"\`（中）… |`）とは照合できないので、
+    # **被覆を数えるためだけ**に別に控える。
+    node.each do |k, v|
+      STRING_VALUES << v if k != 'kind' && v.is_a?(String) && v.match?(/\A[A-Z][A-Za-z]*\z/)
     end
     node.each_value { |v| actual_constructors(v, out) }
   when Array
@@ -225,7 +239,8 @@ def report(tree, spec_path)
     field_sets.each { |fields| problems.concat(shape_problems(name, spec[name], fields)) }
   end
 
-  uncovered = spec.keys - actual.keys - [TOP_LEVEL[tree][0]].compact
+  uncovered = spec.keys - actual.keys - STRING_VALUES.to_a - TYPE_NAMES.to_a -
+             [TOP_LEVEL[tree][0]].compact
   [problems.uniq, uncovered.sort]
 end
 
@@ -240,7 +255,10 @@ def main
       status = 1
       problems.each { |p| puts "  [不一致] #{p}" }
     end
-    puts "  （フィクスチャに現れない構成子: #{uncovered.join(' ')}）" unless uncovered.empty?
+    unless uncovered.empty?
+      puts "  （フィクスチャに現れない構成子: #{uncovered.join(' ')}）"
+      puts '   ※ 名前が別の列挙と重なる構成子は、文字列値の一致で被覆と数えていることがある'
+    end
     puts
   end
   warn '仕様と実装が食い違っています。' unless status.zero?

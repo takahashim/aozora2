@@ -191,6 +191,11 @@ Node = { kind: 構成子名, value: 内容?, span: Span }
   外字一覧に載せる名前が空になるなど後段の扱いが変わるため区別する。
 - `Ruby` の `children` が空なのは、親文字がまだ確定していない段階を表す（`｜` の無いルビは
   直前のテキストから親文字を切り出す処理が要る）。
+- **前方参照を解決すると現れる構成子**: `Midashi` `Tcy` `Keigakomi` `Yokogumi` `Caption`
+  `FontSize` `DakutenKatakana` `AnnotationEnd` は `UnresolvedReference` を解決した結果と
+  して生まれる。RawAST は前方参照を未解決のまま持つ形式（1 章の不変条件）なので、
+  **生成した直後の RawAST には現れない**。解決を RawAST の上で行う消費者が作りうる
+  ものとして表に挙げてある。
 
 ### 4.2 マーカー
 

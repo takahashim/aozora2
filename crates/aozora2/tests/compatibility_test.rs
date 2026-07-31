@@ -360,6 +360,40 @@ fn test_chukiichiran_kinyurei() {
     run_sample_test(&sample, true);
 }
 
+/// 注記を網羅したサンプルのテスト。
+///
+/// `chukiichiran_kinyurei.txt`（参照実装 sample/ の「注記一覧」記載例文）は、
+/// 割書・この行・天から・返り点と訓点送り仮名の語形・写真・罫線・濁点付き片仮名・
+/// くの字点を含まない。それらを本文終わりの直前に足したのが `chukiichiran_zenrei.txt`
+/// で、`tools/verify_commands.py` が挙げる記法をすべて通る。
+///
+/// 期待値は参照実装 aozora2html で生成した（3 つの変換オプションぶん）。上流の
+/// サンプルには手を入れず別ファイルにしてある（元の来歴を保つため）。
+#[test]
+fn test_chukiichiran_zenrei() {
+    let fixtures = fixtures_dir();
+    let input_path = fixtures.join("chukiichiran_zenrei.txt");
+    assert!(input_path.exists(), "入力がありません: {input_path:?}");
+
+    for (suffix, jisx0213, unicode) in VARIANTS {
+        let expected_path = fixtures.join(format!("chukiichiran_zenrei{suffix}.html"));
+        assert!(
+            expected_path.exists(),
+            "期待値がありません: {expected_path:?}"
+        );
+        run_sample_test(
+            &SampleTestCase {
+                name: format!("chukiichiran_zenrei{suffix}"),
+                input_path: input_path.clone(),
+                expected_path,
+                use_jisx0213: *jisx0213,
+                use_unicode: *unicode,
+            },
+            true,
+        );
+    }
+}
+
 /// すべてのサンプルをテスト（サマリー表示用）
 #[test]
 fn test_all_samples() {

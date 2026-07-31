@@ -1,0 +1,196 @@
+{
+  "note": "注記付き範囲（入れ子ルビになる）と傍記",
+  "source": "［＃注記付き］呼吸［＃「こきゅう」の注記付き終わり］\n工場［＃「工場」に「×」の傍記］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 7,
+              "start": 0
+            },
+            "value": {
+              "block_type": "AnnotationRange",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 9,
+              "start": 7
+            },
+            "value": "呼吸"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 26,
+              "start": 9
+            },
+            "value": {
+              "block_type": "AnnotationRange",
+              "explicit_close": false,
+              "params": {
+                "annotation": "こきゅう",
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃注記付き］呼吸［＃「こきゅう」の注記付き終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "工場"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 16,
+              "start": 2
+            },
+            "value": {
+              "raw": "「工場」に「×」の傍記",
+              "spec": {
+                "kind": "SideNote",
+                "value": {
+                  "annotation": "×"
+                }
+              },
+              "target": "工場"
+            }
+          }
+        ],
+        "source": "工場［＃「工場」に「×」の傍記］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Ruby",
+              "range_form": false,
+              "span": {
+                "end": 26,
+                "start": 0
+              },
+              "value": {
+                "base": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 9,
+                      "start": 7
+                    },
+                    "value": "呼吸"
+                  }
+                ],
+                "direction": "Right",
+                "keep_gaiji_notes_in_base": true,
+                "ruby": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 26,
+                      "start": 9
+                    },
+                    "value": "こきゅう"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 0
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Ruby",
+              "range_form": false,
+              "span": {
+                "end": 16,
+                "start": 0
+              },
+              "value": {
+                "base": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "工場"
+                  }
+                ],
+                "direction": "Right",
+                "keep_gaiji_notes_in_base": true,
+                "ruby": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 16,
+                      "start": 0
+                    },
+                    "value": "× ×"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 1
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

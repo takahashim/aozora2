@@ -1,0 +1,165 @@
+{
+  "note": "返り点と訓点送り仮名",
+  "source": "學而時習之［＃レ］、不亦説乎\n學［＃（ブ）］而時習之",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 5,
+              "start": 0
+            },
+            "value": "學而時習之"
+          },
+          {
+            "kind": "Kaeriten",
+            "span": {
+              "end": 9,
+              "start": 5
+            },
+            "value": "レ"
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 14,
+              "start": 9
+            },
+            "value": "、不亦説乎"
+          }
+        ],
+        "source": "學而時習之［＃レ］、不亦説乎",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "學"
+          },
+          {
+            "kind": "Okurigana",
+            "span": {
+              "end": 7,
+              "start": 1
+            },
+            "value": "ブ"
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 11,
+              "start": 7
+            },
+            "value": "而時習之"
+          }
+        ],
+        "source": "學［＃（ブ）］而時習之",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 5,
+                "start": 0
+              },
+              "value": "學而時習之"
+            },
+            {
+              "kind": "Kaeriten",
+              "range_form": false,
+              "span": {
+                "end": 9,
+                "start": 5
+              },
+              "value": "レ"
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 14,
+                "start": 9
+              },
+              "value": "、不亦説乎"
+            }
+          ],
+          "line": 0
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 1,
+                "start": 0
+              },
+              "value": "學"
+            },
+            {
+              "kind": "Okurigana",
+              "range_form": false,
+              "span": {
+                "end": 7,
+                "start": 1
+              },
+              "value": {
+                "content": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 1,
+                      "start": 0
+                    },
+                    "value": "ブ"
+                  }
+                ],
+                "raw": "ブ"
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 11,
+                "start": 7
+              },
+              "value": "而時習之"
+            }
+          ],
+          "line": 1
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "note": "注記ルビ（「対象」に「注記」の注記）",
+  "source": "吹喋［＃「喋」に「ママ」の注記］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "吹喋"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 16,
+              "start": 2
+            },
+            "value": {
+              "raw": "「喋」に「ママ」の注記",
+              "spec": {
+                "kind": "AnnotationRuby",
+                "value": {
+                  "annotation": "ママ"
+                }
+              },
+              "target": "喋"
+            }
+          }
+        ],
+        "source": "吹喋［＃「喋」に「ママ」の注記］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 1,
+                "start": 0
+              },
+              "value": "吹"
+            },
+            {
+              "kind": "Ruby",
+              "range_form": false,
+              "span": {
+                "end": 16,
+                "start": 1
+              },
+              "value": {
+                "base": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 1
+                    },
+                    "value": "喋"
+                  }
+                ],
+                "direction": "Right",
+                "keep_gaiji_notes_in_base": true,
+                "ruby": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 16,
+                      "start": 1
+                    },
+                    "value": "ママ"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

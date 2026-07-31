@@ -1,0 +1,244 @@
+{
+  "note": "ブロック形の見出し（窓・同行を含む）",
+  "source": "［＃ここから中見出し］\n節題\n［＃ここで中見出し終わり］\n［＃ここから窓小見出し］\n窓の題\n［＃ここで小見出し終わり］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 11,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Midashi",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": true,
+                "level": "Naka",
+                "midashi_style": "Normal",
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここから中見出し］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "節題"
+          }
+        ],
+        "source": "節題",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 13,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Midashi",
+              "explicit_close": true,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここで中見出し終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 12,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Midashi",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": true,
+                "level": "Ko",
+                "midashi_style": "Mado",
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここから窓小見出し］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 4,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 3,
+              "start": 0
+            },
+            "value": "窓の題"
+          }
+        ],
+        "source": "窓の題",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 5,
+        "nodes": [
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 13,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Midashi",
+              "explicit_close": true,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここで小見出し終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Nested",
+        "value": {
+          "children": [
+            {
+              "kind": "Line",
+              "value": {
+                "brk": "Br",
+                "inline": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "節題"
+                  }
+                ],
+                "line": 1
+              }
+            }
+          ],
+          "close": {
+            "kind": "Newline"
+          },
+          "kind": {
+            "kind": "Midashi",
+            "value": {
+              "level": "Naka",
+              "style": "Normal"
+            }
+          },
+          "line": 0,
+          "open": "Newline"
+        }
+      },
+      {
+        "kind": "Nested",
+        "value": {
+          "children": [
+            {
+              "kind": "Line",
+              "value": {
+                "brk": "Br",
+                "inline": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 3,
+                      "start": 0
+                    },
+                    "value": "窓の題"
+                  }
+                ],
+                "line": 4
+              }
+            }
+          ],
+          "close": {
+            "kind": "Newline"
+          },
+          "kind": {
+            "kind": "Midashi",
+            "value": {
+              "level": "Ko",
+              "style": "Mado"
+            }
+          },
+          "line": 3,
+          "open": "Newline"
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

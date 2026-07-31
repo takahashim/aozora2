@@ -1,0 +1,326 @@
+{
+  "note": "前方参照で解決するインライン要素（縦中横・罫囲み・横組み・キャプション）と見出し",
+  "source": "12［＃「12」は縦中横］\n囲［＃「囲」は罫囲み］\n34［＃「34」は横組み］\n図［＃「図」はキャプション］\n章題［＃「章題」は中見出し］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "12"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 13,
+              "start": 2
+            },
+            "value": {
+              "raw": "「12」は縦中横",
+              "spec": {
+                "kind": "Inline",
+                "value": "Tcy"
+              },
+              "target": "12"
+            }
+          }
+        ],
+        "source": "12［＃「12」は縦中横］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "囲"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 11,
+              "start": 1
+            },
+            "value": {
+              "raw": "「囲」は罫囲み",
+              "spec": {
+                "kind": "Inline",
+                "value": "Keigakomi"
+              },
+              "target": "囲"
+            }
+          }
+        ],
+        "source": "囲［＃「囲」は罫囲み］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "34"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 13,
+              "start": 2
+            },
+            "value": {
+              "raw": "「34」は横組み",
+              "spec": {
+                "kind": "Inline",
+                "value": "Yokogumi"
+              },
+              "target": "34"
+            }
+          }
+        ],
+        "source": "34［＃「34」は横組み］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "図"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 14,
+              "start": 1
+            },
+            "value": {
+              "raw": "「図」はキャプション",
+              "spec": {
+                "kind": "Inline",
+                "value": "Caption"
+              },
+              "target": "図"
+            }
+          }
+        ],
+        "source": "図［＃「図」はキャプション］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 4,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "章題"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 14,
+              "start": 2
+            },
+            "value": {
+              "raw": "「章題」は中見出し",
+              "spec": {
+                "kind": "Midashi",
+                "value": {
+                  "level": "Naka",
+                  "style": "Normal"
+                }
+              },
+              "target": "章題"
+            }
+          }
+        ],
+        "source": "章題［＃「章題」は中見出し］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Tcy",
+              "range_form": false,
+              "span": {
+                "end": 13,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "12"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 0
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Keigakomi",
+              "range_form": false,
+              "span": {
+                "end": 11,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 1,
+                      "start": 0
+                    },
+                    "value": "囲"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 1
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Yokogumi",
+              "range_form": false,
+              "span": {
+                "end": 13,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "34"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 2
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Caption",
+              "range_form": false,
+              "span": {
+                "end": 14,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 1,
+                      "start": 0
+                    },
+                    "value": "図"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 3
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "None",
+          "inline": [
+            {
+              "kind": "Midashi",
+              "range_form": false,
+              "span": {
+                "end": 14,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "章題"
+                  }
+                ],
+                "level": "Naka",
+                "style": "Normal"
+              }
+            }
+          ],
+          "line": 4
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

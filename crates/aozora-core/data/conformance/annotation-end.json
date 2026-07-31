@@ -1,0 +1,206 @@
+{
+  "note": "左に注記付き範囲の終了（AnnotationEnd）と、前方参照形のフォントサイズ",
+  "source": "［＃左に注記付き］呼吸［＃左に「こきゅう」の注記付き終わり］\n大［＃「大」は２段階大きな文字］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 9,
+              "start": 0
+            },
+            "value": {
+              "block_type": "LeftAnnotationRange",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 11,
+              "start": 9
+            },
+            "value": "呼吸"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 30,
+              "start": 11
+            },
+            "value": {
+              "block_type": "LeftAnnotationRange",
+              "explicit_close": false,
+              "params": {
+                "annotation": "こきゅう",
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃左に注記付き］呼吸［＃左に「こきゅう」の注記付き終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "大"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 16,
+              "start": 1
+            },
+            "value": {
+              "raw": "「大」は２段階大きな文字",
+              "spec": {
+                "kind": "FontSize",
+                "value": {
+                  "level": 2,
+                  "size_type": "Dai"
+                }
+              },
+              "target": "大"
+            }
+          }
+        ],
+        "source": "大［＃「大」は２段階大きな文字］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "Note",
+              "range_form": false,
+              "span": {
+                "end": 9,
+                "start": 0
+              },
+              "value": {
+                "content": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 6,
+                      "start": 0
+                    },
+                    "value": "左に注記付き"
+                  }
+                ],
+                "raw": "左に注記付き"
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 11,
+                "start": 9
+              },
+              "value": "呼吸"
+            },
+            {
+              "kind": "AnnotationEnd",
+              "range_form": false,
+              "span": {
+                "end": 30,
+                "start": 11
+              },
+              "value": {
+                "content": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 30,
+                      "start": 11
+                    },
+                    "value": "こきゅう"
+                  }
+                ],
+                "prefix": "左に「",
+                "suffix": "」の注記付き終わり"
+              }
+            }
+          ],
+          "line": 0
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
+            {
+              "kind": "FontSize",
+              "range_form": false,
+              "span": {
+                "end": 16,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 1,
+                      "start": 0
+                    },
+                    "value": "大"
+                  }
+                ],
+                "level": 2,
+                "size_type": "Dai"
+              }
+            }
+          ],
+          "line": 1
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

@@ -1,0 +1,215 @@
+{
+  "note": "字詰め・地付き（ブロック）と行途中の地付き",
+  "source": "［＃ここから10字詰め］\n詰めた行\n［＃ここで字詰め終わり］\n本文［＃地付き］署名",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 12,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Jizume",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": true,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": 10,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここから10字詰め］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 4,
+              "start": 0
+            },
+            "value": "詰めた行"
+          }
+        ],
+        "source": "詰めた行",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 12,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Jizume",
+              "explicit_close": true,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここで字詰め終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "本文"
+          },
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 8,
+              "start": 2
+            },
+            "value": {
+              "block_type": "Chitsuki",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 10,
+              "start": 8
+            },
+            "value": "署名"
+          }
+        ],
+        "source": "本文［＃地付き］署名",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Nested",
+        "value": {
+          "children": [
+            {
+              "kind": "Line",
+              "value": {
+                "brk": "Br",
+                "inline": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 4,
+                      "start": 0
+                    },
+                    "value": "詰めた行"
+                  }
+                ],
+                "line": 1
+              }
+            }
+          ],
+          "close": {
+            "kind": "Newline"
+          },
+          "kind": {
+            "kind": "Jizume",
+            "value": {
+              "width": 10
+            }
+          },
+          "line": 0,
+          "open": "Newline"
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "None",
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "value": "本文"
+            },
+            {
+              "kind": "ChitsukiInline",
+              "range_form": false,
+              "span": {
+                "end": 10,
+                "start": 2
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 10,
+                      "start": 8
+                    },
+                    "value": "署名"
+                  }
+                ],
+                "width": 0
+              }
+            }
+          ],
+          "line": 3
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}

@@ -220,11 +220,13 @@ pub fn parse_command(content: &str) -> CommandResult {
 
     // 4. 画像。参照実装の dispatch_aozora_command は fig…png の判定を
     //    前方参照より先に置くので、ここでも先に見る。
-    // 参照の dispatch は `/fig\d+_\d+\.png/` を含む注記を画像ルートへ回し、
-    // PAT_IMAGE（`…）入る`）は末尾アンカー無しなので `入る。` のように後続文字が
-    // あっても画像になる。従来の `ends_with("入る")` はこの後続文字ケースを
-    // 取りこぼしていたため、fig パターンを含む場合も許可する。
-    if content.ends_with("入る") || contains_fig_png(content) {
+    //
+    // 画像ルートへ回す条件は `/fig\d+_\d+\.png/` を**含む**ことだけ。ファイル名が
+    // この形でなければ（`photo.png`・`fig_photo_01.png`・`fig1_2.jpg` など）参照は
+    // 画像にせず注記のまま出す。`）入る` で終わることを条件に足すと、この振り分けより
+    // 広く画像化してしまう。逆に PAT_IMAGE 自体は末尾アンカーが無いので、
+    // `…）入る。` のように後続文字があっても画像になる（それは try_parse_image 側）。
+    if contains_fig_png(content) {
         if let Some(result) = try_parse_image(content) {
             return result;
         }

@@ -1,0 +1,236 @@
+{
+  "note": "太字・斜体のブロック形",
+  "source": "［＃ここから太字］\n太い\n［＃ここで太字終わり］\n［＃ここから斜体］\n斜め\n［＃ここで斜体終わり］",
+  "raw_ast": {
+    "format": "aozora-rawast",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 9,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Futoji",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": true,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここから太字］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "太い"
+          }
+        ],
+        "source": "太い",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 11,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Futoji",
+              "explicit_close": true,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここで太字終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 9,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Shatai",
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": true,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここから斜体］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 4,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "斜め"
+          }
+        ],
+        "source": "斜め",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 5,
+        "nodes": [
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 11,
+              "start": 0
+            },
+            "value": {
+              "block_type": "Shatai",
+              "explicit_close": true,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここで斜体終わり］",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ],
+    "version": "0.1"
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Nested",
+        "value": {
+          "children": [
+            {
+              "kind": "Line",
+              "value": {
+                "brk": "Br",
+                "inline": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "太い"
+                  }
+                ],
+                "line": 1
+              }
+            }
+          ],
+          "close": {
+            "kind": "Newline"
+          },
+          "kind": {
+            "kind": "Futoji"
+          },
+          "line": 0,
+          "open": "Newline"
+        }
+      },
+      {
+        "kind": "Nested",
+        "value": {
+          "children": [
+            {
+              "kind": "Line",
+              "value": {
+                "brk": "Br",
+                "inline": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "斜め"
+                  }
+                ],
+                "line": 4
+              }
+            }
+          ],
+          "close": {
+            "kind": "Newline"
+          },
+          "kind": {
+            "kind": "Shatai"
+          },
+          "line": 3,
+          "open": "Newline"
+        }
+      }
+    ],
+    "format": "aozora-ast",
+    "version": "0.1"
+  }
+}
