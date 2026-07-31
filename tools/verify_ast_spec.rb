@@ -15,6 +15,7 @@
 #   - フィールドの JSON の型が仕様の注釈と合わない
 #   - 文書全体の器のキーの食い違い
 #   - フィクスチャが一度も作らない構成子（＝例が無く、上の照合が効かない）
+#   - 仕様の「例」の JSON が、仕様どおりの構成子・フィールド・型になっていないこと
 #
 # 型は JSON の型（数値・文字列・真偽・列・オブジェクト・null）まで見る。加えて
 # `Nat` は値が 0 以上であることも見る（仕様 2 章の定義）。`Text` の中身が何か、
@@ -178,17 +179,26 @@ end
 class Actual
   attr_reader :shapes, :field_types, :int_min, :string_values, :envelope
 
+  # `tree` が nil なら空で作る（[`absorb`] で任意の木を取り込む）。
   def initialize(tree)
     @shapes = {}             # 構成子名 → 形の集合
     @field_types = {}        # 構成子名 → フィールド名 → 実際の JSON の型名の集合
     @int_min = {}            # 構成子名 → フィールド名 → 現れた整数の最小値
     @string_values = Set.new # 文字列として出た列挙値（被覆の計算にだけ使う）
     @envelope = Set.new
+    return if tree.nil?
+
     Dir[File.join(FIXTURES, '*.json')].sort.each do |path|
       doc = JSON.parse(File.read(path))[tree]
       @envelope |= doc.keys.to_set
       walk(doc)
     end
+  end
+
+  # 任意の JSON（仕様の例など）を取り込む。
+  def absorb(doc)
+    @envelope |= doc.keys.to_set if doc.is_a?(Hash)
+    walk(doc)
   end
 
   # 器（`RawLine` など）は `kind` を持たないので、呼び出し側から登録する。
@@ -332,6 +342,38 @@ def register_top_level(tree, actual)
   name
 end
 
+# 仕様の「## N. 例」に貼られた JSON も、フィクスチャと同じ規則で照合する。
+# 例は人が手で書き換えがちで、しかも読む側が最初に見るものなので、腐ると影響が大きい。
+def example_problems(spec, spec_path, tree)
+  block = File.read(spec_path)[/^## \d+\. 例.*?```json\n(.*?)```/m, 1]
+  return ['例の JSON が仕様に見当たらない'] unless block
+
+  doc = begin
+    JSON.parse(block)
+  rescue JSON::ParserError => e
+    return ["例の JSON が壊れている: #{e.message}"]
+  end
+
+  example = Actual.new(nil)
+  example.absorb(doc)
+
+  problems = []
+  # 器（`RawLine` など）は `kind` を持たないので、フィクスチャと同じように別に拾う。
+  top_name, pick = TOP_LEVEL[tree]
+  if top_name && (sample = pick.call(tree => doc))
+    example.register(top_name, sample)
+  end
+  example.shapes.sort.each do |name, field_sets|
+    unless spec.shapes.key?(name)
+      problems << "例: #{name} が仕様に無い"
+      next
+    end
+    field_sets.each { |f| problems.concat(shape_problems("例の #{name}", spec.shapes[name], f)) }
+  end
+  problems.concat(type_problems(spec, example).map { |m| "例: #{m}" })
+  problems
+end
+
 def report(tree, spec_path)
   spec = Spec.new(spec_path)
   actual = Actual.new(tree)
@@ -346,6 +388,7 @@ def report(tree, spec_path)
     field_sets.each { |fields| problems.concat(shape_problems(name, spec.shapes[name], fields)) }
   end
   problems.concat(type_problems(spec, actual))
+  problems.concat(example_problems(spec, spec_path, tree))
 
   uncovered = spec.shapes.keys - actual.shapes.keys - actual.string_values.to_a -
               spec.type_names.to_a - [top_name].compact

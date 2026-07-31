@@ -289,7 +289,17 @@ RefSpec =
 
 ## 5. 例
 
-`本文［＃「本文」に傍点］` の 1 行。
+文書 1 本まるごと。入力は次の 4 行（CRLF 区切り、末尾も改行）。
+
+```
+題
+著
+
+本文［＃「本文」に傍点］
+```
+
+ヘッダ 2 行・空行・本文 1 行に加えて、末尾の改行が作る空行が 5 行目として入る。
+`source` を CRLF で連結すれば元のテキストに戻る。
 
 ```json
 {
@@ -298,27 +308,90 @@ RefSpec =
   "lines": [
     {
       "line_no": 0,
+      "source": "題",
+      "nodes": [
+        {
+          "kind": "Text",
+          "value": "題",
+          "span": {
+            "start": 0,
+            "end": 1
+          }
+        }
+      ],
+      "unclosed_accents": [],
+      "unclosed_accent_to_eol": false
+    },
+    {
+      "line_no": 1,
+      "source": "著",
+      "nodes": [
+        {
+          "kind": "Text",
+          "value": "著",
+          "span": {
+            "start": 0,
+            "end": 1
+          }
+        }
+      ],
+      "unclosed_accents": [],
+      "unclosed_accent_to_eol": false
+    },
+    {
+      "line_no": 2,
+      "source": "",
+      "nodes": [],
+      "unclosed_accents": [],
+      "unclosed_accent_to_eol": false
+    },
+    {
+      "line_no": 3,
       "source": "本文［＃「本文」に傍点］",
       "nodes": [
-        { "kind": "Text", "value": "本文", "span": { "start": 0, "end": 2 } },
+        {
+          "kind": "Text",
+          "value": "本文",
+          "span": {
+            "start": 0,
+            "end": 2
+          }
+        },
         {
           "kind": "UnresolvedReference",
           "value": {
-            "raw": "「本文」に傍点",
             "target": "本文",
-            "spec": { "kind": "Style", "value": "SesameDot" }
+            "spec": {
+              "kind": "Style",
+              "value": "SesameDot"
+            },
+            "raw": "「本文」に傍点"
           },
-          "span": { "start": 2, "end": 12 }
+          "span": {
+            "start": 2,
+            "end": 12
+          }
         }
       ],
-      "unclosed_accents": []
+      "unclosed_accents": [],
+      "unclosed_accent_to_eol": false
+    },
+    {
+      "line_no": 4,
+      "source": "",
+      "nodes": [],
+      "unclosed_accents": [],
+      "unclosed_accent_to_eol": false
     }
   ]
 }
 ```
 
-解決すると `Text` と `UnresolvedReference` が 1 つの `Style` に畳まれる
-（[Aozora AST 交換形式](spec-aozora-ast-json.md)の例が同じ入力の変換後）。
+- 本文の行は `Text` と `UnresolvedReference` の 2 ノードに分かれている。前方参照は
+  未解決のまま（1 章の不変条件）で、解決すると 1 つの `Style` に畳まれる
+  （[Aozora AST 交換形式](spec-aozora-ast-json.md)の例が同じ入力の変換後）。
+- ヘッダの行も本文と同じように解析されるが、出力では記法が効かない（ルビと `｜` を
+  剥がした生の文字列になる）。どの行がヘッダかは行の位置で決まる。
 
 ## 6. Aozora AST への変換の概要
 

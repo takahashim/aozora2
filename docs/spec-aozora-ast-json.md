@@ -330,20 +330,32 @@ CloseKind = NoBreak | Newline | BareBreak              // 構成子（値を持�
 
 ## 8. 例
 
-[RawAST 交換形式](spec-rawast-json.md)の例と同じ入力（`本文［＃「本文」に傍点］`）を
-解決したもの。前方参照が畳まれ、`Text` と `UnresolvedReference` の 2 ノードが 1 つの
-`Style` になっている。
+[RawAST 交換形式](spec-rawast-json.md)の例と同じ入力（`題` / `著` / 空行 /
+`本文［＃「本文」に傍点］`）を解決したもの。
 
 ```json
 {
   "format": "aozora-ast",
   "version": "0.1",
-  "header": { "title": "作品名", "author": "著者名", "subtitle": null,
-              "original_title": null, "original_subtitle": null,
-              "translator": null, "editor": null, "henyaku": null },
-  "after_text": [],
-  "bibliographical": [],
+  "header": {
+    "title": "題",
+    "author": "著",
+    "subtitle": null,
+    "original_title": null,
+    "original_subtitle": null,
+    "translator": null,
+    "editor": null,
+    "henyaku": null
+  },
   "main_text": [
+    {
+      "kind": "Line",
+      "value": {
+        "inline": [],
+        "brk": "Br",
+        "line": 0
+      }
+    },
     {
       "kind": "Line",
       "value": {
@@ -352,25 +364,49 @@ CloseKind = NoBreak | Newline | BareBreak              // 構成子（値を持�
             "kind": "Style",
             "value": {
               "children": [
-                { "kind": "Text", "value": "本文",
-                  "span": { "start": 0, "end": 2 }, "range_form": false }
+                {
+                  "kind": "Text",
+                  "value": "本文",
+                  "span": {
+                    "start": 0,
+                    "end": 2
+                  },
+                  "range_form": false
+                }
               ],
               "style_type": "SesameDot"
             },
-            "span": { "start": 0, "end": 12 },
+            "span": {
+              "start": 0,
+              "end": 12
+            },
             "range_form": false
           }
         ],
         "brk": "Br",
-        "line": 0
+        "line": 3
+      }
+    },
+    {
+      "kind": "Line",
+      "value": {
+        "inline": [],
+        "brk": "Br",
+        "line": 4
       }
     }
-  ]
+  ],
+  "after_text": [],
+  "bibliographical": []
 }
 ```
 
-- `span` は畳み込みに使ったマーカー（`［＃「本文」に傍点］`）まで覆う。
+- ヘッダの 2 行は木に入らず、抽出結果が `header` に入る。
+- 本文の `Text` と `UnresolvedReference` の 2 ノードが 1 つの `Style` に畳まれている。
+- `Style` の `span` は畳み込みに使ったマーカー（`［＃「本文」に傍点］`）まで覆う。
 - `range_form` が `false` なのは、これが後方参照形（`［＃「…」は…］`）由来だからである。
+- `main_text` の最初の行が空なのは、参照実装が本文の先頭に `<br />` を 1 つ出すのに
+  合わせて空行を補うため（3 章の節の切り分け）。末尾の空行は入力末尾の改行が作る。
 
 ## 9. 未決（議論したい点）
 
