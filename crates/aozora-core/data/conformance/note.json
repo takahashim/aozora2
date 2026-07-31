@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -63,9 +57,7 @@
             "value": "現代語訳「松籟《しょうらい》を聞く」"
           }
         ],
-        "source": "本文［＃現代語訳「松籟《しょうらい》を聞く」］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "本文［＃現代語訳「松籟《しょうらい》を聞く」］"
       }
     ],
     "version": "0.1"

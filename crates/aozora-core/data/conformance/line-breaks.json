@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -55,9 +49,7 @@
             "value": "普通の行"
           }
         ],
-        "source": "普通の行",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "普通の行"
       },
       {
         "line_no": 4,
@@ -85,9 +77,7 @@
             }
           }
         ],
-        "source": "［＃ここから２字下げ］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "［＃ここから２字下げ］"
       },
       {
         "line_no": 5,
@@ -101,9 +91,7 @@
             "value": "中身"
           }
         ],
-        "source": "中身",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "中身"
       },
       {
         "line_no": 6,
@@ -140,9 +128,7 @@
             "value": "つづき"
           }
         ],
-        "source": "［＃ここで字下げ終わり］つづき",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "［＃ここで字下げ終わり］つづき"
       },
       {
         "line_no": 7,
@@ -156,9 +142,7 @@
             "value": "最後の行"
           }
         ],
-        "source": "最後の行",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "最後の行"
       }
     ],
     "version": "0.1"

@@ -74,10 +74,6 @@ pub enum Block {
         kinds: Vec<BlockKind>,
         /// 行の内容（インライン列）
         inline: Vec<Inline>,
-        /// 未閉じの `〔` が行末まで達したか。参照 `AccentParser` はこのとき文字列
-        /// `"<br />\r\n"` をバッファに積んで改行ごと食べるので、`<br />` が
-        /// **閉じ `</div>` より前**に出る（例:60380/60385 の `［＃地から１字上げ］〔…］`）。
-        unclosed_accent_to_eol: bool,
         /// この行の由来（本文 0 起点の行番号）＝位置情報。
         line: usize,
     },

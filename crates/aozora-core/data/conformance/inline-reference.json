@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -70,9 +64,7 @@
             }
           }
         ],
-        "source": "12［＃「12」は縦中横］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "12［＃「12」は縦中横］"
       },
       {
         "line_no": 4,
@@ -101,9 +93,7 @@
             }
           }
         ],
-        "source": "囲［＃「囲」は罫囲み］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "囲［＃「囲」は罫囲み］"
       },
       {
         "line_no": 5,
@@ -132,9 +122,7 @@
             }
           }
         ],
-        "source": "34［＃「34」は横組み］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "34［＃「34」は横組み］"
       },
       {
         "line_no": 6,
@@ -163,9 +151,7 @@
             }
           }
         ],
-        "source": "図［＃「図」はキャプション］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "図［＃「図」はキャプション］"
       },
       {
         "line_no": 7,
@@ -197,9 +183,7 @@
             }
           }
         ],
-        "source": "章題［＃「章題」は中見出し］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "章題［＃「章題」は中見出し］"
       }
     ],
     "version": "0.1"

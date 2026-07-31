@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -86,9 +80,7 @@
             "value": "した"
           }
         ],
-        "source": "天［＃「レ」は返り点］下［＃（した）］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "天［＃「レ」は返り点］下［＃（した）］"
       }
     ],
     "version": "0.1"

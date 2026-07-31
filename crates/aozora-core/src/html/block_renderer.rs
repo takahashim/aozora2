@@ -243,12 +243,7 @@ impl<'a> BlockRenderer<'a> {
                 open,
                 ..
             } => self.render_nested(kind, children, *close, *open, out),
-            Block::LineWrap {
-                kinds,
-                inline,
-                unclosed_accent_to_eol,
-                ..
-            } => {
+            Block::LineWrap { kinds, inline, .. } => {
                 // 行全体をブロック div で1行に包む（行スコープ字下げ／地付き）。
                 // 開き直後の改行も内側 <br /> も出さず、行末に `\r\n` のみ。
                 // kinds は外側から内側の順（`［＃N字下げ］` は 1 行に複数書ける）。
@@ -273,11 +268,6 @@ impl<'a> BlockRenderer<'a> {
                     // 後付けは閉じタグを出さない（参照 tail_output）。
                     self.push_tail_line(&line, out);
                     return;
-                }
-                // 未閉じ `〔` の行末効果は閉じタグより**前**に出る（参照 AccentParser が
-                // `"<br />\r\n"` をバッファに積んでから general_output が tail を出すため）。
-                if *unclosed_accent_to_eol {
-                    line.push_str("<br />\r\n");
                 }
                 for _ in 0..opened {
                     line.push_str("</div>");

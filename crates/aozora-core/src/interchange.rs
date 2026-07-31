@@ -94,8 +94,6 @@ impl RawDocument {
             source: String::new(),
             nodes: Vec::new(),
             line_no,
-            unclosed_accents: Vec::new(),
-            unclosed_accent_to_eol: false,
         };
         let main_text: Vec<RawLine> = body_line_indices(&lines)
             .into_iter()

@@ -12,7 +12,7 @@ mod utils;
 
 use crate::node::{BlockParams, BlockType, InlineKind, Node, NodeKind, RefSpec, RubyDirection};
 use crate::token::{Span, Token, TokenKind};
-use crate::tokenizer::{tokenize, tokenize_line};
+use crate::tokenizer::{tokenize, tokenize_collecting_unclosed_accents};
 
 pub use command_parser::{parse_command, CommandResult};
 pub use reference_resolver::{resolve_inline_ruby, resolve_references};
@@ -34,14 +34,6 @@ pub struct RawLine {
     pub nodes: Vec<Node>,
     /// 本文（extract_body_lines 後）における 0 起点の行番号（位置情報）。
     pub line_no: usize,
-    /// 同一行で閉じられなかったアクセント `〔…` の位置（行末まで延長したもの）。
-    /// トークナイザが走査中に持っている情報なので、ここで一緒に持ち帰る
-    /// （エディタ支援がこれだけのために全行を再トークナイズしないで済むように）。
-    pub unclosed_accents: Vec<Span>,
-    /// 未閉じの `〔` が行末まで達したか。参照はこのとき行の内容の末尾に文字列
-    /// `"<br />\r\n"` を積んで改行ごと食べるので、行スコープの字下げ・地付きが
-    /// ある行では**閉じタグより前**に `<br />` が出る（例:60380/60385）。
-    pub unclosed_accent_to_eol: bool,
 }
 
 /// 文書全体の RawAST（[`RawLine`] の列）。
@@ -55,22 +47,53 @@ pub struct RawDoc {
 /// 行の列を文書単位の RawAST（[`RawDoc`]）にパースする。各行を tokenize +
 /// [`parse_raw_nodes`]（前方参照は未解決・ブロックは平坦マーカーのまま）。
 pub fn parse_document_raw(lines: &[&str]) -> RawDoc {
+    parse_document_raw_with_diagnostics(lines).0
+}
+
+/// パース時に検出できる診断（現状は同一行で閉じられなかったアクセント `〔…`）。
+///
+/// 変換出力には影響しない**検証用の副産物**。木に混ぜず別に返すのは、
+/// Lowerer の [`crate::lower::LowerDiagnostic`] と同じ考え方——交換形式が運ぶのは
+/// 木であって、診断は消費者が要るときだけ受け取ればよい。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseDiagnostic {
+    /// 本文 0 起点の行番号。
+    pub line: usize,
+    /// 位置（行内の char 範囲）。
+    pub span: Span,
+    /// 種類。
+    pub kind: ParseDiagnosticKind,
+}
+
+/// [`ParseDiagnostic`] の種類。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParseDiagnosticKind {
+    /// 同一行に対応する `〕` が無く、行末まで延長したアクセント。
+    UnclosedAccent,
+}
+
+/// [`parse_document_raw`] と同じ木を作り、加えてパース時の診断を返す。
+/// **RawDoc は `parse_document_raw` と完全に一致**（診断は追加返却のみ）。
+pub fn parse_document_raw_with_diagnostics(lines: &[&str]) -> (RawDoc, Vec<ParseDiagnostic>) {
+    let mut diagnostics = Vec::new();
     let raw_lines = lines
         .iter()
         .enumerate()
         .map(|(line_no, line)| {
-            let ((tokens, unclosed_accents), unclosed_accent_to_eol) = tokenize_line(line);
-            let nodes = parse_raw_nodes(&tokens);
+            let (tokens, unclosed_accents) = tokenize_collecting_unclosed_accents(line);
+            diagnostics.extend(unclosed_accents.into_iter().map(|span| ParseDiagnostic {
+                line: line_no,
+                span,
+                kind: ParseDiagnosticKind::UnclosedAccent,
+            }));
             RawLine {
                 source: (*line).to_string(),
-                nodes,
+                nodes: parse_raw_nodes(&tokens),
                 line_no,
-                unclosed_accents,
-                unclosed_accent_to_eol,
             }
         })
         .collect();
-    RawDoc { lines: raw_lines }
+    (RawDoc { lines: raw_lines }, diagnostics)
 }
 
 /// トークン列を**生ノード列**（RawAST の中身）にパースする。構文→木の忠実な変換のみで、
@@ -163,6 +186,7 @@ fn parse_token_with_context(
 fn parse_token_kinds(token: &Token) -> Vec<NodeKind> {
     match &token.kind {
         TokenKind::Text(text) => vec![NodeKind::Text(text.clone())],
+        TokenKind::HardBreak => vec![NodeKind::HardBreak],
 
         TokenKind::Ruby { children } => {
             // ルビの親文字はここでは未解決

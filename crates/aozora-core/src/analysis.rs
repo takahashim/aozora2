@@ -18,7 +18,7 @@ use crate::encoding::{is_directly_writable, normalize_char_for_shift_jis};
 use crate::lower::lower_to_blocks_with_diagnostics;
 use crate::node::{BlockType, MidashiLevel, Node, NodeKind, RefSpec};
 use crate::parser::reference_resolver::resolve_references_collecting_failures;
-use crate::parser::{parse_document_raw, RawLine};
+use crate::parser::{parse_document_raw_with_diagnostics, ParseDiagnosticKind, RawLine};
 use crate::token::Span;
 use std::collections::HashSet;
 
@@ -145,7 +145,7 @@ pub fn analyze(input: &str) -> Analysis {
     if normalized.ends_with('\n') {
         lines.pop();
     }
-    let doc = parse_document_raw(&lines);
+    let (doc, parse_diags) = parse_document_raw_with_diagnostics(&lines);
     // 行番号はバッファのまま保ちつつ、その行で記法が効くかをセクションで判定する。
     // ヘッダは参照実装がルビ `《》` と `｜` を剥がして生文字列として出し、注記セクション
     // （罫線で囲まれた凡例）は出力に一切現れない。どちらもトークン・診断を出すと
@@ -271,26 +271,27 @@ pub fn analyze(input: &str) -> Analysis {
             }
         }
 
-        // 未閉じアクセント（対応する 〕 が同一行に無く、行末まで延長した 〔…）。
-        // 参照実装は複数行アクセントの1行目として受理する（変換は byte 一致のまま）。
-        // 現状は互換優先で許容 → Warning。将来 複数行アクセントを禁止する厳格モードは、
-        // この検出（安定コード `unclosed-accent`）を弾く根拠に再利用できる。
-        for span in &raw.unclosed_accents {
-            analysis.diagnostics.push(Diagnostic {
-                range: Range {
-                    line: raw.line_no,
-                    start: span.start,
-                    end: span.end,
-                },
-                severity: Severity::Warning,
-                code: "unclosed-accent",
-                message:
-                    "アクセント〔…〕が同一行で閉じられていません（行末まで延長。複数行アクセントは将来非対応予定）"
-                        .to_string(),
-            });
-        }
-
         extract_symbols(raw, &mut analysis.symbols);
+    }
+
+    // 未閉じアクセント（対応する 〕 が同一行に無く、行末まで延長した 〔…）。
+    // 参照実装は複数行アクセントの1行目として受理する（変換は byte 一致のまま）。
+    // 現状は互換優先で許容 → Warning。将来 複数行アクセントを禁止する厳格モードは、
+    // この検出（安定コード `unclosed-accent`）を弾く根拠に再利用できる。
+    for d in parse_diags {
+        let ParseDiagnosticKind::UnclosedAccent = d.kind;
+        analysis.diagnostics.push(Diagnostic {
+            range: Range {
+                line: d.line,
+                start: d.span.start,
+                end: d.span.end,
+            },
+            severity: Severity::Warning,
+            code: "unclosed-accent",
+            message:
+                "アクセント〔…〕が同一行で閉じられていません（行末まで延長。複数行アクセントは将来非対応予定）"
+                    .to_string(),
+        });
     }
 
     // 構造診断＋折りたたみ範囲: lower を通して Block 木を得る（convert には無影響）。
@@ -447,6 +448,8 @@ fn span_range(raw: &RawLine, from: usize, to: usize) -> Range {
 fn classify(node: &Node) -> Option<SemTokenKind> {
     match &node.kind {
         NodeKind::Text(_) => None,
+        // 素の改行は原文に対応する文字が無い（アクセントの行末効果）。色は付けない。
+        NodeKind::HardBreak => None,
         NodeKind::Ruby { .. } => Some(SemTokenKind::Ruby),
         NodeKind::Midashi { .. } => Some(SemTokenKind::Heading),
         NodeKind::Style { .. } => Some(SemTokenKind::Emphasis),

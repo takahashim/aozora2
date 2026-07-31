@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -100,9 +94,7 @@
             }
           }
         ],
-        "source": "［＃注記付き］呼吸［＃「こきゅう」の注記付き終わり］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "［＃注記付き］呼吸［＃「こきゅう」の注記付き終わり］"
       },
       {
         "line_no": 4,
@@ -133,9 +125,7 @@
             }
           }
         ],
-        "source": "工場［＃「工場」に「×」の傍記］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "工場［＃「工場」に「×」の傍記］"
       }
     ],
     "version": "0.1"

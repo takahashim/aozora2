@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -100,9 +94,7 @@
             }
           }
         ],
-        "source": "［＃中見出し］章題［＃中見出終わり］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "［＃中見出し］章題［＃中見出終わり］"
       }
     ],
     "version": "0.1"

@@ -56,6 +56,13 @@ impl Tokenizer {
                 Span::new(self.base + start, self.base + self.pos),
             ));
         }
+        // 未閉じ `〔` が行末まで達したら、参照が積む `"<br />\r\n"` に当たる token を
+        // 内容の末尾に置く（[`TokenKind::HardBreak`]）。旗ではなく内容として持つので、
+        // 後段（RawAST の Node・Aozora AST の Inline）もそのまま写せる。
+        if self.unclosed_accent_to_eol {
+            let end = self.base + self.chars.len();
+            out.push(Token::new(TokenKind::HardBreak, Span::new(end, end)));
+        }
         // ｜ は字句段階では単なるマーカー（RubyPrefix）として出るだけ。ここで
         // 直後のルビと畳んで明示ルビ（PrefixedRuby）を確定する。tokenize_children
         // 経由でも呼ばれるので、入れ子の ｜ も同じ規則で畳まれる。
@@ -429,21 +436,9 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 /// トークン列は [`tokenize`] と完全に同一（byte 一致に無影響）で、span を副産物として
 /// 返すだけ。検証・診断（`unclosed-accent`）・将来の厳格モードが使う。1 行を渡す前提。
 pub fn tokenize_collecting_unclosed_accents(input: &str) -> (Vec<Token>, Vec<Span>) {
-    tokenize_line(input).0
-}
-
-/// 1 行分のトークナイズ結果。
-///
-/// `.0` は [`tokenize_collecting_unclosed_accents`] と同じ（トークン列, 未閉じ span）で、
-/// `.1` は「未閉じ `〔` が行末まで達したか」。後者だけが**変換に効く**
-/// （行末 `<br />` が閉じタグより前に出る。[`Tokenizer::unclosed_accent_to_eol`] 参照）。
-pub fn tokenize_line(input: &str) -> ((Vec<Token>, Vec<Span>), bool) {
     let mut tokenizer = Tokenizer::new_top_level(input);
     let tokens = tokenizer.tokenize();
-    (
-        (tokens, tokenizer.unclosed_accent_spans),
-        tokenizer.unclosed_accent_to_eol,
-    )
+    (tokens, tokenizer.unclosed_accent_spans)
 }
 
 #[cfg(test)]
@@ -465,6 +460,7 @@ mod tests {
         Command {
             content: String,
         },
+        HardBreak,
         Gaiji {
             description: String,
             had_igeta: bool,
@@ -499,6 +495,7 @@ mod tests {
                 TokenKind::Accent { children } => Self::Accent {
                     children: children.into_iter().map(Self::from).collect(),
                 },
+                TokenKind::HardBreak => Self::HardBreak,
                 TokenKind::RubyPrefix => {
                     unreachable!("RubyPrefix markers are folded away inside tokenize()")
                 }
@@ -540,6 +537,7 @@ mod tests {
                 TokenKind::Text(_)
                 | TokenKind::Command { .. }
                 | TokenKind::Gaiji { .. }
+                | TokenKind::HardBreak
                 | TokenKind::RubyPrefix => {}
             }
         }
@@ -644,10 +642,12 @@ mod tests {
         // トップレベルの行で 〔 に対応する 〕 が無くアクセント記号を含むなら、
         // 行末までをアクセントブロックにする（参照実装の複数行 〔…改行…〕 の
         // 最初の行の挙動。例:4363「〔Pardonnez a`...」）。
+        // 未閉じで行末まで達したので、行の内容の末尾に素の改行が付く（参照
+        // AccentParser が `"<br />\r\n"` をバッファへ積むのに当たる）。
         let tokens = plain("〔Pardonnez a` mon");
         assert!(
-            matches!(tokens.as_slice(), [Token::Accent { .. }]),
-            "未閉じ 〔 がトップレベルでアクセントブロックになっていない: {tokens:?}"
+            matches!(tokens.as_slice(), [Token::Accent { .. }, Token::HardBreak]),
+            "未閉じ 〔 がトップレベルでアクセントブロック＋素の改行にならない: {tokens:?}"
         );
         // 入れ子（アクセント内容の再トークナイズ）では未閉じ 〔 はリテラル。
         // 〔訳者注…〔Beethoven e`…〕 の内側 〔Beethoven は 〔 が本文に残る（54931）。

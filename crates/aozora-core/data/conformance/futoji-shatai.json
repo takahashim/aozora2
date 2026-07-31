@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -69,9 +63,7 @@
             }
           }
         ],
-        "source": "［＃ここから太字］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "［＃ここから太字］"
       },
       {
         "line_no": 4,
@@ -85,9 +77,7 @@
             "value": "太い"
           }
         ],
-        "source": "太い",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "太い"
       },
       {
         "line_no": 5,
@@ -116,9 +106,7 @@
             }
           }
         ],
-        "source": "［＃ここで太字終わり］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "［＃ここで太字終わり］"
       },
       {
         "line_no": 6,
@@ -146,9 +134,7 @@
             }
           }
         ],
-        "source": "［＃ここから斜体］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "［＃ここから斜体］"
       },
       {
         "line_no": 7,
@@ -162,9 +148,7 @@
             "value": "斜め"
           }
         ],
-        "source": "斜め",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "斜め"
       },
       {
         "line_no": 8,
@@ -193,9 +177,7 @@
             }
           }
         ],
-        "source": "［＃ここで斜体終わり］",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "［＃ここで斜体終わり］"
       }
     ],
     "version": "0.1"

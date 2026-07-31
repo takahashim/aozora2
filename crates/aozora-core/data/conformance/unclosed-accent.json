@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -61,11 +55,16 @@
               "start": 1
             },
             "value": "未閉じの行"
+          },
+          {
+            "kind": "HardBreak",
+            "span": {
+              "end": 6,
+              "start": 6
+            }
           }
         ],
-        "source": "〔未閉じの行",
-        "unclosed_accent_to_eol": true,
-        "unclosed_accents": []
+        "source": "〔未閉じの行"
       },
       {
         "line_no": 4,
@@ -79,9 +78,7 @@
             "value": "次の行"
           }
         ],
-        "source": "次の行",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "次の行"
       }
     ],
     "version": "0.1"

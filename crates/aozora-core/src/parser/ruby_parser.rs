@@ -89,7 +89,8 @@ fn is_solo_ruby_base(kind: &NodeKind) -> bool {
         | NodeKind::Accent { .. }
         | NodeKind::DakutenKatakana { .. } => false,
         // 参照実装ではインラインタグとして積まれないもの
-        NodeKind::Midashi { .. }
+        NodeKind::HardBreak
+        | NodeKind::Midashi { .. }
         | NodeKind::BlockStart { .. }
         | NodeKind::BlockEnd { .. }
         | NodeKind::LineJisage { .. }

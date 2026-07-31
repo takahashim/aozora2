@@ -186,7 +186,7 @@ HeaderInfo = {
 Block =
   | Line     { inline: Inline*, brk: Break, line: Nat }
   | Nested   { kind: BlockKind, children: Block*, close: CloseKind, open: OpenKind, line: Nat }
-  | LineWrap { kinds: BlockKind*, inline: Inline*, unclosed_accent_to_eol: Bool, line: Nat }
+  | LineWrap { kinds: BlockKind*, inline: Inline*, line: Nat }
 ```
 
 | 構成子 | 意味 | 由来する記法の例 |
@@ -199,9 +199,8 @@ Block =
 - `Nested` と `LineWrap` の違いは、包む範囲が複数行か 1 行かだけ。
 - `LineWrap.kinds` が列なのは、行スコープの字下げを 1 行に複数書けるため
   （`［＃２字下げ］あ［＃５字下げ］い`）。**外側から内側の順**に並ぶ。
-- `LineWrap.unclosed_accent_to_eol` は互換メタデータ。真なら内容の後・閉じタグの前に
-  素の改行が入る（アクセント記法の途中で行末に達した行の扱い。RawAST の同名フィールド
-  を参照）。
+- アクセント記法の途中で行末に達した行は、内容の末尾に `HardBreak`（6 章）が入る。
+  行スコープの包みでは、それが閉じ `</div>` より前の素の改行になる。
 
 ```json
 {

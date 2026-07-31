@@ -142,11 +142,9 @@ Aozora AST 交換形式と同一（[spec-aozora-ast-json.md](spec-aozora-ast-jso
 
 ```
 RawLine = {
-  line_no: Nat,            // 0 起点の行番号
-  source: Text,            // その行の原文（記法を含む。改行は含まない）
-  nodes: Node*,            // 解析結果
-  unclosed_accents: Span*, // 閉じられていないアクセント記法の位置（診断用）
-  unclosed_accent_to_eol: Bool  // 閉じられていないアクセントが行末まで達したか
+  line_no: Nat, // 0 起点の行番号
+  source: Text, // その行の原文（記法を含む。改行は含まない）
+  nodes: Node*  // 解析結果
 }
 ```
 
@@ -158,11 +156,12 @@ RawLine = {
   始まる行から底本情報、`［＃本文終わり］` の次の行から本文終わり後になる。
   ヘッダは先頭から最初の空行まで、注記凡例は罫線で囲まれた範囲。
 - `source` を持つのは、位置情報の基準になるのと、診断で原文を示すため。
-- `unclosed_accent_to_eol` は互換メタデータである。元の変換系はアクセント記法の
+- 行が持つのはこの 3 つだけで、特定の記法のための欄は無い。元の変換系はアクセント記法の
   途中で行末に達すると、その行を出力せず内容を次の行へ持ち越して 1 つの出力単位に
-  する（行末には素の改行が入る）。行の切れ目が入力と出力で 1 対 1 でなくなる唯一の
-  ケースで、木の形からは読み取れないのでここに持つ。`unclosed_accents` が診断のための
-  副産物なのに対し、こちらは出力の形を決める。
+  するが、それは行の旗ではなく**内容の末尾に置かれる `HardBreak` ノード**で表す
+  （元の変換系も、旗ではなく `"<br />\r\n"` という文字列をバッファへ積んでいる）。
+  同一行で閉じられなかったアクセントの位置は診断であって木の一部ではないので、
+  この形式では運ばない（実装は木とは別に返す）。
 
 ## 4. Node
 
@@ -185,6 +184,7 @@ Node = { kind: 構成子名, value: 内容?, span: Span }
 | `FontSize` | `{ children: Node*, size_type: FontSizeType, level: Nat }` | 大きな／小さな文字 |
 | `Note` | `Text` | `［＃…］`（編集者注。中身は未解決の文字列） |
 | `Okurigana` | `Text` | `［＃（…）］`（訓点送り仮名） |
+| `HardBreak` | （値なし） | 行の途中に置かれる素の改行（未閉じ `〔` の行末効果） |
 | `Kaeriten` | `Text` | `［＃「レ」は返り点］` |
 | `DakutenKatakana` | `{ num: Text }` | 濁点付き片仮名（面区点 1-7-82〜85） |
 | `AnnotationEnd` | `{ prefix: Text, content: Node*, suffix: Text }` | 注記付き範囲の終了 |
@@ -318,9 +318,7 @@ RefSpec =
             "end": 1
           }
         }
-      ],
-      "unclosed_accents": [],
-      "unclosed_accent_to_eol": false
+      ]
     },
     {
       "line_no": 1,
@@ -334,16 +332,12 @@ RefSpec =
             "end": 1
           }
         }
-      ],
-      "unclosed_accents": [],
-      "unclosed_accent_to_eol": false
+      ]
     },
     {
       "line_no": 2,
       "source": "",
-      "nodes": [],
-      "unclosed_accents": [],
-      "unclosed_accent_to_eol": false
+      "nodes": []
     },
     {
       "line_no": 3,
@@ -372,16 +366,12 @@ RefSpec =
             "end": 12
           }
         }
-      ],
-      "unclosed_accents": [],
-      "unclosed_accent_to_eol": false
+      ]
     },
     {
       "line_no": 4,
       "source": "",
-      "nodes": [],
-      "unclosed_accents": [],
-      "unclosed_accent_to_eol": false
+      "nodes": []
     }
   ]
 }
@@ -436,7 +426,7 @@ RefSpec =
 | 本書の型 | Rust |
 |---|---|
 | 文書全体 | `struct RawDocument { format, version, lines }`（`interchange.rs`。木の器は `RawDoc { lines }`） |
-| `RawLine` | `struct RawLine { source, nodes, line_no, unclosed_accents, unclosed_accent_to_eol }` |
+| `RawLine` | `struct RawLine { source, nodes, line_no }` |
 | `Node` | `struct Node { kind, span }`（`node/mod.rs`） |
 | `Node` の構成子 | `enum NodeKind` |
 | `BlockType` / `BlockParams` | `node/block.rs` |

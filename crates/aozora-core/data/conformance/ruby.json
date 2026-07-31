@@ -16,9 +16,7 @@
             "value": "題"
           }
         ],
-        "source": "題",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "題"
       },
       {
         "line_no": 1,
@@ -32,16 +30,12 @@
             "value": "著"
           }
         ],
-        "source": "著",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "著"
       },
       {
         "line_no": 2,
         "nodes": [],
-        "source": "",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": ""
       },
       {
         "line_no": 3,
@@ -116,9 +110,7 @@
             }
           }
         ],
-        "source": "東京《とうきょう》と｜山手線《やまのてせん》",
-        "unclosed_accent_to_eol": false,
-        "unclosed_accents": []
+        "source": "東京《とうきょう》と｜山手線《やまのてせん》"
       }
     ],
     "version": "0.1"

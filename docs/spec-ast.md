@@ -25,7 +25,7 @@ source
 Vec<Token>                     … 字句（各トークン自身が行内 char span を保持）
   │  parse_raw_nodes
   ▼
-RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Node>, line_no, …｝> }
+RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Node>, line_no }> }
   │  resolve_references → resolve_inline_ruby（前方参照とルビ親文字の解決。2 パス）
   │  ＋ lower_to_blocks（行→入れ子ブロックへの畳み込み）
   ▼
@@ -105,11 +105,9 @@ Inline には実在しない span が混じる**ので、位置として使う�
 ```rust
 struct RawDoc  { lines: Vec<RawLine> }
 struct RawLine {
-    source: String,             // もとのソース行（くの字点走査などで参照）
-    nodes:  Vec<Node>,          // 生ノード列（前方参照は未解決）。各Nodeが char 位置範囲を持つ
-    line_no: usize,             // 本文 0 起点の行番号
-    unclosed_accents: Vec<Span>,     // 閉じられていないアクセントの位置（診断用の副産物）
-    unclosed_accent_to_eol: bool,    // 未閉じ 〔 が行末まで達したか（互換メタデータ。後述の行マージ）
+    source: String,     // もとのソース行
+    nodes:  Vec<Node>,  // 生ノード列（前方参照は未解決）。各Nodeが char 位置範囲を持つ
+    line_no: usize,     // 本文 0 起点の行番号
 }
 ```
 
@@ -161,6 +159,9 @@ RawLine を構成する平坦ノード。**入れ子はマーカーで表し**�
 - `BlockParams { width, wrap_width, level, midashi_style, font_size, style_type, is_block,
   has_open_paren, has_close_paren, annotation }`（開始/終了タグ生成に必要な素材。全 10 項目）
 
+`NodeKind` には `HardBreak`（行の途中に置かれる素の改行）もある。未閉じ `〔` が行末まで
+達したときトークナイザが `TokenKind::HardBreak` を出し、そのまま Node・Inline へ写る。
+
 ### 前方参照の指定（`RefSpec`）
 
 `UnresolvedReference.spec`。対象テキストにどう作用するかを表す。
@@ -206,7 +207,7 @@ enum Block {
     /// 内側 <br /> も出ない 1 行 div。`kinds` が列なのは `［＃N字下げ］` を 1 行に
     /// 複数書けるため（**外側から内側の順**）。
     LineWrap { kinds: Vec<BlockKind>, inline: Vec<Inline>,
-               unclosed_accent_to_eol: bool, line: usize },
+               line: usize },
 }
 ```
 
@@ -310,6 +311,12 @@ enum CloseKind { NoBreak, Newline, BareBreak,
 
 ---
 
+### パース時の診断
+
+同一行で閉じられなかったアクセントの位置は、木ではなく別に返す
+（`parse_document_raw_with_diagnostics` → `Vec<ParseDiagnostic>`）。変換出力に影響しない
+検証用の副産物を木に混ぜないための分離で、Lowerer の `LowerDiagnostic` と同じ考え方。
+
 ## RawAST → Aozora AST 変換（Lowerer）
 
 `lower::lower_to_blocks(&RawDoc) -> Vec<Block>` が担う。参照実装の `@indent_stack` /
@@ -336,8 +343,10 @@ enum CloseKind { NoBreak, Newline, BareBreak,
   `@noprint` のときバッファを流さずに return する。折り返し開始行は出力されず、開始タグの
   **前後**にあった本文はどちらも次の行と同じ per-line ぶら下げ div に入る。
 - `AccentParser#general_output` は対応する `〕` が無いまま行末に達すると、文字列
-  `"<br />\r\n"` を積んで戻る（改行は AccentParser が食べている）。この `<br />` が
-  `InlineKind::HardBreak`、行末まで達したことの記録が `RawLine.unclosed_accent_to_eol`。
+  `"<br />\r\n"` を積んで戻る（改行は AccentParser が食べている）。参照が**旗ではなく
+  内容**として持つのに合わせ、こちらも行の末尾に `HardBreak` を置く
+  （`TokenKind`/`NodeKind`/`InlineKind` に同名の変種があり、素通しで写る）。
+  Lowerer はその末尾ノードを見て次の行とマージする。
 
 Lowerer は行ループに持ち越し（`carry`）を持ち、これらの行の内容を次の行の先頭へ繰り越す。
 持ち越しを繋げるのは内容行だけで、他の行種に当たったら持ち越しを独立した行として出す。

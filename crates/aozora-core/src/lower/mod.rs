@@ -16,12 +16,11 @@ use break_policy::content_break;
 use inline::to_inlines;
 
 use crate::ast::{
-    AozoraAst, Block, BlockKind, Break, BurasageGeometry, CloseKind, Inline, InlineKind, OpenKind,
+    AozoraAst, Block, BlockKind, Break, BurasageGeometry, CloseKind, Inline, OpenKind,
 };
 use crate::node::{BlockType, Node, NodeKind};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 use crate::parser::RawDoc;
-use crate::token::Span;
 
 /// Lower 時に検出できる構造上の診断（現状は EOF で閉じられなかったブロック）。
 /// エディタ支援用の付加情報で、変換出力には影響しない。
@@ -84,10 +83,8 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
         // （参照 `AccentParser#general_output` が `"<br />\r\n"` を積んで改行ごと食べる）。
         // 行スコープ包み（`［＃地から１字上げ］〔…］`）だけは包みごと持ち越す器が要るので
         // 従来どおり下の `LineWrap` 側で扱う。
-        if raw_line.unclosed_accent_to_eol && matches!(kind, LineKind::Content) {
+        if ends_with_hard_break(&nodes) && matches!(kind, LineKind::Content) {
             carry.extend(to_inlines(&nodes));
-            let end = raw_line.source.chars().count();
-            carry.push(Inline::new(InlineKind::HardBreak, Span::new(end, end)));
             continue;
         }
 
@@ -142,6 +139,8 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 // 先頭の行スコープマーカー1個（LineJisage、または is_block=false の
                 // 行スコープ BlockStart）だけを取り除き、残りは to_inlines に渡す
                 // （行内の見出しコマンド範囲などはそちらが畳む）。
+                // 吸収の判定に使うので、包みを剥がす前に見ておく。
+                let hard_break = ends_with_hard_break(&nodes);
                 let rest = strip_line_scope_marker(nodes);
                 // 未閉じ `〔` があると参照 AccentParser が改行ごと食べ、`"<br />\r\n"` を
                 // 内容の末尾に積んで次の行と 1 つの出力単位にする。閉じタグを持たない行なら
@@ -150,18 +149,21 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 //
                 // 吸収した次の行が空行のときだけ扱う。中身のある行を本当にこの div の中へ
                 // 畳む必要がある入力はオラクルに現れないので、正しい姿を決められない。
-                let merge = raw_line.unclosed_accent_to_eol
+                // 末尾の `HardBreak` は行の内容としてそのまま包みの中に入るので、
+                // 閉じ `</div>` より前に `<br />` が出る（60380/60385）。次の行が
+                // 空行ならそれも吸収する（中身のある行を畳む必要がある入力は
+                // オラクルに現れないので、正しい姿を決められない）。
+                if hard_break
                     && raw
                         .lines
                         .get(idx + 1)
-                        .is_some_and(|next| next.nodes.is_empty());
-                if merge {
+                        .is_some_and(|next| next.nodes.is_empty())
+                {
                     swallowed.insert(idx + 1);
                 }
                 stack.push(Block::LineWrap {
                     kinds,
                     inline: to_inlines(&rest),
-                    unclosed_accent_to_eol: merge,
                     line: line_no,
                 });
             }
@@ -230,9 +232,6 @@ fn push_close_segment(stack: &mut BlockStack, nodes: &[Node], brk: Break, line_n
     } else {
         stack.push(Block::LineWrap {
             kinds,
-            // 閉じ行の断片には未閉じ `〔` の行末効果を渡さない。「終わり」を含む行に
-            // 未閉じ `〔` がある入力はオラクルに現れず、正しい姿を決められない。
-            unclosed_accent_to_eol: false,
             inline: to_inlines(&rest),
             line: line_no,
         });
@@ -601,6 +600,14 @@ enum LineKind {
     LineWrap(Vec<BlockKind>),
     /// 内容行。
     Content,
+}
+
+/// 行が素の改行（[`NodeKind::HardBreak`]）で終わるか。
+///
+/// 未閉じ `〔` が行末まで達したときトークナイザが置く。参照実装が
+/// `"<br />\r\n"` をバッファへ積むのに当たり、その行は次の行と 1 つの出力単位になる。
+fn ends_with_hard_break(nodes: &[Node]) -> bool {
+    matches!(nodes.last().map(|n| &n.kind), Some(NodeKind::HardBreak))
 }
 
 /// この行がぶら下げ（折り返し字下げ）を開く行なら、(開始マーカーの位置, 種類) を返す。

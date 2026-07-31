@@ -195,6 +195,8 @@ pub enum NodeKind {
         /// JISコードの末尾番号
         num: String,
     },
+    /// 行の途中に置かれる素の改行（[`crate::token::TokenKind::HardBreak`] 由来）。
+    HardBreak,
 }
 
 impl NodeKind {
@@ -220,7 +222,8 @@ impl NodeKind {
             | NodeKind::Caption { children }
             | NodeKind::Midashi { children, .. } => Some(children),
             // スパン要素になれない（葉・マーカー・描画内容）。
-            NodeKind::Text(_)
+            NodeKind::HardBreak
+            | NodeKind::Text(_)
             | NodeKind::Gaiji { .. }
             | NodeKind::Accent { .. }
             | NodeKind::Img { .. }
@@ -252,6 +255,7 @@ impl NodeKind {
             | NodeKind::Yokogumi { children }
             | NodeKind::Caption { children }
             | NodeKind::Midashi { children, .. } => vec![children],
+            NodeKind::HardBreak => vec![],
             NodeKind::AnnotationEnd { content, .. } => vec![content],
             // 子を持たない。
             NodeKind::Text(_)
@@ -426,6 +430,7 @@ impl Node {
     /// ノードからプレーンテキストを抽出
     pub fn to_text(&self) -> String {
         match &self.kind {
+            NodeKind::HardBreak => String::new(),
             NodeKind::Text(s) => s.clone(),
             NodeKind::Ruby { children, .. } => children.iter().map(|n| n.to_text()).collect(),
             NodeKind::Style { children, .. } => children.iter().map(|n| n.to_text()).collect(),
