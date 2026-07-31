@@ -349,8 +349,9 @@ RefSpec =
   構成子が違う中身を持つのは分かりにくいかもしれない。
 - `Gaiji` の導出値。`unicode` / `jis_code` は `description` から導かれ、対応表の版に
   依存する。照合時に導出値まで比較するかは決めていない。
-- 文書全体の器。本形式は本文だけで、題名・著者・底本情報を運べない。作品 1 本の交換には
-  別の封筒（ヘッダ ＋ 各セクションの木）が要る。
+- 節の切り分けを消費者に任せていること。どの行が本文でどの行が底本情報かは行の内容から
+  導けるが、その規則（`底本：` で始まる行、`［＃本文終わり］`、罫線で囲まれた凡例）を
+  各実装が持つことになる。行に節の印を付けて運ぶ案もある。
 
 ---
 
@@ -361,8 +362,8 @@ RefSpec =
 
 | 本書の型 | Rust |
 |---|---|
-| 文書全体 | `struct RawDoc { lines: Vec<RawLine> }`（`parser/mod.rs`） |
-| `RawLine` | `struct RawLine { source, nodes, line_no, unclosed_accents }` |
+| 文書全体 | `struct RawDocument { format, version, lines }`（`interchange.rs`。木の器は `RawDoc { lines }`） |
+| `RawLine` | `struct RawLine { source, nodes, line_no, unclosed_accents, unclosed_accent_to_eol }` |
 | `Node` | `struct Node { kind, span }`（`node/mod.rs`） |
 | `Node` の構成子 | `enum NodeKind` |
 | `BlockType` / `BlockParams` | `node/block.rs` |

@@ -403,7 +403,7 @@ CloseKind = NoBreak | Newline | BareBreak              // 構成子（値を持�
 
 | 本書の型 | Rust |
 |---|---|
-| 文書全体 | `AozoraAst = Vec<Block>`（`ast.rs`） |
+| 文書全体 | `struct AozoraDocument { format, version, header, main_text, after_text, bibliographical }`（`interchange.rs`。各節の木は `AozoraAst = Vec<Block>`） |
 | `Block` | `enum Block` |
 | `BlockKind` | `enum BlockKind` |
 | `Inline` | `struct Inline { kind, span, range_form }` |

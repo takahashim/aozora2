@@ -25,7 +25,7 @@ source
 Vec<Token>                     … 字句（各トークン自身が行内 char span を保持）
   │  parse_raw_nodes
   ▼
-RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Node>, line_no }> }
+RawAST : RawDoc { Vec<RawLine{ source, nodes:Vec<Node>, line_no, …｝> }
   │  resolve_references → resolve_inline_ruby（前方参照とルビ親文字の解決。2 パス）
   │  ＋ lower_to_blocks（行→入れ子ブロックへの畳み込み）
   ▼
@@ -40,6 +40,10 @@ HTML   /   プレーンテキスト
   まだ無い。`《》` などの前方参照も `UnresolvedReference` のまま。
 - Aozora AST は Lowerer（`lower::lower_to_blocks`）がマーカーを入れ子構造に畳み、参照を
   解決した結果。描画は状態を持たない木歩きで行える。
+- 図は**節 1 つ**の流れ。文書 1 本は節（本文・本文終わり後・底本情報）に分かれ、
+  RawAST はファイルの全行を 1 つの列で持ち、Aozora AST は節ごとに木を持つ。
+  その器と JSON 交換形式は `interchange.rs`（docs/spec-rawast-json.md・
+  docs/spec-aozora-ast-json.md）。`html::convert` もこの器を通る。
 
 ---
 

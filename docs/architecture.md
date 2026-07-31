@@ -166,8 +166,9 @@ CI はコーパスとコードを守る従者であり、権威ではない。�
 ```rust
 // 概念図
 enum Block {
-    Line { inline: Vec<Inline>, brk: Break },          // 内容の1行
-    Nested { kind: BlockKind, children: Vec<Block> },  // 字下げ/地付き/見出し/ぶら下げ…
+    Line     { inline: Vec<Inline>, brk: Break },          // 内容の1行
+    Nested   { kind: BlockKind, children: Vec<Block> },    // 字下げ/地付き/見出し/ぶら下げ…
+    LineWrap { kinds: Vec<BlockKind>, inline: Vec<Inline> }, // 同じ行に本文がある行スコープ包み
 }
 enum Inline { Text, Ruby { base, ruby }, Style, Gaiji, Accent, Img, Tcy, /* … */ Note }
 ```
@@ -302,10 +303,17 @@ docs/workflow.md に従う。
   揃えられる共通の語彙で紐付ける（2 章の性質 2・5）。
 - **記法のデータ駆動化**: 注記一覧に対応する規則テーブルを、パーサが消費する
   荷重形で導入（2 章の性質 1）。
-- **段2b/2c（着手・実行中 2026-07-25）**: Lowerer によるブロック部分木化・
-  `Line.brk`（互換ストリーミングモデル）集約、BlockManager と出力HTML詮索の撤去
-  （4 章の型の壁の完成）。契機は div/br 均衡・ぶら下げの残差が「レンダ時詮索では
-  安全に再現できない」限界に達したこと。実行計画・進捗は docs/plan-neutral-ast.md。
+- **段2b/2c（完了 2026-07）**: Lowerer によるブロック部分木化・`Line.brk`（互換
+  ストリーミングモデル）集約、BlockManager と出力HTML詮索の撤去（4 章の型の壁の完成）。
+  契機は div/br 均衡・ぶら下げの残差が「レンダ時詮索では安全に再現できない」限界に
+  達したこと。経緯は docs/plan-neutral-ast.md。
+- **コメント→テスト監査（完了 2026-07）**・**命名・同居の規約（完了 2026-07）**・
+  **記法のデータ駆動化（継続中）**。実施状況は docs/workflow.md §8。
+- **交換形式（完了 2026-07-31）**: 2 つの AST を JSON で出し入れできるようにした
+  （docs/spec-rawast-json.md・docs/spec-aozora-ast-json.md、`interchange.rs`、
+  CLI の `ast` / `--from-ast`）。どちらの形式も文書 1 本を表し、テキスト → JSON →
+  HTML が テキスト → HTML と全コーパスでバイト一致する。仕様と実出力の照合は
+  `tools/verify_ast_spec.rb`。
 - **（将来）位置情報・プロパティベーステスト**。
 
 ---
