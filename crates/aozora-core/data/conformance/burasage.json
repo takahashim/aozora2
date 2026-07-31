@@ -2,7 +2,7 @@
   "note": "ぶら下げ（折り返し字下げ）",
   "source": "［＃ここから２字下げ、折り返して４字下げ］\n内容\n［＃ここで字下げ終わり］",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -14,9 +14,7 @@
               "start": 0
             },
             "value": {
-              "block_type": {
-                "kind": "Burasage"
-              },
+              "block_type": "Burasage",
               "params": {
                 "annotation": null,
                 "font_size": null,
@@ -62,9 +60,7 @@
               "start": 0
             },
             "value": {
-              "block_type": {
-                "kind": "Jisage"
-              },
+              "block_type": "Jisage",
               "explicit_close": true,
               "params": {
                 "annotation": null,
@@ -85,7 +81,8 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
@@ -96,9 +93,7 @@
             {
               "kind": "Line",
               "value": {
-                "brk": {
-                  "kind": "Br"
-                },
+                "brk": "Br",
                 "inline": [
                   {
                     "kind": "Text",
@@ -125,12 +120,11 @@
             }
           },
           "line": 0,
-          "open": {
-            "kind": "NoBreak"
-          }
+          "open": "NoBreak"
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }

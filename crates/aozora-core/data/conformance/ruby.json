@@ -2,7 +2,7 @@
   "note": "ルビ（親文字の自動抽出と ｜ 明示）",
   "source": "東京《とうきょう》と｜山手線《やまのてせん》",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -81,16 +81,15 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
       {
         "kind": "Line",
         "value": {
-          "brk": {
-            "kind": "Br"
-          },
+          "brk": "Br",
           "inline": [
             {
               "kind": "Ruby",
@@ -174,6 +173,7 @@
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }

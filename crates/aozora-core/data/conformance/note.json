@@ -2,7 +2,7 @@
   "note": "編集者注（中身にルビ）",
   "source": "本文［＃現代語訳「松籟《しょうらい》を聞く」］",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -28,16 +28,15 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
       {
         "kind": "Line",
         "value": {
-          "brk": {
-            "kind": "Br"
-          },
+          "brk": "Br",
           "inline": [
             {
               "kind": "Text",
@@ -118,6 +117,7 @@
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }

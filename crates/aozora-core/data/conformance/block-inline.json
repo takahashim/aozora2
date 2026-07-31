@@ -2,7 +2,7 @@
   "note": "同一行で開閉するブロック形",
   "source": "前［＃ここから横組み］中［＃ここで横組み終わり］後",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -22,9 +22,7 @@
               "start": 1
             },
             "value": {
-              "block_type": {
-                "kind": "Yokogumi"
-              },
+              "block_type": "Yokogumi",
               "params": {
                 "annotation": null,
                 "font_size": null,
@@ -54,9 +52,7 @@
               "start": 12
             },
             "value": {
-              "block_type": {
-                "kind": "Yokogumi"
-              },
+              "block_type": "Yokogumi",
               "explicit_close": true,
               "params": {
                 "annotation": null,
@@ -85,16 +81,15 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
       {
         "kind": "Line",
         "value": {
-          "brk": {
-            "kind": "None"
-          },
+          "brk": "None",
           "inline": [
             {
               "kind": "Text",
@@ -143,6 +138,7 @@
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }

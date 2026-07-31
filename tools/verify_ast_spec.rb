@@ -85,7 +85,9 @@ def constructors_from_bnf(text, out)
       body.split(/\|(?![^{]*\})/).map(&:strip).reject(&:empty?).each do |alt|
         if (m = alt.match(/\A([A-Z][A-Za-z]*)\s*\{(.*)\}\z/m))
           add(out, m[1], field_names(m[2]))
-        elsif (m = alt.match(/\A([A-Z][A-Za-z]*)\z/))
+        elsif (m = alt.match(/\A([A-Z][A-Za-z]*)(?:\s+\S.*)?\z/m))
+          # `Style StyleType` のように値を直接持つ変種と、値を持たない変種。
+          # どちらも JSON では `value` がオブジェクトにならないので同じ形で扱う。
           add(out, m[1], nil)
         end
       end

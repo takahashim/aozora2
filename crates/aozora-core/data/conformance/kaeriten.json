@@ -2,7 +2,7 @@
   "note": "返り点と訓点送り仮名",
   "source": "天［＃「レ」は返り点］下［＃（した）］",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -25,9 +25,7 @@
               "raw": "「レ」は返り点",
               "spec": {
                 "kind": "Inline",
-                "value": {
-                  "kind": "Kaeriten"
-                }
+                "value": "Kaeriten"
               },
               "target": "レ"
             }
@@ -53,16 +51,15 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
       {
         "kind": "Line",
         "value": {
-          "brk": {
-            "kind": "Br"
-          },
+          "brk": "Br",
           "inline": [
             {
               "kind": "Text",
@@ -131,6 +128,7 @@
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }

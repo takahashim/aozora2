@@ -2,7 +2,7 @@
   "note": "割り注",
   "source": "前［＃割り注］中身［＃割り注終わり］後",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -22,9 +22,7 @@
               "start": 1
             },
             "value": {
-              "block_type": {
-                "kind": "Warichu"
-              },
+              "block_type": "Warichu",
               "params": {
                 "annotation": null,
                 "font_size": null,
@@ -54,9 +52,7 @@
               "start": 9
             },
             "value": {
-              "block_type": {
-                "kind": "Warichu"
-              },
+              "block_type": "Warichu",
               "explicit_close": false,
               "params": {
                 "annotation": null,
@@ -85,16 +81,15 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
       {
         "kind": "Line",
         "value": {
-          "brk": {
-            "kind": "Br"
-          },
+          "brk": "Br",
           "inline": [
             {
               "kind": "Text",
@@ -152,6 +147,7 @@
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }

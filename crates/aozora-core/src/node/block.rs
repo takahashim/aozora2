@@ -5,7 +5,6 @@ use super::{MidashiLevel, MidashiStyle};
 /// ブロックタイプ
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum BlockType {
     /// 字下げ
     Jisage,

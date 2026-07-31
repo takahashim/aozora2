@@ -3,7 +3,6 @@
 /// 見出しレベル
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum MidashiLevel {
     /// 大見出し → h3
     O,
@@ -31,7 +30,6 @@ impl MidashiLevel {
 /// 見出しスタイル
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum MidashiStyle {
     /// 通常（独立行）
     #[default]

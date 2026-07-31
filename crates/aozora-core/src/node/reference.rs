@@ -135,7 +135,6 @@ impl RefSpec {
 /// インライン要素の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum InlineKind {
     /// 縦中横
     Tcy,

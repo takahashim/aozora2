@@ -90,7 +90,6 @@ pub enum Block {
 /// 内容が続くので改行は付かない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum OpenKind {
     /// 開始タグの後に `\r\n` を出す（行頭で開く複数行ブロック）。
     Newline,
@@ -194,7 +193,6 @@ pub enum BlockKind {
 /// など細則を足しうる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum Break {
     /// 行末に `<br />` を出す（`@terprip=true` の通常行）。
     Br,

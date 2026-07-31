@@ -62,7 +62,8 @@ RawAST 交換形式と同一（[spec-rawast-json.md](spec-rawast-json.md) の同
 - 省略可の値が無いときは `null` を書く（フィールド自体は省かない）。
 - 列は空でも `[]` を書く。
 - `Nat` は 0 以上の整数、`Text` は文字列、`Bool` は真偽値。
-- 列挙値は文字列で書く。
+- 列挙値は文字列で書く。ただし値を持つ変種がある列挙（`CloseKind` `BlockKind`
+  `RefSpec` など）は構成子と同じ `{"kind": …, "value": …}` の形になる。
 
   | 列挙 | 値 |
   |---|---|
@@ -172,8 +173,8 @@ Block =
   "value": {
     "kind": { "kind": "Jisage", "value": { "width": 2 } },
     "children": [ { "kind": "Line", "value": { ... } } ],
-    "close": { "kind": "Newline" },
-    "open": { "kind": "Newline" },
+    "close": "Newline",
+    "open": "Newline",
     "line": 0
   }
 }
@@ -269,9 +270,10 @@ Inline = { kind: 構成子名, value: 内容?, span: Span, range_form: Bool }
 HTML 出力のために持つ情報。プレーンテキストなど他の出力しか作らない実装は無視してよい。
 
 ```
-Break     = Br | None | NoNewline
-CloseKind = NoBreak | Newline | BareBreak | BurasageWrapped { wrap_width: Nat?, width: Nat? }
-OpenKind  = Newline | NoBreak
+Break     = Br | None | NoNewline                     // 文字列
+OpenKind  = Newline | NoBreak                          // 文字列
+CloseKind = NoBreak | Newline | BareBreak              // 構成子（値を持つ変種があるため）
+          | BurasageWrapped { wrap_width: Nat?, width: Nat? }
 ```
 
 | 型 | 位置 | 意味 |
@@ -318,7 +320,7 @@ OpenKind  = Newline | NoBreak
             "range_form": false
           }
         ],
-        "brk": { "kind": "Br" },
+        "brk": "Br",
         "line": 0
       }
     }
@@ -352,20 +354,6 @@ OpenKind  = Newline | NoBreak
 
 ---
 
-
-### 実装との既知の食い違い（未決）
-
-`tools/verify_ast_spec.rb` が検出する。どちらへ寄せるかは決めていない。
-
-1. **列挙値の表し方**。本書は「列挙値は文字列で書く」（2 章）としているが、実装は
-   フィールドを持たない列挙も構成子と同じ `{"kind": "Naka"}` の形で出す。
-   `{"kind": "Naka"}` は `"Naka"` に対して情報を増やさないので本書の規則の方が
-   簡潔だが、構成子の表し方と揃えるなら実装の形になる。変えるとワイヤ形式が
-   変わる（`MidashiLevel` `MidashiStyle` `FontSizeType` `RubyDirection` `StyleType`
-   `BlockType` `Break` `OpenKind` が該当。`CloseKind` `BlockKind` はフィールドを
-   持つ変種があるので現状のまま）。
-2. **版の持ち方**。本書は `format` と `version` を分けているが、実装は
-   `"format": "aozora-rawast/1"` のように 1 つに畳んでいる。
 
 ## 付録 A. Rust 実装との対応（参考）
 

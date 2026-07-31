@@ -2,7 +2,7 @@
   "note": "装飾（範囲形の太字）",
   "source": "［＃太字］強調［＃太字終わり］",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -14,9 +14,7 @@
               "start": 0
             },
             "value": {
-              "block_type": {
-                "kind": "Style"
-              },
+              "block_type": "Style",
               "params": {
                 "annotation": null,
                 "font_size": null,
@@ -46,9 +44,7 @@
               "start": 7
             },
             "value": {
-              "block_type": {
-                "kind": "Style"
-              },
+              "block_type": "Style",
               "explicit_close": false,
               "params": {
                 "annotation": null,
@@ -69,16 +65,15 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
       {
         "kind": "Line",
         "value": {
-          "brk": {
-            "kind": "Br"
-          },
+          "brk": "Br",
           "inline": [
             {
               "kind": "Style",
@@ -107,6 +102,7 @@
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }

@@ -2,7 +2,7 @@
   "note": "見出し（同行）",
   "source": "［＃中見出し］章題［＃中見出終わり］",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -14,21 +14,15 @@
               "start": 0
             },
             "value": {
-              "block_type": {
-                "kind": "Midashi"
-              },
+              "block_type": "Midashi",
               "params": {
                 "annotation": null,
                 "font_size": null,
                 "has_close_paren": false,
                 "has_open_paren": false,
                 "is_block": false,
-                "level": {
-                  "kind": "Naka"
-                },
-                "midashi_style": {
-                  "kind": "Normal"
-                },
+                "level": "Naka",
+                "midashi_style": "Normal",
                 "style_type": null,
                 "width": null,
                 "wrap_width": null
@@ -50,9 +44,7 @@
               "start": 9
             },
             "value": {
-              "block_type": {
-                "kind": "Midashi"
-              },
+              "block_type": "Midashi",
               "explicit_close": false,
               "params": {
                 "annotation": null,
@@ -73,16 +65,15 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
       {
         "kind": "Line",
         "value": {
-          "brk": {
-            "kind": "None"
-          },
+          "brk": "None",
           "inline": [
             {
               "kind": "Midashi",
@@ -103,12 +94,8 @@
                     "value": "章題"
                   }
                 ],
-                "level": {
-                  "kind": "Naka"
-                },
-                "style": {
-                  "kind": "Normal"
-                }
+                "level": "Naka",
+                "style": "Normal"
               }
             }
           ],
@@ -116,6 +103,7 @@
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }

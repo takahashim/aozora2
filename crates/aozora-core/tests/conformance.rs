@@ -42,11 +42,13 @@ fn build(source: &str) -> (serde_json::Value, serde_json::Value) {
     let ast = lower_to_blocks(&raw);
     (
         serde_json::json!({
-            "format": "aozora-rawast/1",
+            "format": "aozora-rawast",
+            "version": "0.1",
             "lines": serde_json::to_value(&raw).unwrap()["lines"],
         }),
         serde_json::json!({
-            "format": "aozora-ast/1",
+            "format": "aozora-ast",
+            "version": "0.1",
             "blocks": serde_json::to_value(&ast).unwrap(),
         }),
     )

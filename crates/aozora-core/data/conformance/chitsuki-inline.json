@@ -2,7 +2,7 @@
   "note": "地付き（行途中で開き行末で閉じる）",
   "source": "本文［＃地付き］署名",
   "raw_ast": {
-    "format": "aozora-rawast/1",
+    "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
@@ -22,9 +22,7 @@
               "start": 2
             },
             "value": {
-              "block_type": {
-                "kind": "Chitsuki"
-              },
+              "block_type": "Chitsuki",
               "params": {
                 "annotation": null,
                 "font_size": null,
@@ -52,16 +50,15 @@
         "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
-    ]
+    ],
+    "version": "0.1"
   },
   "aozora_ast": {
     "blocks": [
       {
         "kind": "Line",
         "value": {
-          "brk": {
-            "kind": "None"
-          },
+          "brk": "None",
           "inline": [
             {
               "kind": "Text",
@@ -99,6 +96,7 @@
         }
       }
     ],
-    "format": "aozora-ast/1"
+    "format": "aozora-ast",
+    "version": "0.1"
   }
 }
