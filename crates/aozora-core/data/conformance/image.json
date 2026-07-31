@@ -23,6 +23,7 @@
           }
         ],
         "source": "［＃「図の説明」のキャプション付きの図（fig01.png、横1×縦2）入る］",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]

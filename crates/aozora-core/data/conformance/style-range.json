@@ -66,6 +66,7 @@
           }
         ],
         "source": "［＃太字］強調［＃太字終わり］",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]

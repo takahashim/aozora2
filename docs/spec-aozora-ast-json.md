@@ -149,7 +149,7 @@ RawAST 交換形式と同一（[spec-rawast-json.md](spec-rawast-json.md) の同
 Block =
   | Line     { inline: Inline*, brk: Break, line: Nat }
   | Nested   { kind: BlockKind, children: Block*, close: CloseKind, open: OpenKind, line: Nat }
-  | LineWrap { kind: BlockKind, inline: Inline*, line: Nat }
+  | LineWrap { kinds: BlockKind*, inline: Inline*, unclosed_accent_to_eol: Bool, line: Nat }
 ```
 
 | 構成子 | 意味 | 由来する記法の例 |
@@ -160,6 +160,11 @@ Block =
 
 - `line` は由来する本文行の番号（0 起点）。位置メタデータで、構造の比較には含めない。
 - `Nested` と `LineWrap` の違いは、包む範囲が複数行か 1 行かだけ。
+- `LineWrap.kinds` が列なのは、行スコープの字下げを 1 行に複数書けるため
+  （`［＃２字下げ］あ［＃５字下げ］い`）。**外側から内側の順**に並ぶ。
+- `LineWrap.unclosed_accent_to_eol` は互換メタデータ。真なら内容の後・閉じタグの前に
+  素の改行が入る（アクセント記法の途中で行末に達した行の扱い。RawAST の同名フィールド
+  を参照）。
 
 ```json
 {
@@ -235,10 +240,15 @@ Inline = { kind: 構成子名, value: 内容?, span: Span, range_form: Bool }
 | `Warichu` | `{ open: Bool, suppress_paren: Bool }` | 割り注（開閉マーカー） |
 | `ChitsukiInline` | `{ width: Nat, children: Inline* }` | 行途中で開き行末で閉じる地付き |
 | `BlockInline` | `{ kind: BlockKind, children: Inline* }` | 同一行で開閉するブロック形 |
+| `HardBreak` | （値なし） | 行の途中に置かれる素の改行 |
 
 - `StyleType` の値は 2 章の一覧を参照。
 - `Note` / `Okurigana` の `content` は解決済みのインライン列で、`raw` は元の注記文字列。
   描画には `content` を使う。`raw` は診断・エディタ支援のための添え物。
+- `HardBreak` は**行末の改行ではなく行の内容の一部**である。アクセント記法の途中で
+  行末に達した行が次の行と 1 つの出力単位にまとまるとき、その境目に入る（4 章
+  `LineWrap.unclosed_accent_to_eol` と RawAST の同名フィールドを参照）。行末の改行を
+  出すかどうかは `Line.brk`（互換メタデータ）が別に持つ。
 
 ```json
 {
@@ -341,6 +351,21 @@ OpenKind  = Newline | NoBreak
 - `format` の版の進め方。破壊的変更のたびに `aozora-ast v2` とするか、細分するか。
 
 ---
+
+
+### 実装との既知の食い違い（未決）
+
+`tools/verify_ast_spec.rb` が検出する。どちらへ寄せるかは決めていない。
+
+1. **列挙値の表し方**。本書は「列挙値は文字列で書く」（2 章）としているが、実装は
+   フィールドを持たない列挙も構成子と同じ `{"kind": "Naka"}` の形で出す。
+   `{"kind": "Naka"}` は `"Naka"` に対して情報を増やさないので本書の規則の方が
+   簡潔だが、構成子の表し方と揃えるなら実装の形になる。変えるとワイヤ形式が
+   変わる（`MidashiLevel` `MidashiStyle` `FontSizeType` `RubyDirection` `StyleType`
+   `BlockType` `Break` `OpenKind` が該当。`CloseKind` `BlockKind` はフィールドを
+   持つ変種があるので現状のまま）。
+2. **版の持ち方**。本書は `format` と `version` を分けているが、実装は
+   `"format": "aozora-rawast/1"` のように 1 つに畳んでいる。
 
 ## 付録 A. Rust 実装との対応（参考）
 

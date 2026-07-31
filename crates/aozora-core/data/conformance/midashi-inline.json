@@ -70,6 +70,7 @@
           }
         ],
         "source": "［＃中見出し］章題［＃中見出終わり］",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]

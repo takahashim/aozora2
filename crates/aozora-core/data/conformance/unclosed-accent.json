@@ -1,0 +1,100 @@
+{
+  "note": "アクセント記法の途中で行末に達した行は、内容を次の行へ持ち越して 1 つの出力単位になる（行末に素の改行 HardBreak が入る）",
+  "source": "〔未閉じの行\n次の行",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "〔"
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 6,
+              "start": 1
+            },
+            "value": "未閉じの行"
+          }
+        ],
+        "source": "〔未閉じの行",
+        "unclosed_accent_to_eol": true,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 3,
+              "start": 0
+            },
+            "value": "次の行"
+          }
+        ],
+        "source": "次の行",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 1,
+                "start": 0
+              },
+              "value": "〔"
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 6,
+                "start": 1
+              },
+              "value": "未閉じの行"
+            },
+            {
+              "kind": "HardBreak",
+              "range_form": false,
+              "span": {
+                "end": 6,
+                "start": 6
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 3,
+                "start": 0
+              },
+              "value": "次の行"
+            }
+          ],
+          "line": 1
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

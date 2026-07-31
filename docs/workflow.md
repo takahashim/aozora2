@@ -26,6 +26,15 @@ aozora/
 1. 全テストが通る:
    ```
    cd aozora2 && cargo test
+   cargo test -p aozora-core --all-features   # 交換形式の適合フィクスチャ
+   ruby tools/verify_ast_spec.rb              # 交換形式の仕様と実出力の照合
+   ```
+   **重要**: 交換形式（`data/conformance/*.json`）の適合テストは `serde` フィーチャ配下に
+   あるので、素の `cargo test` では **0 件で素通りする**。必ず 2 行目も走らせること。
+   ワークスペース全体の `--all-features` は GUI（GTK）の依存を引くので使わない。
+   フィクスチャは実装から再生成する（差分を目視してからコミットする）:
+   ```
+   UPDATE_CONFORMANCE=1 cargo test -p aozora-core --features serde --test conformance
    ```
 2. 適合性の回帰がない（悪化 0）:
    ```

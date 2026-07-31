@@ -33,6 +33,7 @@
           }
         ],
         "source": "［＃ここから２字下げ、折り返して４字下げ］",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       },
       {
@@ -48,6 +49,7 @@
           }
         ],
         "source": "内容",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       },
       {
@@ -80,6 +82,7 @@
           }
         ],
         "source": "［＃ここで字下げ終わり］",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]
@@ -123,7 +126,7 @@
           },
           "line": 0,
           "open": {
-            "kind": "Newline"
+            "kind": "NoBreak"
           }
         }
       }

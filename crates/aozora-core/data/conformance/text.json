@@ -17,6 +17,7 @@
           }
         ],
         "source": "吾輩は猫である。",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]

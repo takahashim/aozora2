@@ -27,6 +27,7 @@
           }
         ],
         "source": "［＃３字下げ］本文の行",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]
@@ -55,7 +56,8 @@
               }
             }
           ],
-          "line": 0
+          "line": 0,
+          "unclosed_accent_to_eol": false
         }
       }
     ],

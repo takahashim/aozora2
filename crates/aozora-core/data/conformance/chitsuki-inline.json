@@ -49,6 +49,7 @@
           }
         ],
         "source": "本文［＃地付き］署名",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]

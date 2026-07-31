@@ -82,6 +82,7 @@
           }
         ],
         "source": "前［＃割り注］中身［＃割り注終わり］後",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]

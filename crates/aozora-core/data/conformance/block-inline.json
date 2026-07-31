@@ -82,6 +82,7 @@
           }
         ],
         "source": "前［＃ここから横組み］中［＃ここで横組み終わり］後",
+        "unclosed_accent_to_eol": false,
         "unclosed_accents": []
       }
     ]
