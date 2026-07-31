@@ -26,11 +26,14 @@ aozora/
 1. 全テストが通る:
    ```
    cd aozora2 && cargo test
-   cargo test -p aozora-core --all-features   # 交換形式の適合フィクスチャ
+   cargo test -p aozora-core --all-features   # 交換形式の適合フィクスチャ・不変条件
    ruby tools/verify_ast_spec.rb              # 交換形式の仕様と実出力の照合
    ```
    **重要**: 交換形式（`data/conformance/*.json`）の適合テストは `serde` フィーチャ配下に
    あるので、素の `cargo test` では **0 件で素通りする**。必ず 2 行目も走らせること。
+   `tests/invariants.rs` は 2 つの AST が仕様で謳う不変条件（RawAST の可逆性、
+   Aozora AST の解決済み・マーカーレス等）を検査する。適合フィクスチャは
+   スナップショット比較なので、不変条件はそちらが受け持つ。
    ワークスペース全体の `--all-features` は GUI（GTK）の依存を引くので使わない。
    フィクスチャは実装から再生成する（差分を目視してからコミットする）:
    ```

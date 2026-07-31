@@ -145,11 +145,21 @@ fn inline_from_node_at(node: &Node, depth: usize) -> Option<Inline> {
             open: false,
             suppress_paren: params.has_close_paren,
         },
-        // ブロック構造マーカー・未解決参照はインラインではない（畳み込みが消費）。
+        // 未解決参照が Aozora AST に来ることはない。Lowerer は行ごとに
+        // `resolve_references` を通し、解決できなかったものは `Note(raw)` にする
+        // （docs/spec-ast.md「Aozora AST の特徴」不変条件1）。ここへ来たら
+        // 解決を飛ばした呼び出しなので、黙って落とさず気付けるようにする。
+        NodeKind::UnresolvedReference { raw, .. } => {
+            debug_assert!(
+                false,
+                "未解決参照が Aozora AST に来た（resolve_references を通していない）: {raw}"
+            );
+            return None;
+        }
+        // ブロック構造マーカーはインラインではない（畳み込みが消費）。
         NodeKind::BlockStart { .. }
         | NodeKind::BlockEnd { .. }
-        | NodeKind::LineJisage { .. }
-        | NodeKind::UnresolvedReference { .. } => return None,
+        | NodeKind::LineJisage { .. } => return None,
     };
     Some(Inline::new(out, node.span))
 }

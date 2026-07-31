@@ -85,6 +85,12 @@ Inline には実在しない span が混じる**ので、位置として使う�
 - **合併**: ルビ親文字の後方吸収では、親文字が `《》` より**前**の本文に在る。Ruby ノードの
   span は `union(親文字spans, 読みspan)` に広げる。子（親文字）は自身の前方の span を保つので、
   「子が親マーカーより前にある」ことが正しく表れる。
+- **別の行が混じる（行マージ）**: 参照実装には出力を飛ばしてバッファを次の行へ持ち越す
+  経路が 2 つあり（未閉じ `〔` の行と、ぶら下げを開く行。後述「行マージ」）、Lowerer は
+  それを写して**2 つのソース行を 1 つの `Block::Line` に畳む**。このとき前半のインラインの
+  span は**前の行**の位置、`Block.line` は**後の行**の番号になる。`Block.line` を原点にして
+  span を引くと誤った行に着地するので、行マージした行では char 位置を使わないこと
+  （`HardBreak` がその境目に入っているので、含む行はマージ済みと分かる）。
 
 ---
 
@@ -98,6 +104,8 @@ struct RawLine {
     source: String,             // もとのソース行（くの字点走査などで参照）
     nodes:  Vec<Node>,          // 生ノード列（前方参照は未解決）。各Nodeが char 位置範囲を持つ
     line_no: usize,             // 本文 0 起点の行番号
+    unclosed_accents: Vec<Span>,     // 閉じられていないアクセントの位置（診断用の副産物）
+    unclosed_accent_to_eol: bool,    // 未閉じ 〔 が行末まで達したか（互換メタデータ。後述の行マージ）
 }
 ```
 
@@ -188,10 +196,13 @@ enum Block {
     /// 内容の 1 行（インライン列＋行末改行制御）
     Line     { inline: Vec<Inline>, brk: Break, line: usize },
     /// 入れ子ブロック（複数行を包む。字下げ・見出し・罫囲み等）
-    Nested   { kind: BlockKind, children: Vec<Block>, close: CloseKind, line: usize },
+    Nested   { kind: BlockKind, children: Vec<Block>,
+               close: CloseKind, open: OpenKind, line: usize },
     /// 行単位のブロック包み（同じ行に本文がある字下げ／地付き）。開き直後の改行も
-    /// 内側 <br /> も出ない 1 行 div。
-    LineWrap { kind: BlockKind, inline: Vec<Inline>, line: usize },
+    /// 内側 <br /> も出ない 1 行 div。`kinds` が列なのは `［＃N字下げ］` を 1 行に
+    /// 複数書けるため（**外側から内側の順**）。
+    LineWrap { kinds: Vec<BlockKind>, inline: Vec<Inline>,
+               unclosed_accent_to_eol: bool, line: usize },
 }
 ```
 
@@ -216,7 +227,7 @@ enum BlockKind {
 ### インライン（`Inline`）
 
 ```rust
-struct Inline { kind: InlineKind, span: Span }
+struct Inline { kind: InlineKind, span: Span, range_form: bool }
 
 enum InlineKind {
     Text(String),
@@ -238,6 +249,7 @@ enum InlineKind {
     DakutenKatakana { num },
     ChitsukiInline { width, children },                // 行途中で開く地付き（行末で閉じる）
     BlockInline { kind: BlockKind, children },          // 同一行で開閉するブロック形コマンド
+    HardBreak,                                          // 行の途中に置かれる素の <br />（後述の行マージ）
 }
 ```
 
@@ -260,15 +272,24 @@ spanは位置メタデータであり、構造比較・HTML／プレーンテキ
 描画器を状態レスにする。
 
 ```rust
-enum Break     { Br, None }                    // 行末に <br /> を出すか（Line.brk）
-enum CloseKind { NoBreak, Newline, BareBreak } // 入れ子ブロック閉じの出力形（Nested.close）
+enum Break     { Br, None, NoNewline }   // 行末の改行の出し方（Line.brk）
+enum OpenKind  { Newline, NoBreak }      // 開始タグの後に改行を出すか（Nested.open）
+enum CloseKind { NoBreak, Newline, BareBreak,
+                 BurasageWrapped(BurasageGeometry) }  // 閉じの出力形（Nested.close）
 ```
+
+| Break | 出力 |
+|-------|------|
+| `Br` | 行末に `<br />`（`@terprip=true` の通常行） |
+| `None` | `<br />` を出さない（`ここで…終わり`・見出し等） |
+| `NoNewline` | `<br />` も行末の `\r\n` も出さない（行の途中でブロックが閉じるとき、閉じタグより前の本文） |
 
 | CloseKind | 出力 | 契機 |
 |-----------|------|------|
 | `NoBreak`   | `</div>` | 兄弟字下げ・行スコープ地付きの implicit_close、先頭終了＋後続本文 |
 | `Newline`   | `</div>\r\n` | `ここで…終わり`（explicit）・ぶら下げ開始の暗黙閉じ・EOF 閉じ |
 | `BareBreak` | `</div><br />\r\n` | bare `…終わり`（`ここで` 無し）で複数行ブロックを閉じた行 |
+| `BurasageWrapped` | `<div class="burasage" …></div></div>\r\n` | ぶら下げの直下で装飾系ブロックが閉じる行（閉じタグが per-line の div に包まれる） |
 
 これらは HTML 互換のための情報。プレーンテキスト描画は無視してよい（backend-neutral）。
 
@@ -301,6 +322,24 @@ enum CloseKind { NoBreak, Newline, BareBreak } // 入れ子ブロック閉じの
   （ルビ親文字の 2 パス目）の順に 2 回**走らせる必要がある。前方参照の照合はルビの親文字を
   見るので親文字解決が先に要り、逆に親文字が装飾タグになる場合は前方参照の解決が先に要る、
   という相互依存のため。詳細は [spec-reference-resolver.md](spec-reference-resolver.md)。
+
+### 行マージ（参照のバッファ持ち越し）
+
+参照実装には**出力を飛ばしてバッファを次の行へ持ち越す**経路が 2 つある。どちらも
+1 ソース行が単独では出力にならず、次の行と 1 つの出力単位にまとまる。
+
+- `apply_burasage` は先頭で `@noprint = true` を**無条件に**立て、`general_output` は
+  `@noprint` のときバッファを流さずに return する。折り返し開始行は出力されず、開始タグの
+  **前後**にあった本文はどちらも次の行と同じ per-line ぶら下げ div に入る。
+- `AccentParser#general_output` は対応する `〕` が無いまま行末に達すると、文字列
+  `"<br />\r\n"` を積んで戻る（改行は AccentParser が食べている）。この `<br />` が
+  `InlineKind::HardBreak`、行末まで達したことの記録が `RawLine.unclosed_accent_to_eol`。
+
+Lowerer は行ループに持ち越し（`carry`）を持ち、これらの行の内容を次の行の先頭へ繰り越す。
+持ち越しを繋げるのは内容行だけで、他の行種に当たったら持ち越しを独立した行として出す。
+
+この畳み込みだけが「1 ソース行 = 1 `Block::Line`」を崩す。位置情報への影響は上述の
+「span が『実在』でない箇所」を参照。
 
 ## 2 つの AST の使い分け
 

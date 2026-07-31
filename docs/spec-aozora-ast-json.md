@@ -53,8 +53,9 @@ RawAST 交換形式と同一（[spec-rawast-json.md](spec-rawast-json.md) の同
 - 構成子（直和の枝）は `{"kind": "名前", "value": ...}`
   - `value` は構成子の内容。
 - 内容を持たない構成子は `value` を省く。
-- `Node` は、この 2 つのキーを親のオブジェクトに平坦化して持つ。
-  - `{"kind": "Text", "value": "…", "span": {…}}` の形になる。
+- `Inline` は、この 2 つのキーを親のオブジェクトに平坦化して持つ
+  （RawAST では `Node` が同じ形になる）。
+  - `{"kind": "Text", "value": "…", "span": {…}, "range_form": false}` の形になる。
 
 ### フィールドと値
 
@@ -90,6 +91,11 @@ RawAST 交換形式と同一（[spec-rawast-json.md](spec-rawast-json.md) の同
 - 単位は char。バイトでも UTF-16 コードユニットでも書記素クラスタでもなく、
   Unicode スカラー値を 1 と数える（`𥥔` U+25954 は BMP 外だが 1 char）。
 - 0 起点。
+- **行マージした行では `span` の原点が `Block.line` と違う**。未閉じ `〔` の行と
+  ぶら下げを開く行は、内容が次の行と 1 つの `Line` にまとまる（4 章
+  `LineWrap.unclosed_accent_to_eol` と 6 章 `HardBreak` を参照）。このとき前半の
+  インラインの `span` は**前の行**の位置、`Line.line` は**後の行**の番号になる。
+  `HardBreak` を含む行はマージ済みなので、char 位置を使う消費者はそれを見て避けること。
 
 ### 文字列
 
