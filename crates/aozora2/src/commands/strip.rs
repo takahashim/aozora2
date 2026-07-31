@@ -3,10 +3,9 @@
 //! 青空文庫形式をプレーンテキストに変換
 
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::PathBuf;
 
-use aozora_core::zip::{is_zip_file, read_first_txt_from_zip};
 use clap::Args as ClapArgs;
 
 use aozora2::strip;
@@ -24,44 +23,23 @@ pub struct Args {
     /// 入力をZIPファイルとして扱う
     #[arg(short, long)]
     pub zip: bool,
+
+    /// 入力を青空文庫形式のテキストではなく、交換形式の JSON として読む
+    /// （`ast` サブコマンドの出力）
+    #[arg(long)]
+    pub from_ast: bool,
 }
 
 /// strip サブコマンドを実行
 pub fn run(args: Args) -> io::Result<()> {
-    // 入力読み込み
-    let bytes = if args.zip {
-        // ZIPモード
-        let path = args.input.as_ref().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "ZIP mode requires an input file",
-            )
-        })?;
-        read_first_txt_from_zip(path)?
+    let output = if args.from_ast {
+        // 交換形式から読み戻して本文だけを平文にする（ヘッダ・底本は元から対象外）。
+        let doc = super::ast::read_document(args.input.as_deref())?;
+        strip::convert_blocks(&doc.main_text)
     } else {
-        // 通常モード
-        match &args.input {
-            Some(path) => {
-                let bytes = fs::read(path)?;
-                // ZIPファイルの誤用を検出
-                if is_zip_file(&bytes) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "input appears to be a ZIP file; use --zip option",
-                    ));
-                }
-                bytes
-            }
-            None => {
-                let mut buf = Vec::new();
-                io::stdin().read_to_end(&mut buf)?;
-                buf
-            }
-        }
+        let bytes = super::read_input(args.input.as_deref(), args.zip)?;
+        strip::convert(&bytes)
     };
-
-    // 変換（Aozora AST経由）
-    let output = strip::convert(&bytes);
 
     // 出力
     match &args.output {

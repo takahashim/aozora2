@@ -3,11 +3,10 @@
 //! 青空文庫形式をHTMLに変換
 
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 use aozora_core::encoding::{chars_not_allowed, CharsetPolicy};
-use aozora_core::zip::{is_zip_file, read_first_txt_from_zip};
 use clap::Args as ClapArgs;
 use encoding_rs::SHIFT_JIS;
 
@@ -54,6 +53,11 @@ pub struct Args {
     /// Shift_JIS 出力時に許す文字の範囲（`--encoding shift_jis` のときだけ効く）
     #[arg(long, value_enum, default_value_t = Charset::Lenient)]
     pub charset: Charset,
+
+    /// 入力を青空文庫形式のテキストではなく、交換形式の JSON として読む
+    /// （`ast` サブコマンドの出力）。`--zip` とは併用しない。
+    #[arg(long)]
+    pub from_ast: bool,
 }
 
 /// `--charset` の値。既定は通す（従来どおり）。
@@ -72,39 +76,20 @@ pub enum Charset {
 
 /// html サブコマンドを実行
 pub fn run(args: Args) -> io::Result<()> {
-    // 入力読み込み
-    let bytes = if args.zip {
-        // ZIPモード
-        let path = args.input.as_ref().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "ZIP mode requires an input file",
-            )
-        })?;
-        read_first_txt_from_zip(path)?
+    // `--from-ast` のときは入力が JSON なので、テキストの復号も文字集合の検査もしない
+    // （検査は入力の青空文庫テキストに対して行うもの。交換形式には元の行が無い）。
+    let document = if args.from_ast {
+        Some(super::ast::read_document(args.input.as_deref())?)
     } else {
-        // 通常モード
-        match &args.input {
-            Some(path) => {
-                let bytes = fs::read(path)?;
-                // ZIPファイルの誤用を検出
-                if is_zip_file(&bytes) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "input appears to be a ZIP file; use --zip option",
-                    ));
-                }
-                bytes
-            }
-            None => {
-                let mut buf = Vec::new();
-                io::stdin().read_to_end(&mut buf)?;
-                buf
-            }
+        None
+    };
+    let input = match &document {
+        Some(_) => String::new(),
+        None => {
+            let bytes = super::read_input(args.input.as_deref(), args.zip)?;
+            aozora_core::encoding::decode_to_utf8(&bytes)
         }
     };
-
-    let input = aozora_core::encoding::decode_to_utf8(&bytes);
 
     // オプション設定
     let css_files: Vec<String> = args
@@ -126,7 +111,10 @@ pub fn run(args: Args) -> io::Result<()> {
     };
 
     // 変換
-    let output_html = html::convert(&input, &options);
+    let output_html = match &document {
+        Some(doc) => doc.to_html(&options),
+        None => html::convert(&input, &options),
+    };
 
     // エンコーディング変換
     let output_bytes = if args.encoding.to_lowercase() == "shift_jis" {

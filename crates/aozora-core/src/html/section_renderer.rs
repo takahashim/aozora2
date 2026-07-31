@@ -5,6 +5,7 @@
 //! 枠の HTML・自動リンクの有無・外字記号 ※ を出すかだけ。ここはその違いを
 //! [`Section`] に持たせ、手順は1つに保つ器。
 
+use crate::ast::Block;
 use crate::document::{
     extract_after_text_lines, extract_bibliographical_lines, extract_body_lines,
 };
@@ -106,16 +107,29 @@ impl<'a> SectionRenderer<'a> {
             return;
         }
 
-        self.br.set_tail(section.is_tail());
-        section.render_open(self.doc, out);
-
-        // くの字点は生の行から数える（注記内も拾うため）。
+        // くの字点は生の行から数える（注記内も拾うため）。Aozora AST は原文を
+        // 保持しないので、AST から描く経路（[`Self::render_ast`]）では呼び出し元が
+        // 別に渡す（[`crate::interchange`]）。
         for line in &lines {
             self.br.scan_kunoji(line);
         }
-        let raw = parse_document_raw(&lines);
-        let blocks = lower_to_blocks(&raw);
-        let body = self.br.render_body(&blocks);
+        let blocks = lower_to_blocks(&parse_document_raw(&lines));
+        self.render_ast(out, section, &blocks);
+    }
+
+    /// 畳み終えた [`Block`] 列からセクション1つを描画する。
+    ///
+    /// [`Self::render`] のうち「行を読んで畳む」手前だけを外したもの。交換形式の
+    /// JSON から読み戻した木をそのまま描くために分けてある。
+    pub fn render_ast(&mut self, out: &mut String, section: Section, blocks: &[Block]) {
+        if blocks.is_empty() && section.skip_when_empty() {
+            return;
+        }
+
+        self.br.set_tail(section.is_tail());
+        section.render_open(self.doc, out);
+
+        let body = self.br.render_body(blocks);
         if section.is_tail() {
             out.push_str(&auto_link(&body));
         } else {
@@ -123,6 +137,11 @@ impl<'a> SectionRenderer<'a> {
         }
 
         section.render_close(self.doc, out);
+    }
+
+    /// くの字点の使用を外から知らせる（AST から描くとき用）。
+    pub fn merge_kunoji(&mut self, use_: &super::KunojiUse) {
+        self.br.merge_kunoji(use_);
     }
 
     /// 全セクションを通して溜まった「表記について」の材料。

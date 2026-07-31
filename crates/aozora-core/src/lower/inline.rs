@@ -157,9 +157,9 @@ fn inline_from_node_at(node: &Node, depth: usize) -> Option<Inline> {
             return None;
         }
         // ブロック構造マーカーはインラインではない（畳み込みが消費）。
-        NodeKind::BlockStart { .. }
-        | NodeKind::BlockEnd { .. }
-        | NodeKind::LineJisage { .. } => return None,
+        NodeKind::BlockStart { .. } | NodeKind::BlockEnd { .. } | NodeKind::LineJisage { .. } => {
+            return None
+        }
     };
     Some(Inline::new(out, node.span))
 }

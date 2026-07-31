@@ -201,6 +201,11 @@ impl<'a> BlockRenderer<'a> {
         &self.notation
     }
 
+    /// 走査済みのくの字点の使用を取り込む（交換形式から復元するとき用）。
+    pub fn merge_kunoji(&mut self, use_: &super::KunojiUse) {
+        self.notation.merge_kunoji(use_);
+    }
+
     /// くの字点をフッタ「表記について」用に数える（参照 scan_kunoji）。
     /// 注記の中にも書かれうるので、パース後ではなく生のソース行を渡すこと。
     pub fn scan_kunoji(&mut self, text: &str) {

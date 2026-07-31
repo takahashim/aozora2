@@ -28,11 +28,16 @@ pub fn convert(input: &[u8]) -> String {
     let text = encoding::decode_to_utf8(input);
     let lines: Vec<&str> = text.lines().collect();
     let body_lines = document::extract_body_lines(&lines);
-    let raw = parse_document_raw(&body_lines);
-    let blocks = lower_to_blocks(&raw);
+    convert_blocks(&lower_to_blocks(&parse_document_raw(&body_lines)))
+}
 
+/// 畳み終えた [`Block`](crate::ast::Block) 列をプレーンテキストにする。
+///
+/// [`convert`] のうち「テキストを読んで本文を切り、畳む」手前だけを外したもの。
+/// 交換形式（[`crate::interchange`]）から読み戻した木を平文にするために分けてある。
+pub fn convert_blocks(blocks: &[crate::ast::Block]) -> String {
     let mut out_lines: Vec<String> = Vec::new();
-    for b in &blocks {
+    for b in blocks {
         render_block_plain(b, &mut out_lines);
     }
     // 冒頭と末尾の空行を削除

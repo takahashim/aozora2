@@ -22,6 +22,8 @@ enum Commands {
     Strip(commands::strip::Args),
     /// HTMLに変換
     Html(commands::html::Args),
+    /// 交換形式の JSON（AST）に変換
+    Ast(commands::ast::Args),
 }
 
 fn main() -> std::process::ExitCode {
@@ -29,6 +31,7 @@ fn main() -> std::process::ExitCode {
     let result: io::Result<()> = match cli.command {
         Commands::Strip(args) => commands::strip::run(args),
         Commands::Html(args) => commands::html::run(args),
+        Commands::Ast(args) => commands::ast::run(args),
     };
     match result {
         Ok(()) => std::process::ExitCode::SUCCESS,

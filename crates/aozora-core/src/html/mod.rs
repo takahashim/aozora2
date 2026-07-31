@@ -18,8 +18,67 @@ mod options;
 mod presentation;
 mod section_renderer;
 
+pub use notation::KunojiUse;
 pub use options::{Quirks, RenderOptions};
 pub use presentation::html_escape;
+
+/// 節ごとに畳み終えた [`Block`](crate::ast::Block) 列。
+/// [`render_document_from_sections`] に渡す。
+pub struct DocumentSections<'a> {
+    /// 本文
+    pub main_text: &'a [crate::ast::Block],
+    /// 本文終わり後（無ければ空）
+    pub after_text: &'a [crate::ast::Block],
+    /// 底本情報（無ければ空）
+    pub bibliographical: &'a [crate::ast::Block],
+}
+
+/// 節ごとの Aozora AST から**完全な HTML 文書**を組み立てる。
+///
+/// [`render_via_blocks`] のうち「テキストを読んで節に切り、畳む」手前だけを外したもの。
+/// 木の外から要る情報（ヘッダ・くの字点・末尾の改行）を引数で受ける。交換形式
+/// （[`crate::interchange`]）から読み戻した木を描くために分けてある。
+pub fn render_document_from_sections(
+    header_info: &crate::document::HeaderInfo,
+    sections: DocumentSections<'_>,
+    kunoji: &KunojiUse,
+    ends_with_newline: bool,
+    options: &RenderOptions,
+) -> String {
+    use document_renderer::DocumentRenderer;
+    use section_renderer::{Section, SectionRenderer};
+
+    let doc = DocumentRenderer::new(options);
+    let mut renderer = SectionRenderer::new(&doc, options);
+    renderer.merge_kunoji(kunoji);
+
+    // 文書末尾の `<br />` は「最後に描かれたセクション」が出す。
+    let main_text_is_last = sections.after_text.is_empty() && sections.bibliographical.is_empty();
+
+    let mut output = String::new();
+    doc.render_html_head(&mut output, header_info);
+    doc.render_metadata_section(&mut output, header_info);
+    renderer.render_ast(
+        &mut output,
+        Section::MainText {
+            is_last: main_text_is_last,
+            input_ends_with_newline: ends_with_newline,
+        },
+        sections.main_text,
+    );
+    renderer.render_ast(&mut output, Section::AfterText, sections.after_text);
+    renderer.render_ast(
+        &mut output,
+        Section::Bibliographical {
+            input_ends_with_newline: ends_with_newline,
+        },
+        sections.bibliographical,
+    );
+    doc.render_notation_notes(&mut output, renderer.notation());
+    doc.render_card_section(&mut output);
+    doc.render_html_foot(&mut output);
+    output
+}
 
 /// 青空文庫形式のテキストをHTMLに変換（Aozora AST新経路）
 ///

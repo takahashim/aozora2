@@ -34,6 +34,8 @@ aozora/
    `tests/invariants.rs` は 2 つの AST が仕様で謳う不変条件（RawAST の可逆性、
    Aozora AST の解決済み・マーカーレス等）を検査する。適合フィクスチャは
    スナップショット比較なので、不変条件はそちらが受け持つ。
+   `tests/interchange.rs` は文書交換形式（docs/spec-document-json.md）の往復
+   （テキスト → JSON → HTML がテキスト → HTML と一致すること）を縛る。
    ワークスペース全体の `--all-features` は GUI（GTK）の依存を引くので使わない。
    フィクスチャは実装から再生成する（差分を目視してからコミットする）:
    ```

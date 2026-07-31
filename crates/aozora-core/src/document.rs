@@ -114,7 +114,8 @@ enum PersonType {
 }
 
 /// ヘッダー情報
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct HeaderInfo {
     /// タイトル
     pub title: Option<String>,

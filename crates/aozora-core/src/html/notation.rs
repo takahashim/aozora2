@@ -20,6 +20,42 @@ pub struct UnconvertedGaiji {
     pub page_lines: Vec<String>,
 }
 
+/// くの字点の使用。
+///
+/// フッタ「表記について」の項目で、参照実装は**生のソース行**を走査して決める
+/// （注記の中に書かれていても拾うため）。Aozora AST は原文を保持しないので、
+/// 交換形式（[`crate::interchange`]）はこの走査結果だけを持ち回る。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct KunojiUse {
+    /// `／＼` を使った
+    pub plain: bool,
+    /// `／″＼` を使った
+    pub dakuten: bool,
+}
+
+impl KunojiUse {
+    /// 生のソース行 1 行を走査して使用を記録する。
+    pub fn scan(&mut self, text: &str) {
+        if self.plain && self.dakuten {
+            return;
+        }
+        let chars: Vec<char> = text.chars().collect();
+        for (i, c) in chars.iter().enumerate() {
+            if *c != KUNOJI_KU {
+                continue;
+            }
+            match chars.get(i + 1) {
+                Some(&KUNOJI_NOJI) => self.plain = true,
+                Some(&KUNOJI_DAKUTEN) if chars.get(i + 2) == Some(&KUNOJI_NOJI) => {
+                    self.dakuten = true
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// 本文描画の副作用として溜まる「表記について」の状態。
 #[derive(Debug, Clone, Default)]
 pub struct NotationState {
@@ -94,22 +130,19 @@ impl NotationState {
     /// くの字点を数える（参照 scan_kunoji）。
     /// 注記の中にも書かれうるので、パース後ではなく生のソース行を渡すこと。
     pub fn scan_kunoji(&mut self, text: &str) {
-        if self.has_kunoji && self.has_dakuten_kunoji {
-            return;
-        }
-        let chars: Vec<char> = text.chars().collect();
-        for (i, c) in chars.iter().enumerate() {
-            if *c != KUNOJI_KU {
-                continue;
-            }
-            match chars.get(i + 1) {
-                Some(&KUNOJI_NOJI) => self.has_kunoji = true,
-                Some(&KUNOJI_DAKUTEN) if chars.get(i + 2) == Some(&KUNOJI_NOJI) => {
-                    self.has_dakuten_kunoji = true
-                }
-                _ => {}
-            }
-        }
+        let mut use_ = KunojiUse {
+            plain: self.has_kunoji,
+            dakuten: self.has_dakuten_kunoji,
+        };
+        use_.scan(text);
+        self.has_kunoji = use_.plain;
+        self.has_dakuten_kunoji = use_.dakuten;
+    }
+
+    /// 走査済みのくの字点の使用を取り込む（交換形式から復元するとき用）。
+    pub fn merge_kunoji(&mut self, use_: &KunojiUse) {
+        self.has_kunoji |= use_.plain;
+        self.has_dakuten_kunoji |= use_.dakuten;
     }
 
     /// 画像化できない外字を一覧に加える。同じ外字名が既にあれば出現箇所を足す。

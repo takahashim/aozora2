@@ -151,7 +151,10 @@ fn aozora_ast_leaves_no_raw_notation_in_text() {
             }
         }
     });
-    assert!(leaked.is_empty(), "素の記法がテキストに残っている: {leaked:?}");
+    assert!(
+        leaked.is_empty(),
+        "素の記法がテキストに残っている: {leaked:?}"
+    );
 }
 
 /// Aozora AST の不変条件5（行番号を保持）: 各ブロックの `line` は本文の行数に収まる。

@@ -18,6 +18,9 @@ name = "aozora2"
 path = "src/lib.rs"
 
 [dependencies]
-aozora-core.workspace = true
+# 交換形式（`ast` サブコマンド・`--from-ast`）に serde が要る。
+aozora-core = { workspace = true, features = ["serde"] }
 clap.workspace = true
 encoding_rs.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
