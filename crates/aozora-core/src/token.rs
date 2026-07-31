@@ -99,7 +99,9 @@ pub enum TokenKind {
     ///
     /// **記法ではない**——青空文庫記法に「ここで改行」に当たる書き方は無い。これを残すのは
     /// 対応する `〕` が無いまま行末に達したアクセント記法だけなので、効果ではなく原因を
-    /// 名前にしてある。同じ誤りは `ParseDiagnosticKind::UnclosedAccent` にも出る。参照実装
+    /// 名前にしてある。実際の多くは行をまたぐ亀甲括弧（[`crate::ast::InlineKind`] の
+    /// `UnclosedAccentBreak` 参照）。同じ検出は `ParseDiagnosticKind::UnclosedAccent`
+    /// にも出る。参照実装
     /// `AccentParser#general_output` は文字列 `"<br />\r\n"` をバッファへ積んで戻る
     /// （改行は AccentParser が食べている）ので、**旗ではなく内容の一部**として扱う。
     /// この token を持つ行は次の行と 1 つの出力単位にまとまる。
