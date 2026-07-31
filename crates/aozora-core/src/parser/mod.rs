@@ -12,7 +12,7 @@ mod utils;
 
 use crate::node::{BlockParams, BlockType, InlineKind, Node, NodeKind, RefSpec, RubyDirection};
 use crate::token::{Span, Token, TokenKind};
-use crate::tokenizer::{tokenize, tokenize_collecting_unclosed_accents};
+use crate::tokenizer::{tokenize, tokenize_line};
 
 pub use command_parser::{parse_command, CommandResult};
 pub use reference_resolver::{resolve_inline_ruby, resolve_references};
@@ -38,6 +38,10 @@ pub struct RawLine {
     /// トークナイザが走査中に持っている情報なので、ここで一緒に持ち帰る
     /// （エディタ支援がこれだけのために全行を再トークナイズしないで済むように）。
     pub unclosed_accents: Vec<Span>,
+    /// 未閉じの `〔` が行末まで達したか。参照はこのとき行の内容の末尾に文字列
+    /// `"<br />\r\n"` を積んで改行ごと食べるので、行スコープの字下げ・地付きが
+    /// ある行では**閉じタグより前**に `<br />` が出る（例:60380/60385）。
+    pub unclosed_accent_to_eol: bool,
 }
 
 /// 文書全体の RawAST（[`RawLine`] の列）。
@@ -55,13 +59,14 @@ pub fn parse_document_raw(lines: &[&str]) -> RawDoc {
         .iter()
         .enumerate()
         .map(|(line_no, line)| {
-            let (tokens, unclosed_accents) = tokenize_collecting_unclosed_accents(line);
+            let ((tokens, unclosed_accents), unclosed_accent_to_eol) = tokenize_line(line);
             let nodes = parse_raw_nodes(&tokens);
             RawLine {
                 source: (*line).to_string(),
                 nodes,
                 line_no,
                 unclosed_accents,
+                unclosed_accent_to_eol,
             }
         })
         .collect();

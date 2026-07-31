@@ -243,7 +243,12 @@ impl<'a> BlockRenderer<'a> {
                 open,
                 ..
             } => self.render_nested(kind, children, *close, *open, out),
-            Block::LineWrap { kinds, inline, .. } => {
+            Block::LineWrap {
+                kinds,
+                inline,
+                unclosed_accent_to_eol,
+                ..
+            } => {
                 // 行全体をブロック div で1行に包む（行スコープ字下げ／地付き）。
                 // 開き直後の改行も内側 <br /> も出さず、行末に `\r\n` のみ。
                 // kinds は外側から内側の順（`［＃N字下げ］` は 1 行に複数書ける）。
@@ -268,6 +273,11 @@ impl<'a> BlockRenderer<'a> {
                     // 後付けは閉じタグを出さない（参照 tail_output）。
                     self.push_tail_line(&line, out);
                     return;
+                }
+                // 未閉じ `〔` の行末効果は閉じタグより**前**に出る（参照 AccentParser が
+                // `"<br />\r\n"` をバッファに積んでから general_output が tail を出すため）。
+                if *unclosed_accent_to_eol {
+                    line.push_str("<br />\r\n");
                 }
                 for _ in 0..opened {
                     line.push_str("</div>");
@@ -324,6 +334,9 @@ impl<'a> BlockRenderer<'a> {
                         "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">{close_tag}</div>\r\n"
                     ));
                 }
+                // 閉じの後ろに同じ行の本文が続くときは改行しない
+                // （`［＃ここで窓中見出し終わり］あと` → `</a></h4>あと`）。
+                CloseKind::NoBreak => out.push_str(&close_tag),
                 _ => out.push_str(&format!("{close_tag}\r\n")),
             }
             return;
@@ -439,6 +452,8 @@ impl<'a> BlockRenderer<'a> {
     fn render_inline(&mut self, inline: &Inline, out: &mut String) {
         match &inline.kind {
             InlineKind::Text(s) => out.push_str(&html_escape(s)),
+            // 未閉じ `〔` が行末に残した素の改行（参照 AccentParser#general_output）。
+            InlineKind::HardBreak => out.push_str("<br />\r\n"),
             InlineKind::Style {
                 children,
                 style_type,
@@ -974,6 +989,8 @@ fn inline_has_text(inline: &Inline) -> bool {
         InlineKind::Text(s) => !s.is_empty(),
         // 参照 apply_warichu は状態を持たず、開閉を素の文字列でバッファに積む。
         InlineKind::Warichu { .. } => true,
+        // 未閉じ `〔` が残す `"<br />\r\n"` も素の String としてバッファに載る。
+        InlineKind::HardBreak => true,
         // 範囲形（`［＃中見出し］…［＃中見出し終わり］`）は、参照実装が**開始タグの
         // 文字列そのもの**を push_char でバッファへ積むので、中身が空でも String が
         // 残る（`［＃傍点］［＃傍点終わり］` もぶら下げに包まれる。実測）。

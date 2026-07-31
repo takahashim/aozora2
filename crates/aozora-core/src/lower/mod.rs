@@ -16,11 +16,12 @@ use break_policy::content_break;
 use inline::to_inlines;
 
 use crate::ast::{
-    AozoraAst, Block, BlockKind, Break, BurasageGeometry, CloseKind, Inline, OpenKind,
+    AozoraAst, Block, BlockKind, Break, BurasageGeometry, CloseKind, Inline, InlineKind, OpenKind,
 };
 use crate::node::{BlockType, Node, NodeKind};
 use crate::parser::reference_resolver::{resolve_inline_ruby, resolve_references};
 use crate::parser::RawDoc;
+use crate::token::Span;
 
 /// Lower 時に検出できる構造上の診断（現状は EOF で閉じられなかったブロック）。
 /// エディタ支援用の付加情報で、変換出力には影響しない。
@@ -44,14 +45,67 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
     let mut stack = BlockStack::new();
     let mut diags: Vec<LowerDiagnostic> = Vec::new();
 
-    for raw_line in &raw.lines {
+    // 未閉じ `〔` で次の行を吸収した（＝この添字の行は出力しない）ことを覚える。
+    let mut swallowed = std::collections::HashSet::new();
+    // 出力を飛ばした行から次の行へ持ち越す内容（参照実装のバッファ持ち越し）。
+    let mut carry: Vec<Inline> = Vec::new();
+
+    for (idx, raw_line) in raw.lines.iter().enumerate() {
+        if swallowed.contains(&idx) {
+            continue;
+        }
         let line_no = raw_line.line_no;
         // 前方参照とルビ親文字を解決してから畳む（旧経路と同順）。span は畳み込みに使わない。
         let mut nodes = raw_line.nodes.clone();
         resolve_references(&mut nodes);
         resolve_inline_ruby(&mut nodes);
 
-        match classify_line(&nodes) {
+        let kind = classify_line(&nodes);
+
+        // ぶら下げを開く行は出力せず、内容を次の行へ持ち越す。
+        //
+        // 参照 `apply_burasage` は先頭で `@noprint = true` を**無条件に**立て、
+        // `general_output` は `@noprint` のときバッファを流さずに return する。
+        // その結果、開始タグの前後にあった本文はどちらもバッファに残り、次の行と
+        // 1 つの出力単位（＝1 つの per-line ぶら下げ div）になる
+        // （`［＃ここから改行天付き、折り返して１字下げ］開始行` ＋ 次行 → 1 つの div。
+        // 実文書 001885/58012・001240/46361）。
+        if let Some((marker, block_kind)) = burasage_open(&nodes) {
+            if let Some(policy) = ImplicitClose::when_opening(&block_kind) {
+                policy.apply(&mut stack);
+            }
+            stack.open_block(block_kind, line_no, OpenKind::NoBreak);
+            carry.extend(to_inlines(&nodes[..marker]));
+            carry.extend(to_inlines(&nodes[marker + 1..]));
+            continue;
+        }
+
+        // 未閉じ `〔` の行も出力せず、行末に素の `<br />` を足して持ち越す
+        // （参照 `AccentParser#general_output` が `"<br />\r\n"` を積んで改行ごと食べる）。
+        // 行スコープ包み（`［＃地から１字上げ］〔…］`）だけは包みごと持ち越す器が要るので
+        // 従来どおり下の `LineWrap` 側で扱う。
+        if raw_line.unclosed_accent_to_eol && matches!(kind, LineKind::Content) {
+            carry.extend(to_inlines(&nodes));
+            let end = raw_line.source.chars().count();
+            carry.push(Inline::new(InlineKind::HardBreak, Span::new(end, end)));
+            continue;
+        }
+
+        // 持ち越しを繋げられるのは内容行だけ。それ以外の行に当たったら、持ち越しを
+        // 独立した行として出す（＝マージ前の従来どおりの出力に戻す）。参照はここでも
+        // 繋げるが、その組み合わせはコーパスに現れず正しい姿を決められない。
+        let carried = if matches!(kind, LineKind::Content) {
+            std::mem::take(&mut carry)
+        } else {
+            if !carry.is_empty() {
+                let pending = std::mem::take(&mut carry);
+                let brk = content_break(&pending, false);
+                stack.push_line(pending, brk, line_no);
+            }
+            Vec::new()
+        };
+
+        match kind {
             LineKind::BlockOpen(kind) => {
                 if let Some(policy) = ImplicitClose::when_opening(&kind) {
                     policy.apply(&mut stack);
@@ -89,13 +143,29 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 // 行スコープ BlockStart）だけを取り除き、残りは to_inlines に渡す
                 // （行内の見出しコマンド範囲などはそちらが畳む）。
                 let rest = strip_line_scope_marker(nodes);
+                // 未閉じ `〔` があると参照 AccentParser が改行ごと食べ、`"<br />\r\n"` を
+                // 内容の末尾に積んで次の行と 1 つの出力単位にする。閉じタグを持たない行なら
+                // 前後どちらに `<br />` が出ても同じバイト列になるが、この行スコープ包みでは
+                // 閉じ `</div>` より前に出るので差が出る（60380/60385）。
+                //
+                // 吸収した次の行が空行のときだけ扱う。中身のある行を本当にこの div の中へ
+                // 畳む必要がある入力はオラクルに現れないので、正しい姿を決められない。
+                let merge = raw_line.unclosed_accent_to_eol
+                    && raw
+                        .lines
+                        .get(idx + 1)
+                        .is_some_and(|next| next.nodes.is_empty());
+                if merge {
+                    swallowed.insert(idx + 1);
+                }
                 stack.push(Block::LineWrap {
                     kinds,
                     inline: to_inlines(&rest),
+                    unclosed_accent_to_eol: merge,
                     line: line_no,
                 });
             }
-            LineKind::Content => push_content_line(&mut stack, &nodes, line_no),
+            LineKind::Content => push_content_line_with(&mut stack, carried, &nodes, line_no),
         }
     }
 
@@ -160,6 +230,9 @@ fn push_close_segment(stack: &mut BlockStack, nodes: &[Node], brk: Break, line_n
     } else {
         stack.push(Block::LineWrap {
             kinds,
+            // 閉じ行の断片には未閉じ `〔` の行末効果を渡さない。「終わり」を含む行に
+            // 未閉じ `〔` がある入力はオラクルに現れず、正しい姿を決められない。
+            unclosed_accent_to_eol: false,
             inline: to_inlines(&rest),
             line: line_no,
         });
@@ -231,6 +304,20 @@ fn apply_closes(stack: &mut BlockStack, nodes: &[Node], closes: &[(usize, bool)]
 /// 内容行として1行を積む。`［＃ここで…終わり］`（explicit_close=true）を含む行は
 /// @terprip=false で行末 `<br />` を抑制する（同行開閉の横組み等・複数行ブロックの閉じ行）。
 fn push_content_line(stack: &mut BlockStack, nodes: &[Node], line_no: usize) {
+    push_content_line_with(stack, Vec::new(), nodes, line_no)
+}
+
+/// [`push_content_line`] の、前の行から持ち越した内容を先頭に足す版。
+///
+/// 持ち越しの由来は [`lower_to_blocks_with_diagnostics`] の行マージ（参照実装で
+/// 出力を飛ばした行のバッファ）。行末 `<br />` の判定は**繋げたあとの行全体**で行う
+/// （参照も 1 つのバッファとして `general_output` に渡すため）。
+fn push_content_line_with(
+    stack: &mut BlockStack,
+    carried: Vec<Inline>,
+    nodes: &[Node],
+    line_no: usize,
+) {
     let has_explicit_close = nodes.iter().any(|n| {
         matches!(
             &n.kind,
@@ -240,7 +327,8 @@ fn push_content_line(stack: &mut BlockStack, nodes: &[Node], line_no: usize) {
             }
         )
     });
-    let inline = to_inlines(nodes);
+    let mut inline = carried;
+    inline.extend(to_inlines(nodes));
     let brk = content_break(&inline, has_explicit_close);
     stack.push_line(inline, brk, line_no);
 }
@@ -513,6 +601,34 @@ enum LineKind {
     LineWrap(Vec<BlockKind>),
     /// 内容行。
     Content,
+}
+
+/// この行がぶら下げ（折り返し字下げ）を開く行なら、(開始マーカーの位置, 種類) を返す。
+///
+/// 参照 `apply_burasage` は開始タグの位置に関係なく `@noprint` を立てるので、
+/// 単独行（[`LineKind::BlockOpen`]、マーカー位置 0）でも同行に本文が続く形
+/// （[`LineKind::BlockOpenWithTail`]）でも同じ扱いになる。
+/// [`classify_line`] を経由せずノード列から直接見るのは、`classify_line` の
+/// [`LineKind::BlockOpenWithTail`] が「マーカーの**後ろ**に要素がある」ことを求めるため。
+/// 参照はマーカーの位置を問わず `apply_burasage` を実行するので、行末にマーカーがある
+/// `\n［＃ここから改行天付き、折り返して１字下げ］`（本文中の裸 LF）も開く
+/// （実文書 001240/46361）。
+fn burasage_open(nodes: &[Node]) -> Option<(usize, BlockKind)> {
+    // 同じ行に「終わり」があるなら同行開閉の範囲形。to_inlines がインラインへ畳む。
+    if nodes
+        .iter()
+        .any(|n| matches!(n.kind, NodeKind::BlockEnd { .. }))
+    {
+        return None;
+    }
+    let idx = nodes.iter().position(|n| {
+        matches!(&n.kind,
+            NodeKind::BlockStart { block_type: BlockType::Burasage, params } if params.is_block)
+    })?;
+    let NodeKind::BlockStart { block_type, params } = &nodes[idx].kind else {
+        unreachable!("position で BlockStart を選んでいる")
+    };
+    block_kind_of(block_type, params).map(|kind| (idx, kind))
 }
 
 /// 同じ行に対応する開始が無い `BlockEnd` の位置と `explicit_close` を、現れる順に返す。

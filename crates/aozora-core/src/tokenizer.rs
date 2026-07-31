@@ -20,6 +20,15 @@ pub struct Tokenizer {
     /// 変換には無関係の**検証用の副産物**。トップレベルでのみ溜まる（入れ子は未閉じ 〔 を
     /// リテラルにするので発生しない）。診断 `unclosed-accent` や厳格モードが使う。
     unclosed_accent_spans: Vec<Span>,
+    /// トップレベルの `〔` が同一行に `〕` を持たなかったか（アクセント記号の有無は問わない）。
+    ///
+    /// 参照実装 `AccentParser#general_output` は閉じずに行末へ達したとき、バッファへ
+    /// 文字列 `"<br />\r\n"` を積んで戻る。改行は AccentParser が食べているので、
+    /// その行は次の行と 1 つの出力単位にまとまる。閉じタグを持たない行では前後どちらに
+    /// `<br />` が付いても同じバイト列になるが、行スコープの字下げ・地付きがある行では
+    /// **閉じタグより前**に `<br />` が出る点が違う（例:60380/60385 の
+    /// `［＃地から１字上げ］〔…］`）。
+    unclosed_accent_to_eol: bool,
 }
 
 impl Tokenizer {
@@ -31,6 +40,7 @@ impl Tokenizer {
             base: 0,
             allow_unclosed_accent: true,
             unclosed_accent_spans: Vec::new(),
+            unclosed_accent_to_eol: false,
         }
     }
 
@@ -60,6 +70,7 @@ impl Tokenizer {
             base,
             allow_unclosed_accent: false,
             unclosed_accent_spans: Vec::new(),
+            unclosed_accent_to_eol: false,
         };
         tokenizer.tokenize()
     }
@@ -196,13 +207,20 @@ impl Tokenizer {
         // 含んでいれば 〔 から行末までをアクセントブロックとして処理する（複数行に
         // またがる 〔…改行…〕 では最初の行だけがアクセント化され、次行の 〕 は
         // リテラルになる。例:4363）。見つかった場合のみ 〕 を読み捨てる。
-        let found_close = self.skip_until(ACCENT_END);
+        let found_close = self.skip_until_accent_end();
 
         // 対応する 〕 が無い場合、トップレベルの行でだけ行末までをアクセントに
         // する。入れ子（アクセント内容・ルビ等）では未閉じ 〔 はリテラルにする。
         if !found_close && !self.allow_unclosed_accent {
             self.pos = start;
             return None;
+        }
+
+        // 参照は 〕 が無いまま行末に達すると、アクセント記号の有無に関わらず
+        // `"<br />\r\n"` を積んで改行ごと食べる。アクセント化しない（記号なし）場合も
+        // この行末効果だけは残るので、巻き戻す前に記録する。
+        if !found_close {
+            self.unclosed_accent_to_eol = true;
         }
 
         let content = self.slice_from(content_start);
@@ -264,12 +282,57 @@ impl Tokenizer {
         false
     }
 
+    /// アクセントの終わり `〕` を、入れ子の構文を飛ばしながら探す（`〕` の手前で停止）。
+    ///
+    /// 参照実装 `AccentParser#parse` は 1 文字ずつ読み、注記 `［＃…］`・外字 `※［…］`・
+    /// ルビ `《…》` に出会うとそれぞれ専用のサブパーサへ渡して**閉じ記号まで消費させる**。
+    /// つまりそれらの内側にある `〕` はアクセントを閉じない。素朴に最初の `〕` を
+    /// 探すと `〔Quid amicitiae&［＃「〔amicitiae&〕」は底本では…］ inimica〕` の
+    /// 注記内の `〕` で切れてしまう（実文書 000148/789・001402/49940）。
+    fn skip_until_accent_end(&mut self) -> bool {
+        while self.pos < self.chars.len() {
+            let ch = self.chars[self.pos];
+            if ch == ACCENT_END {
+                return true;
+            }
+            // 注記 ［＃…］（［ の次が ＃ のときだけ注記。それ以外の ［ はただの文字）
+            if ch == COMMAND_BEGIN && self.peek_nth(1) == Some(IGETA) {
+                self.skip(2);
+                self.skip_until_balanced(COMMAND_BEGIN, COMMAND_END);
+                self.skip_if(COMMAND_END);
+                continue;
+            }
+            // 外字 ※［…］（＃ は任意）
+            if ch == GAIJI_MARK && self.peek_nth(1) == Some(COMMAND_BEGIN) {
+                self.skip(2);
+                self.skip_until_balanced(COMMAND_BEGIN, COMMAND_END);
+                self.skip_if(COMMAND_END);
+                continue;
+            }
+            // ルビ 《…》
+            if ch == RUBY_BEGIN {
+                self.skip(1);
+                self.skip_until(RUBY_END);
+                self.skip_if(RUBY_END);
+                continue;
+            }
+            self.pos += 1;
+        }
+        false
+    }
+
     /// ネストを考慮して閉じ括弧までスキップ（閉じ括弧の手前で停止）
+    /// 注記の終わり `］` を、入れ子の注記だけ数えながら探す。
+    ///
+    /// 参照実装 `dispatch_aozora_command` は `［` の次が `＃` でなければ注記に入らず
+    /// `［` を 1 文字のテキストとして返すだけなので、**`［＃` で始まらない `［` は
+    /// 深さを増やさない**。そのため `［＃「慥へて」は底本では「［てへん＋慥のつくり］えて」…］`
+    /// は内側の `］` で終わり、残りは本文になる（実文書 000183/1892 ほか）。
     fn skip_until_balanced(&mut self, open: char, close: char) {
         let mut depth = 1;
         while self.pos < self.chars.len() && depth > 0 {
             let ch = self.chars[self.pos];
-            if ch == open {
+            if ch == open && self.peek_nth(1) == Some(IGETA) {
                 depth += 1;
             } else if ch == close {
                 depth -= 1;
@@ -366,9 +429,21 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 /// トークン列は [`tokenize`] と完全に同一（byte 一致に無影響）で、span を副産物として
 /// 返すだけ。検証・診断（`unclosed-accent`）・将来の厳格モードが使う。1 行を渡す前提。
 pub fn tokenize_collecting_unclosed_accents(input: &str) -> (Vec<Token>, Vec<Span>) {
+    tokenize_line(input).0
+}
+
+/// 1 行分のトークナイズ結果。
+///
+/// `.0` は [`tokenize_collecting_unclosed_accents`] と同じ（トークン列, 未閉じ span）で、
+/// `.1` は「未閉じ `〔` が行末まで達したか」。後者だけが**変換に効く**
+/// （行末 `<br />` が閉じタグより前に出る。[`Tokenizer::unclosed_accent_to_eol`] 参照）。
+pub fn tokenize_line(input: &str) -> ((Vec<Token>, Vec<Span>), bool) {
     let mut tokenizer = Tokenizer::new_top_level(input);
     let tokens = tokenizer.tokenize();
-    (tokens, tokenizer.unclosed_accent_spans)
+    (
+        (tokens, tokenizer.unclosed_accent_spans),
+        tokenizer.unclosed_accent_to_eol,
+    )
 }
 
 #[cfg(test)]

@@ -74,6 +74,10 @@ pub enum Block {
         kinds: Vec<BlockKind>,
         /// 行の内容（インライン列）
         inline: Vec<Inline>,
+        /// 未閉じの `〔` が行末まで達したか。参照 `AccentParser` はこのとき文字列
+        /// `"<br />\r\n"` をバッファに積んで改行ごと食べるので、`<br />` が
+        /// **閉じ `</div>` より前**に出る（例:60380/60385 の `［＃地から１字上げ］〔…］`）。
+        unclosed_accent_to_eol: bool,
         /// この行の由来（本文 0 起点の行番号）＝位置情報。
         line: usize,
     },
@@ -323,6 +327,14 @@ pub enum InlineKind {
         kind: BlockKind,
         children: Vec<Inline>,
     },
+    /// 行の途中に現れる素の改行 `<br />`。
+    ///
+    /// 参照実装で唯一これを作るのは `AccentParser#general_output` で、対応する `〕` が
+    /// 無いまま行末に達したとき文字列 `"<br />\r\n"` をバッファへ積んで戻る。改行は
+    /// AccentParser が食べているので、その行は次の行と 1 つの出力単位にまとまる
+    /// （[`crate::lower`] の行マージ）。行末の改行そのもの（[`Break`]）とは別物で、
+    /// **行の内容の一部**として途中に置かれる。
+    HardBreak,
 }
 
 /// Aozora ASTのインライン要素。各要素が位置範囲を自前で持つ。

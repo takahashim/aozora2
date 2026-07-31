@@ -77,6 +77,8 @@ fn render_inlines_plain(inlines: &[crate::ast::Inline], out: &mut String) {
     for i in inlines {
         match &i.kind {
             InlineKind::Text(s) => out.push_str(s),
+            // 素の改行はプレーンテキストでは改行として出す。
+            InlineKind::HardBreak => out.push('\n'),
             // ルビは親文字だけ残す。
             InlineKind::Ruby { base, .. } => render_inlines_plain(base, out),
             // 装飾・範囲系は中身のテキストを残す。
