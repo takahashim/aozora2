@@ -1,110 +1,161 @@
-//! 文書まるごとの交換形式（`aozora-document`）。
+//! 2 つの交換形式の**文書としての器**（docs/spec-rawast-json.md・
+//! docs/spec-aozora-ast-json.md の「文書全体」）。
 //!
-//! [RawAST](crate::parser::RawDoc) と [Aozora AST](crate::AozoraAst) の交換形式
-//! （docs/spec-rawast-json.md・docs/spec-aozora-ast-json.md）は、どちらも**本文だけ**を
-//! 表す。ヘッダ（題名・著者）も底本情報も含まないので、その 2 つだけでは完全な HTML
-//! 文書を組み立て直せない。ここはその不足分を添えて、文書 1 本を往復できるようにする器。
+//! どちらの形式も文書 1 本をそのまま表す。第 3 の形式は作らない。
 //!
-//! 木の外から要るのは 3 つだけである。
-//!
-//! - **ヘッダ情報**: `<head>` と `<div class="metadata">` の材料。行から抽出済みの
-//!   [`HeaderInfo`] を持つ（原文の行は持たない）。
-//! - **くの字点**: フッタ「表記について」の項目。参照実装は**生のソース行**を走査して
-//!   決める（注記の中に書かれていても拾うため）。Aozora AST は原文を保持しないので、
-//!   走査の結果だけを持ち回る。
-//! - **末尾が改行か**: 文書末尾の `<br />` の数が変わる（docs/workflow.md 残差一覧）。
-//!
-//! 木そのものは節ごとに分ける。参照実装が本文と後付け（本文終わり後・底本情報）を
-//! 別の規則で出す以上、交換形式でも分けて持つのが素直で、`format` に何の木かを書く。
+//! - [`RawDocument`] は**ファイルの全行**を持つ。`source` が原文そのものなので、
+//!   連結すれば元のテキストに戻る（RawAST の不変条件「可逆」）。ヘッダも底本も
+//!   行として入っているので、節への切り分けはここから導ける。
+//! - [`AozoraDocument`] は節ごとに畳んだ木を持つ。原文を保持しない形式なので、
+//!   木から導けない文書レベルの情報（ヘッダ・くの字点・末尾の改行）だけを併せ持つ。
 
 use crate::ast::Block;
 use crate::document::{
-    extract_after_text_lines, extract_bibliographical_lines, extract_body_lines,
-    extract_header_info, HeaderInfo,
+    after_text_range, bibliographical_range, body_line_indices, extract_header_info, HeaderInfo,
 };
 use crate::html::{render_document_from_sections, DocumentSections, KunojiUse, RenderOptions};
 use crate::lower::lower_to_blocks;
-use crate::parser::{parse_document_raw, RawDoc};
+use crate::parser::{parse_document_raw, RawDoc, RawLine};
 
-/// この器の版。中身の木の版は各交換形式の `version` に従う。
-pub const FORMAT: &str = "aozora-document";
-/// この器の版。
+/// RawAST 交換形式の名前
+pub const RAWAST_FORMAT: &str = "aozora-rawast";
+/// Aozora AST 交換形式の名前
+pub const AOZORA_FORMAT: &str = "aozora-ast";
+/// 両形式の版
 pub const VERSION: &str = "0.1";
 
-/// 文書 1 本。節ごとの木と、木の外から要る情報を持つ。
+/// RawAST の文書（docs/spec-rawast-json.md「文書全体」）。
+///
+/// `lines` は**ファイルの全行**。ヘッダも注記凡例も底本情報も含む。末尾が改行なら
+/// 最後に空行が 1 つ入るので、そこも含めて原文に戻る。
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Document<T> {
-    /// 器の名前（`aozora-document`）
+pub struct RawDocument {
+    /// 形式の名前（`aozora-rawast`）
     pub format: String,
-    /// 器の版
+    /// 形式の版
     pub version: String,
-    /// 中身の木の種類（`aozora-ast` / `aozora-rawast`）
-    pub tree: String,
+    /// ファイルの全行
+    pub lines: Vec<RawLine>,
+}
+
+/// Aozora AST の文書（docs/spec-aozora-ast-json.md「文書全体」）。
+///
+/// 節ごとに畳んだ木と、木から導けない文書レベルの情報を持つ。後者は
+/// [`KunojiUse`] と `ends_with_newline` の 2 つで、どちらも出力の形を決める
+/// 互換メタデータである（`Break` や `CloseKind` と同じ性格のもの）。
+#[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AozoraDocument {
+    /// 形式の名前（`aozora-ast`）
+    pub format: String,
+    /// 形式の版
+    pub version: String,
     /// ヘッダから抽出した題名・著者など
     pub header: HeaderInfo,
     /// 本文
-    pub main_text: T,
+    pub main_text: Vec<Block>,
     /// 本文終わり後（`［＃本文終わり］` 以降）。無ければ空。
-    pub after_text: T,
+    pub after_text: Vec<Block>,
     /// 底本情報（`底本：` 以降）。無ければ空。
-    pub bibliographical: T,
-    /// くの字点の使用（フッタ「表記について」用。生のソース行を走査した結果）
+    pub bibliographical: Vec<Block>,
+    /// くの字点の使用（フッタ「表記について」用）
     pub kunoji: KunojiUse,
-    /// 入力が改行で終わっているか
+    /// 入力が改行で終わっているか（文書末尾の `<br />` の数が変わる）
     pub ends_with_newline: bool,
 }
 
-/// テキストから、節ごとに畳んだ Aozora AST の文書を作る。
-pub fn aozora_document(input: &str) -> Document<Vec<Block>> {
-    build(input, "aozora-ast", |lines| {
-        lower_to_blocks(&parse_document_raw(lines))
-    })
-}
-
-/// テキストから、節ごとの RawAST の文書を作る。
-pub fn raw_document(input: &str) -> Document<RawDoc> {
-    build(input, "aozora-rawast", parse_document_raw)
-}
-
-fn build<T>(input: &str, tree: &str, make: impl Fn(&[&str]) -> T) -> Document<T> {
-    let lines = split_lines(input);
-    let main_text = extract_body_lines(&lines);
-    let after_text = extract_after_text_lines(&lines);
-    let bibliographical = extract_bibliographical_lines(&lines);
-
-    // くの字点は**節に属する行だけ**を走査する。どの節にも入らない行（先頭の
-    // 注記凡例など）は描画されないので数えない。凡例には記法の説明として
-    // `「くの字点」は「／＼」で表しました` と書かれていることがあり、全行を
-    // 走査するとそれを拾ってフッタの文面が変わってしまう。
-    let mut kunoji = KunojiUse::default();
-    for line in main_text.iter().chain(&after_text).chain(&bibliographical) {
-        kunoji.scan(line);
-    }
-
-    Document {
-        format: FORMAT.to_string(),
-        version: VERSION.to_string(),
-        tree: tree.to_string(),
-        header: extract_header_info(&lines),
-        main_text: make(&main_text),
-        after_text: make(&after_text),
-        bibliographical: make(&bibliographical),
-        kunoji,
-        ends_with_newline: input.ends_with('\n'),
-    }
-}
-
-/// 参照実装と同じ行分割（CRLF 区切り。末尾の空行は落とす）。
+/// 参照実装と同じ行分割（CRLF 区切り）。末尾の空行も残す（原文に戻すため）。
 fn split_lines(input: &str) -> Vec<&str> {
-    let mut lines: Vec<&str> = input.split("\r\n").collect();
+    input.split("\r\n").collect()
+}
+
+/// 描画・節分けに使う行（末尾の空行を落とした形）。参照実装の行の数え方に合わせる。
+fn content_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
+    let mut lines = lines.to_vec();
     if lines.last() == Some(&"") {
         lines.pop();
     }
     lines
 }
 
-impl Document<Vec<Block>> {
+impl RawDocument {
+    /// テキストから作る。
+    pub fn from_text(input: &str) -> Self {
+        Self {
+            format: RAWAST_FORMAT.to_string(),
+            version: VERSION.to_string(),
+            lines: parse_document_raw(&split_lines(input)).lines,
+        }
+    }
+
+    /// 各行の原文を連結して元のテキストに戻す（不変条件「可逆」）。
+    pub fn to_text(&self) -> String {
+        self.lines
+            .iter()
+            .map(|l| l.source.as_str())
+            .collect::<Vec<_>>()
+            .join("\r\n")
+    }
+
+    /// 節ごとに畳んで Aozora AST の文書にする。
+    pub fn to_aozora(&self) -> AozoraDocument {
+        let sources: Vec<&str> = self.lines.iter().map(|l| l.source.as_str()).collect();
+        let lines = content_lines(&sources);
+
+        // 参照実装が補う空行（原文に対応が無い行）は、空の RawLine を作って埋める。
+        let empty = |line_no: usize| RawLine {
+            source: String::new(),
+            nodes: Vec::new(),
+            line_no,
+            unclosed_accents: Vec::new(),
+            unclosed_accent_to_eol: false,
+        };
+        let main_text: Vec<RawLine> = body_line_indices(&lines)
+            .into_iter()
+            .enumerate()
+            .map(|(n, i)| i.map_or_else(|| empty(n), |i| self.lines[i].clone()))
+            .collect();
+        let slice = |range: Option<std::ops::Range<usize>>| -> Vec<RawLine> {
+            range.map_or_else(Vec::new, |r| self.lines[r].to_vec())
+        };
+        let after_text = slice(after_text_range(&lines));
+        let bibliographical = slice(bibliographical_range(&lines));
+
+        // くの字点は**節に属する行だけ**を数える。どの節にも入らない行（先頭の
+        // 注記凡例など）は描画されないので数えない。凡例には記法の説明として
+        // `「くの字点」は「／＼」で表しました` と書かれていることがある。
+        let mut kunoji = KunojiUse::default();
+        for line in main_text.iter().chain(&after_text).chain(&bibliographical) {
+            kunoji.scan(&line.source);
+        }
+
+        AozoraDocument {
+            format: AOZORA_FORMAT.to_string(),
+            version: VERSION.to_string(),
+            header: extract_header_info(&lines),
+            main_text: lower_to_blocks(&RawDoc { lines: main_text }),
+            after_text: lower_to_blocks(&RawDoc { lines: after_text }),
+            bibliographical: lower_to_blocks(&RawDoc {
+                lines: bibliographical,
+            }),
+            kunoji,
+            ends_with_newline: sources.last() == Some(&""),
+        }
+    }
+
+    /// 完全な HTML 文書を組み立てる（畳んでから描く）。
+    pub fn to_html(&self, options: &RenderOptions) -> String {
+        self.to_aozora().to_html(options)
+    }
+}
+
+impl AozoraDocument {
+    /// テキストから作る。
+    pub fn from_text(input: &str) -> Self {
+        RawDocument::from_text(input).to_aozora()
+    }
+
     /// 完全な HTML 文書を組み立てる。
     pub fn to_html(&self, options: &RenderOptions) -> String {
         render_document_from_sections(
@@ -118,27 +169,5 @@ impl Document<Vec<Block>> {
             self.ends_with_newline,
             options,
         )
-    }
-}
-
-impl Document<RawDoc> {
-    /// 節ごとに畳んで Aozora AST の文書にする。
-    pub fn lower(&self) -> Document<Vec<Block>> {
-        Document {
-            format: self.format.clone(),
-            version: self.version.clone(),
-            tree: "aozora-ast".to_string(),
-            header: self.header.clone(),
-            main_text: lower_to_blocks(&self.main_text),
-            after_text: lower_to_blocks(&self.after_text),
-            bibliographical: lower_to_blocks(&self.bibliographical),
-            kunoji: self.kunoji.clone(),
-            ends_with_newline: self.ends_with_newline,
-        }
-    }
-
-    /// 完全な HTML 文書を組み立てる（畳んでから描く）。
-    pub fn to_html(&self, options: &RenderOptions) -> String {
-        self.lower().to_html(options)
     }
 }

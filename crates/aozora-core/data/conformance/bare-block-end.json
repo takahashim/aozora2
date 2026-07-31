@@ -1,11 +1,50 @@
 {
   "note": "bare「字下げ終わり」（`ここで` 無し）で複数行ブロックを閉じた行",
-  "source": "［＃ここから２字下げ］\n中身\n［＃字下げ終わり］",
+  "source": "題\n著\n\n［＃ここから２字下げ］\n中身\n［＃字下げ終わり］",
   "raw_ast": {
     "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "題"
+          }
+        ],
+        "source": "題",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "著"
+          }
+        ],
+        "source": "著",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [],
+        "source": "",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -35,7 +74,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 1,
+        "line_no": 4,
         "nodes": [
           {
             "kind": "Text",
@@ -51,7 +90,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 2,
+        "line_no": 5,
         "nodes": [
           {
             "kind": "BlockEnd",
@@ -85,7 +124,33 @@
     "version": "0.1"
   },
   "aozora_ast": {
-    "blocks": [
+    "after_text": [],
+    "bibliographical": [],
+    "ends_with_newline": false,
+    "format": "aozora-ast",
+    "header": {
+      "author": "著",
+      "editor": null,
+      "henyaku": null,
+      "original_subtitle": null,
+      "original_title": null,
+      "subtitle": null,
+      "title": "題",
+      "translator": null
+    },
+    "kunoji": {
+      "dakuten": false,
+      "plain": false
+    },
+    "main_text": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [],
+          "line": 0
+        }
+      },
       {
         "kind": "Nested",
         "value": {
@@ -105,7 +170,7 @@
                     "value": "中身"
                   }
                 ],
-                "line": 1
+                "line": 4
               }
             }
           ],
@@ -118,12 +183,11 @@
               "width": 2
             }
           },
-          "line": 0,
+          "line": 3,
           "open": "Newline"
         }
       }
     ],
-    "format": "aozora-ast",
     "version": "0.1"
   }
 }

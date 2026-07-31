@@ -1,11 +1,50 @@
 {
   "note": "見出し（同行）",
-  "source": "［＃中見出し］章題［＃中見出終わり］",
+  "source": "題\n著\n\n［＃中見出し］章題［＃中見出終わり］",
   "raw_ast": {
     "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "題"
+          }
+        ],
+        "source": "題",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "著"
+          }
+        ],
+        "source": "著",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [],
+        "source": "",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -69,7 +108,33 @@
     "version": "0.1"
   },
   "aozora_ast": {
-    "blocks": [
+    "after_text": [],
+    "bibliographical": [],
+    "ends_with_newline": false,
+    "format": "aozora-ast",
+    "header": {
+      "author": "著",
+      "editor": null,
+      "henyaku": null,
+      "original_subtitle": null,
+      "original_title": null,
+      "subtitle": null,
+      "title": "題",
+      "translator": null
+    },
+    "kunoji": {
+      "dakuten": false,
+      "plain": false
+    },
+    "main_text": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [],
+          "line": 0
+        }
+      },
       {
         "kind": "Line",
         "value": {
@@ -99,11 +164,10 @@
               }
             }
           ],
-          "line": 0
+          "line": 3
         }
       }
     ],
-    "format": "aozora-ast",
     "version": "0.1"
   }
 }

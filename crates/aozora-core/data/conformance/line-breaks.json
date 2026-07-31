@@ -1,11 +1,50 @@
 {
   "note": "行末の改行制御（`ここで…終わり` は <br /> を抑制し、途中閉じは改行も出さない）",
-  "source": "普通の行\n［＃ここから２字下げ］\n中身\n［＃ここで字下げ終わり］つづき\n最後の行",
+  "source": "題\n著\n\n普通の行\n［＃ここから２字下げ］\n中身\n［＃ここで字下げ終わり］つづき\n最後の行",
   "raw_ast": {
     "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "題"
+          }
+        ],
+        "source": "題",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "著"
+          }
+        ],
+        "source": "著",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [],
+        "source": "",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
         "nodes": [
           {
             "kind": "Text",
@@ -21,7 +60,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 1,
+        "line_no": 4,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -51,7 +90,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 2,
+        "line_no": 5,
         "nodes": [
           {
             "kind": "Text",
@@ -67,7 +106,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 3,
+        "line_no": 6,
         "nodes": [
           {
             "kind": "BlockEnd",
@@ -106,7 +145,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 4,
+        "line_no": 7,
         "nodes": [
           {
             "kind": "Text",
@@ -125,7 +164,33 @@
     "version": "0.1"
   },
   "aozora_ast": {
-    "blocks": [
+    "after_text": [],
+    "bibliographical": [],
+    "ends_with_newline": false,
+    "format": "aozora-ast",
+    "header": {
+      "author": "著",
+      "editor": null,
+      "henyaku": null,
+      "original_subtitle": null,
+      "original_title": null,
+      "subtitle": null,
+      "title": "題",
+      "translator": null
+    },
+    "kunoji": {
+      "dakuten": false,
+      "plain": false
+    },
+    "main_text": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [],
+          "line": 0
+        }
+      },
       {
         "kind": "Line",
         "value": {
@@ -141,7 +206,7 @@
               "value": "普通の行"
             }
           ],
-          "line": 0
+          "line": 3
         }
       },
       {
@@ -163,7 +228,7 @@
                     "value": "中身"
                   }
                 ],
-                "line": 2
+                "line": 5
               }
             }
           ],
@@ -176,7 +241,7 @@
               "width": 2
             }
           },
-          "line": 1,
+          "line": 4,
           "open": "Newline"
         }
       },
@@ -195,7 +260,7 @@
               "value": "つづき"
             }
           ],
-          "line": 3
+          "line": 6
         }
       },
       {
@@ -213,11 +278,10 @@
               "value": "最後の行"
             }
           ],
-          "line": 4
+          "line": 7
         }
       }
     ],
-    "format": "aozora-ast",
     "version": "0.1"
   }
 }

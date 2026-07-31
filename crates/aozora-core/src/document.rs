@@ -355,6 +355,19 @@ fn is_rule_line(line: &str) -> bool {
 /// assert_eq!(body, vec!["本文1行目"]);
 /// ```
 pub fn extract_body_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
+    body_line_indices(lines)
+        .into_iter()
+        .map(|i| i.map_or("", |i| lines[i]))
+        .collect()
+}
+
+/// [`extract_body_lines`] が返す行の**もとの位置**。`None` は参照実装に合わせて
+/// 補った空行で、原文には対応する行が無い。
+///
+/// 位置で取れると、行と同じ並びの別の列（[`crate::parser::RawDoc`] の `lines` など）を
+/// 同じように切り出せる。切り出しの規則を 2 箇所に書かないよう、
+/// [`extract_body_lines`] はこれを使って組み立てる。
+pub fn body_line_indices(lines: &[&str]) -> Vec<Option<usize>> {
     let sections = classify_lines(lines);
     let mut result = Vec::new();
 
@@ -363,7 +376,7 @@ pub fn extract_body_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
     if !sections.contains(&LineSection::Body) {
         if let Some(i) = sections.iter().position(|s| *s == LineSection::Trailer) {
             if i > 0 && sections[i - 1] == LineSection::Header && !lines[i].is_empty() {
-                return vec![""];
+                return vec![None];
             }
         }
     }
@@ -376,9 +389,9 @@ pub fn extract_body_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
         // 空行）、参照実装は本文の先頭に <br /> を1つ出すので空行を1行足して揃える。
         if result.is_empty() && i > 0 && sections[i - 1] == LineSection::Header && !line.is_empty()
         {
-            result.push("");
+            result.push(None);
         }
-        result.push(*line);
+        result.push(Some(i));
     }
 
     result
@@ -403,8 +416,14 @@ fn trailer_start(lines: &[&str]) -> Option<usize> {
 /// （実測: `<div class="after_text">` の中に底本行がそのまま入る）。
 /// `［＃本文終わり］` が無い場合は空。
 pub fn extract_after_text_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
-    let start = trailer_start(lines).filter(|i| lines[*i] == "［＃本文終わり］");
-    start.map_or_else(Vec::new, |i| lines[i + 1..].to_vec())
+    after_text_range(lines).map_or_else(Vec::new, |r| lines[r].to_vec())
+}
+
+/// [`extract_after_text_lines`] が返す範囲（もとの位置）。
+pub fn after_text_range(lines: &[&str]) -> Option<std::ops::Range<usize>> {
+    trailer_start(lines)
+        .filter(|i| lines[*i] == "［＃本文終わり］")
+        .map(|i| (i + 1)..lines.len())
 }
 
 /// 文書から底本情報（bibliographical information）を抽出
@@ -412,8 +431,14 @@ pub fn extract_after_text_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
 /// `底本：` で始まる行から最後までを返す。
 /// `［＃本文終わり］` で後付けに入った場合は after_text 側がすべて受け持つので空。
 pub fn extract_bibliographical_lines<'a>(lines: &[&'a str]) -> Vec<&'a str> {
-    let start = trailer_start(lines).filter(|i| lines[*i].starts_with("底本："));
-    start.map_or_else(Vec::new, |i| lines[i..].to_vec())
+    bibliographical_range(lines).map_or_else(Vec::new, |r| lines[r].to_vec())
+}
+
+/// [`extract_bibliographical_lines`] が返す範囲（もとの位置）。
+pub fn bibliographical_range(lines: &[&str]) -> Option<std::ops::Range<usize>> {
+    trailer_start(lines)
+        .filter(|i| lines[*i].starts_with("底本："))
+        .map(|i| i..lines.len())
 }
 
 #[cfg(test)]

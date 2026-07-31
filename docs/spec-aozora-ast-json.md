@@ -143,12 +143,48 @@ RawAST 交換形式と同一（[spec-rawast-json.md](spec-rawast-json.md) の同
 {
   "format": "aozora-ast",
   "version": "0.1",
-  "blocks": [ Block, ... ]
+  "header": HeaderInfo,
+  "main_text": [ Block, ... ],
+  "after_text": [ Block, ... ],
+  "bibliographical": [ Block, ... ],
+  "kunoji": { "plain": Bool, "dakuten": Bool },
+  "ends_with_newline": Bool
 }
 ```
 
-- `blocks` はトップレベルのブロック列。文書 1 本に対応する。
-- ヘッダ（題名・著者）と底本情報は Aozora AST に含めない。本文の構造だけを表す。
+節ごとに木を分けて持つ。元の変換系が本文と後付け（本文終わり後・底本情報）を別の
+規則で出す以上、木の側でも分けるのが素直である。
+
+- `after_text` と `bibliographical` は無ければ空（`[]`）。
+- 節の切れ目は元のテキストの記法で決まる。`［＃本文終わり］` があれば**以降はすべて**
+  `after_text` に入り（底本行も含む）、`bibliographical` は空になる。`［＃本文終わり］`
+  が無く `底本：` があれば、そこから `bibliographical` に入る。
+
+### 木から導けないもの
+
+この形式は原文を保持しない（1 章）。そのため出力に要るのに木から読み取れない情報が
+あり、それだけを併せ持つ。どれも出力の形を決める**互換メタデータ**で、性格は
+`Break` や `CloseKind`（7 章）と同じである。
+
+```
+HeaderInfo = {
+  title: Text?, author: Text?, subtitle: Text?,
+  original_title: Text?, original_subtitle: Text?,
+  translator: Text?, editor: Text?, henyaku: Text?
+}
+```
+
+| | なぜ木から導けないか |
+|---|---|
+| `header` | 題名・著者はヘッダ行から抽出するもので、本文の木には入らない。行数によって解釈が変わる規則（2〜6 行だけを解釈し、1 行と 7 行以上は題名だけにする）は抽出の側にあり、ここは結果だけを運ぶ |
+| `kunoji` | フッタ「表記について」の項目。`／＼`（`plain`）と `／″＼`（`dakuten`）を使ったか。注記の中に書かれていても拾う必要があるため、**生の行**を走査して決まる |
+| `ends_with_newline` | 文書末尾の `<br />` の数が変わる |
+
+`kunoji` は**節に属する行だけ**から数える。どの節にも入らない行（先頭の注記凡例など）は
+出力に現れないので数えない。凡例には記法の説明として `「くの字点」は「／＼」で表しました`
+と書かれていることがあり、そこまで数えるとフッタの文面が変わってしまう。
+
+原文そのものは戻らない。可逆性が要るなら [RawAST 交換形式](spec-rawast-json.md)を使う。
 
 ## 4. Block
 
@@ -308,7 +344,14 @@ CloseKind = NoBreak | Newline | BareBreak              // 構成子（値を持�
 {
   "format": "aozora-ast",
   "version": "0.1",
-  "blocks": [
+  "header": { "title": "作品名", "author": "著者名", "subtitle": null,
+              "original_title": null, "original_subtitle": null,
+              "translator": null, "editor": null, "henyaku": null },
+  "after_text": [],
+  "bibliographical": [],
+  "kunoji": { "plain": false, "dakuten": false },
+  "ends_with_newline": true,
+  "main_text": [
     {
       "kind": "Line",
       "value": {
@@ -350,9 +393,10 @@ CloseKind = NoBreak | Newline | BareBreak              // 構成子（値を持�
 - `Gaiji` の `unicode` / `jis_code` は導出値（RawAST の `Gaiji` も同様）。権威は
   `description` にあり、導出は `data/jis2ucs.json` の版に依存する。照合時に導出値まで
   比較するかは決めていない。
-- 文書全体の器が無い。本形式は本文（body）だけで、ヘッダ（題名・著者）・本文終わり後・
-  底本情報を運べない。作品 1 本の交換には `aozora-document` のような封筒（HeaderInfo ＋
-  各セクションの木）が要る。`line` が本文相対の 0 起点であることも、この封筒とセットの話。
+- 節の持ち方。`main_text` / `after_text` / `bibliographical` を別のキーにしたが、節を
+  配列にして種類を各要素に持たせる案もある。節が増えたときはそちらが素直になる。
+- `line` の原点。節ごとに 0 起点なので、節をまたいで行番号を比べられない。原文の行番号に
+  揃える案もあるが、そうすると節だけを取り出して扱えなくなる。
 - `Note` の `raw` を必須にするか。解決済みの `content` があれば描画はできるが、
   往復（AST → 記法）を考えると原文が要る。
 - 位置情報の必須性。`span` / `line` はエディタ支援のためのもので、変換だけなら不要。

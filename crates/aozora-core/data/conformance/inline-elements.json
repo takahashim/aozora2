@@ -1,11 +1,50 @@
 {
   "note": "縦中横・罫囲み・横組み・キャプション・割書（範囲形のインライン要素）",
-  "source": "12［＃縦中横］34［＃縦中横終わり］\n［＃罫囲み］囲［＃罫囲み終わり］\n［＃横組み］56［＃横組み終わり］\n［＃キャプション］図の説明［＃キャプション終わり］\n［＃割書］夏期演説［＃割書終わり］",
+  "source": "題\n著\n\n12［＃縦中横］34［＃縦中横終わり］\n［＃罫囲み］囲［＃罫囲み終わり］\n［＃横組み］56［＃横組み終わり］\n［＃キャプション］図の説明［＃キャプション終わり］\n［＃割書］夏期演説［＃割書終わり］",
   "raw_ast": {
     "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "題"
+          }
+        ],
+        "source": "題",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "著"
+          }
+        ],
+        "source": "著",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [],
+        "source": "",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
         "nodes": [
           {
             "kind": "Text",
@@ -74,7 +113,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 1,
+        "line_no": 4,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -135,7 +174,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 2,
+        "line_no": 5,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -196,7 +235,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 3,
+        "line_no": 6,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -257,7 +296,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 4,
+        "line_no": 7,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -321,7 +360,33 @@
     "version": "0.1"
   },
   "aozora_ast": {
-    "blocks": [
+    "after_text": [],
+    "bibliographical": [],
+    "ends_with_newline": false,
+    "format": "aozora-ast",
+    "header": {
+      "author": "著",
+      "editor": null,
+      "henyaku": null,
+      "original_subtitle": null,
+      "original_title": null,
+      "subtitle": null,
+      "title": "題",
+      "translator": null
+    },
+    "kunoji": {
+      "dakuten": false,
+      "plain": false
+    },
+    "main_text": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [],
+          "line": 0
+        }
+      },
       {
         "kind": "Line",
         "value": {
@@ -358,7 +423,7 @@
               }
             }
           ],
-          "line": 0
+          "line": 3
         }
       },
       {
@@ -388,7 +453,7 @@
               }
             }
           ],
-          "line": 1
+          "line": 4
         }
       },
       {
@@ -418,7 +483,7 @@
               }
             }
           ],
-          "line": 2
+          "line": 5
         }
       },
       {
@@ -448,7 +513,7 @@
               }
             }
           ],
-          "line": 3
+          "line": 6
         }
       },
       {
@@ -478,11 +543,10 @@
               }
             }
           ],
-          "line": 4
+          "line": 7
         }
       }
     ],
-    "format": "aozora-ast",
     "version": "0.1"
   }
 }

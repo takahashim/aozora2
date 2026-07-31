@@ -1,11 +1,50 @@
 {
   "note": "大きな文字・小さな文字（ブロック形と行内範囲形）",
-  "source": "［＃ここから２段階大きな文字］\n大きい\n［＃ここで大きな文字終わり］\n［＃小さな文字］小さい［＃小さな文字終わり］",
+  "source": "題\n著\n\n［＃ここから２段階大きな文字］\n大きい\n［＃ここで大きな文字終わり］\n［＃小さな文字］小さい［＃小さな文字終わり］",
   "raw_ast": {
     "format": "aozora-rawast",
     "lines": [
       {
         "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "題"
+          }
+        ],
+        "source": "題",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "著"
+          }
+        ],
+        "source": "著",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [],
+        "source": "",
+        "unclosed_accent_to_eol": false,
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 3,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -35,7 +74,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 1,
+        "line_no": 4,
         "nodes": [
           {
             "kind": "Text",
@@ -51,7 +90,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 2,
+        "line_no": 5,
         "nodes": [
           {
             "kind": "BlockEnd",
@@ -82,7 +121,7 @@
         "unclosed_accents": []
       },
       {
-        "line_no": 3,
+        "line_no": 6,
         "nodes": [
           {
             "kind": "BlockStart",
@@ -146,7 +185,33 @@
     "version": "0.1"
   },
   "aozora_ast": {
-    "blocks": [
+    "after_text": [],
+    "bibliographical": [],
+    "ends_with_newline": false,
+    "format": "aozora-ast",
+    "header": {
+      "author": "著",
+      "editor": null,
+      "henyaku": null,
+      "original_subtitle": null,
+      "original_title": null,
+      "subtitle": null,
+      "title": "題",
+      "translator": null
+    },
+    "kunoji": {
+      "dakuten": false,
+      "plain": false
+    },
+    "main_text": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [],
+          "line": 0
+        }
+      },
       {
         "kind": "Nested",
         "value": {
@@ -166,7 +231,7 @@
                     "value": "大きい"
                   }
                 ],
-                "line": 1
+                "line": 4
               }
             }
           ],
@@ -180,7 +245,7 @@
               "size_type": "Dai"
             }
           },
-          "line": 0,
+          "line": 3,
           "open": "Newline"
         }
       },
@@ -213,11 +278,10 @@
               }
             }
           ],
-          "line": 3
+          "line": 6
         }
       }
     ],
-    "format": "aozora-ast",
     "version": "0.1"
   }
 }

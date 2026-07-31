@@ -1,15 +1,14 @@
 //! ast サブコマンド
 //!
 //! 青空文庫形式のテキストを、交換形式の JSON（docs/spec-rawast-json.md /
-//! docs/spec-aozora-ast-json.md、およびそれらを文書 1 本にまとめる `aozora-document`）
-//! として書き出す。逆向き（JSON → HTML／プレーンテキスト）は `html --from-ast` /
-//! `strip --from-ast`。
+//! docs/spec-aozora-ast-json.md）として書き出す。逆向き（JSON → HTML／
+//! プレーンテキスト）は `html --from-ast` / `strip --from-ast`。
 
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
-use aozora_core::interchange::{aozora_document, raw_document};
+use aozora_core::interchange::{AozoraDocument, RawDocument};
 use clap::Args as ClapArgs;
 
 /// 出力する木の種類
@@ -50,8 +49,8 @@ pub fn run(args: Args) -> io::Result<()> {
     let input = aozora_core::encoding::decode_to_utf8(&bytes);
 
     let json = match args.tree {
-        Tree::Aozora => to_json(&aozora_document(&input), args.pretty),
-        Tree::Raw => to_json(&raw_document(&input), args.pretty),
+        Tree::Aozora => to_json(&AozoraDocument::from_text(&input), args.pretty),
+        Tree::Raw => to_json(&RawDocument::from_text(&input), args.pretty),
     }?;
 
     match &args.output {
@@ -74,10 +73,8 @@ fn to_json<T: serde::Serialize>(value: &T, pretty: bool) -> io::Result<String> {
 
 /// `--from-ast` で読み込んだ JSON を、描画できる文書に読み戻す。
 ///
-/// `tree` の値で `aozora-ast` と `aozora-rawast` を見分ける（RawAST なら畳んでから返す）。
-pub fn read_document(
-    path: Option<&std::path::Path>,
-) -> io::Result<aozora_core::interchange::Document<Vec<aozora_core::ast::Block>>> {
+/// `format` の値で 2 つの交換形式を見分ける（RawAST なら畳んでから返す）。
+pub fn read_document(path: Option<&std::path::Path>) -> io::Result<AozoraDocument> {
     let mut text = String::new();
     match path {
         Some(p) => text = fs::read_to_string(p)?,
@@ -89,19 +86,18 @@ pub fn read_document(
         io::Error::new(io::ErrorKind::InvalidData, format!("読み戻せない: {e}"))
     };
 
-    // どちらの木かは `tree` を見るだけで決まる。値が無い・知らない値なら弾く。
     let probe: serde_json::Value = serde_json::from_str(&text).map_err(bad)?;
-    match probe.get("tree").and_then(|v| v.as_str()) {
-        Some("aozora-ast") => serde_json::from_str(&text).map_err(bad),
-        Some("aozora-rawast") => serde_json::from_str::<
-            aozora_core::interchange::Document<aozora_core::parser::RawDoc>,
-        >(&text)
-        .map(|d| d.lower())
-        .map_err(bad),
+    match probe.get("format").and_then(|v| v.as_str()) {
+        Some(aozora_core::interchange::AOZORA_FORMAT) => serde_json::from_str(&text).map_err(bad),
+        Some(aozora_core::interchange::RAWAST_FORMAT) => serde_json::from_str::<RawDocument>(&text)
+            .map(|d| d.to_aozora())
+            .map_err(bad),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "`tree` が `aozora-ast` でも `aozora-rawast` でもない: {}",
+                "`format` が `{}` でも `{}` でもない: {}",
+                aozora_core::interchange::AOZORA_FORMAT,
+                aozora_core::interchange::RAWAST_FORMAT,
                 other.unwrap_or("(無し)")
             ),
         )),

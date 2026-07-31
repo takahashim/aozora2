@@ -15,6 +15,7 @@
 
 use std::path::PathBuf;
 
+use aozora_core::interchange::RawDocument;
 use aozora_core::lower::lower_to_blocks;
 use aozora_core::parser::parse_document_raw;
 
@@ -36,21 +37,16 @@ struct Fixture {
 }
 
 /// 入力から両 AST を作り、交換形式の JSON にする。
+///
+/// 交換形式はどちらも文書 1 本を表す器なので、`source` も文書の形にしてある
+/// （題名・著者・空行のあとに本文）。LF 区切りで書き、ここで CRLF に直す。
 fn build(source: &str) -> (serde_json::Value, serde_json::Value) {
-    let lines: Vec<&str> = source.split('\n').collect();
-    let raw = parse_document_raw(&lines);
-    let ast = lower_to_blocks(&raw);
+    let text = source.replace('\n', "\r\n");
+    let raw = RawDocument::from_text(&text);
+    let aozora = raw.to_aozora();
     (
-        serde_json::json!({
-            "format": "aozora-rawast",
-            "version": "0.1",
-            "lines": serde_json::to_value(&raw).unwrap()["lines"],
-        }),
-        serde_json::json!({
-            "format": "aozora-ast",
-            "version": "0.1",
-            "blocks": serde_json::to_value(&ast).unwrap(),
-        }),
+        serde_json::to_value(&raw).expect("直列化できる"),
+        serde_json::to_value(&aozora).expect("直列化できる"),
     )
 }
 
