@@ -310,7 +310,27 @@ impl<'a> DocumentRenderer<'a> {
     }
 
     /// main_text終了タグを出力
-    pub fn render_main_text_end(&self, output: &mut String) {
+    ///
+    /// 底本行を持たない文書では main_text が**最後のセクション**になる。参照は
+    /// `process` の最後に `tail_output` を無条件に 1 回呼び（空バッファなら `<br />`）、
+    /// 続く `hyoki` も先頭に `<br />` を出すので、閉じ `</div>` の前に `<br />` が
+    /// 2 つ入る（[`Self::render_bibliographical_footer`] と同じ勘定）。入力が改行で
+    /// 終わっていなければ最後の行の内容を最後の `tail_output` が流すので 1 つ少ない。
+    ///
+    /// 参照の `ending_check` は行頭が厳密に `底本：` のときだけ tail へ遷移するため、
+    /// `定本：` や半角コロンの `底本:` のように表記が崩れた作品もこの経路に入る。
+    pub fn render_main_text_end(
+        &self,
+        output: &mut String,
+        is_last: bool,
+        input_ends_with_newline: bool,
+    ) {
+        if is_last {
+            if input_ends_with_newline {
+                output.push_str("<br />\r\n");
+            }
+            output.push_str("<br />\r\n");
+        }
         output.push_str("</div>\r\n");
     }
 }

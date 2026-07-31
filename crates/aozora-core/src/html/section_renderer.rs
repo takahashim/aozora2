@@ -20,7 +20,17 @@ use super::presentation::auto_link;
 /// 文書のセクション。どの行を担当し、どう枠を出すかを自分で知っている。
 pub enum Section {
     /// 本文（main_text）
-    MainText,
+    MainText {
+        /// このセクションが文書の最後か（後続の tail セクションがどちらも空）。
+        ///
+        /// 参照は `process` の最後に `tail_output` を無条件に 1 回呼び（空バッファなら
+        /// `<br />`）、続く `hyoki` も先頭に `<br />` を出す。つまり**最後に描かれた
+        /// セクション**の閉じ `</div>` の前に `<br />` が 2 つ入る。底本行が無い文書では
+        /// それが main_text になる。
+        is_last: bool,
+        /// 入力が改行で終わっているか（末尾 `<br />` の数が変わる）
+        input_ends_with_newline: bool,
+    },
     /// 本文終わり後（after_text）
     AfterText,
     /// 底本情報（bibliographical_information）
@@ -34,7 +44,7 @@ impl Section {
     /// 文書全体の行からこのセクションの行を取り出す。
     fn lines<'a>(&self, all_lines: &[&'a str]) -> Vec<&'a str> {
         match self {
-            Section::MainText => extract_body_lines(all_lines),
+            Section::MainText { .. } => extract_body_lines(all_lines),
             Section::AfterText => extract_after_text_lines(all_lines),
             Section::Bibliographical { .. } => extract_bibliographical_lines(all_lines),
         }
@@ -43,7 +53,7 @@ impl Section {
     /// tail セクション（参照 tail_output）か。tail は出力へ自動リンクを掛け、
     /// 画像化できない外字の ※ を出さない。
     fn is_tail(&self) -> bool {
-        !matches!(self, Section::MainText)
+        !matches!(self, Section::MainText { .. })
     }
 
     /// 担当行が無いとき枠ごと出さないか。main_text の枠は空でも必ず出す。
@@ -53,7 +63,7 @@ impl Section {
 
     fn render_open(&self, doc: &DocumentRenderer, out: &mut String) {
         match self {
-            Section::MainText => doc.render_main_text_start(out),
+            Section::MainText { .. } => doc.render_main_text_start(out),
             Section::AfterText => doc.render_after_text_header(out),
             Section::Bibliographical { .. } => doc.render_bibliographical_header(out),
         }
@@ -61,7 +71,10 @@ impl Section {
 
     fn render_close(&self, doc: &DocumentRenderer, out: &mut String) {
         match self {
-            Section::MainText => doc.render_main_text_end(out),
+            Section::MainText {
+                is_last,
+                input_ends_with_newline,
+            } => doc.render_main_text_end(out, *is_last, *input_ends_with_newline),
             Section::AfterText => doc.render_after_text_footer(out),
             Section::Bibliographical {
                 input_ends_with_newline,

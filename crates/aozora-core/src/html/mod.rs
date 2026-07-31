@@ -86,15 +86,29 @@ pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
     let doc = DocumentRenderer::new(options);
     let mut sections = SectionRenderer::new(&doc, options);
 
+    // 文書末尾の `<br />` は「最後に描かれたセクション」が出す（参照 process の
+    // 末尾 `tail_output` ＋ `hyoki` 先頭）。底本行も `［＃本文終わり］` も無い文書では
+    // それが main_text になるので、後続 2 セクションが空かどうかを先に見ておく。
+    let main_text_is_last = crate::document::extract_after_text_lines(&lines).is_empty()
+        && crate::document::extract_bibliographical_lines(&lines).is_empty();
+    let input_ends_with_newline = input.ends_with('\n');
+
     let mut output = String::new();
     doc.render_html_head(&mut output, &header_info);
     doc.render_metadata_section(&mut output, &header_info);
-    sections.render(&mut output, Section::MainText, &lines);
+    sections.render(
+        &mut output,
+        Section::MainText {
+            is_last: main_text_is_last,
+            input_ends_with_newline,
+        },
+        &lines,
+    );
     sections.render(&mut output, Section::AfterText, &lines);
     sections.render(
         &mut output,
         Section::Bibliographical {
-            input_ends_with_newline: input.ends_with('\n'),
+            input_ends_with_newline,
         },
         &lines,
     );
