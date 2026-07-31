@@ -171,9 +171,7 @@ impl<'a> DocumentRenderer<'a> {
 
     /// 本文終わり後のテキスト（after_text）セクションフッターを出力
     pub fn render_after_text_footer(&self, output: &mut String) {
-        output.push_str("<br />\r\n");
-        output.push_str("<br />\r\n");
-        output.push_str("</div>\r\n");
+        self.render_document_tail(output);
     }
 
     /// 底本情報セクションヘッダーを出力
@@ -184,20 +182,8 @@ impl<'a> DocumentRenderer<'a> {
     }
 
     /// 底本情報セクションフッターを出力
-    ///
-    /// 参照実装では、入力末尾の改行が作る空行も 1 行として `<br />` になり、
-    /// そのあとに hyoki が `<br />` を 1 つ出す。入力が改行で終わっていなければ
-    /// 空行がないぶん `<br />` は 1 つ少なくなる。
-    pub fn render_bibliographical_footer(
-        &self,
-        output: &mut String,
-        input_ends_with_newline: bool,
-    ) {
-        if input_ends_with_newline {
-            output.push_str("<br />\r\n");
-        }
-        output.push_str("<br />\r\n");
-        output.push_str("</div>\r\n");
+    pub fn render_bibliographical_footer(&self, output: &mut String) {
+        self.render_document_tail(output);
     }
 
     /// 表記についてセクションを出力
@@ -309,27 +295,28 @@ impl<'a> DocumentRenderer<'a> {
         );
     }
 
+    /// 文書末尾の `<br />` と閉じ `</div>`。
+    ///
+    /// 参照は `process` の最後に `hyoki` を呼び、その先頭が `<br />` なので、
+    /// **最後に描かれたセクション**の閉じ `</div>` の前に `<br />` が 1 つ入る。
+    ///
+    /// もう 1 つの `<br />`（`process` 末尾の `tail_output` が空バッファで出すもの）は
+    /// ここでは出さない。入力が改行で終わっていればその改行が空行を 1 行作り、
+    /// 内容の行として `<br />` になる（＝行として数えられる）。改行で終わっていなければ
+    /// 最後の `tail_output` が最終行の内容を流すので、その `<br />` は内容の行の分になる。
+    /// どちらも「行」で説明がつくので、行の外に旗を持つ必要はない。
+    fn render_document_tail(&self, output: &mut String) {
+        output.push_str("<br />\r\n");
+        output.push_str("</div>\r\n");
+    }
+
     /// main_text終了タグを出力
     ///
-    /// 底本行を持たない文書では main_text が**最後のセクション**になる。参照は
-    /// `process` の最後に `tail_output` を無条件に 1 回呼び（空バッファなら `<br />`）、
-    /// 続く `hyoki` も先頭に `<br />` を出すので、閉じ `</div>` の前に `<br />` が
-    /// 2 つ入る（[`Self::render_bibliographical_footer`] と同じ勘定）。入力が改行で
-    /// 終わっていなければ最後の行の内容を最後の `tail_output` が流すので 1 つ少ない。
-    ///
-    /// 参照の `ending_check` は行頭が厳密に `底本：` のときだけ tail へ遷移するため、
-    /// `定本：` や半角コロンの `底本:` のように表記が崩れた作品もこの経路に入る。
-    pub fn render_main_text_end(
-        &self,
-        output: &mut String,
-        is_last: bool,
-        input_ends_with_newline: bool,
-    ) {
+    /// 底本行も `［＃本文終わり］` も無い文書では main_text が最後のセクションになる。
+    pub fn render_main_text_end(&self, output: &mut String, is_last: bool) {
         if is_last {
-            if input_ends_with_newline {
-                output.push_str("<br />\r\n");
-            }
-            output.push_str("<br />\r\n");
+            self.render_document_tail(output);
+            return;
         }
         output.push_str("</div>\r\n");
     }

@@ -5,12 +5,7 @@
 //! 枠の HTML・自動リンクの有無・外字記号 ※ を出すかだけ。ここはその違いを
 //! [`Section`] に持たせ、手順は1つに保つ器。
 
-use crate::ast::Block;
-use crate::document::{
-    extract_after_text_lines, extract_bibliographical_lines, extract_body_lines,
-};
-use crate::lower::lower_to_blocks;
-use crate::parser::parse_document_raw;
+use crate::ast::{Block, Inline};
 
 use super::block_renderer::BlockRenderer;
 use super::document_renderer::DocumentRenderer;
@@ -24,33 +19,18 @@ pub enum Section {
     MainText {
         /// このセクションが文書の最後か（後続の tail セクションがどちらも空）。
         ///
-        /// 参照は `process` の最後に `tail_output` を無条件に 1 回呼び（空バッファなら
-        /// `<br />`）、続く `hyoki` も先頭に `<br />` を出す。つまり**最後に描かれた
-        /// セクション**の閉じ `</div>` の前に `<br />` が 2 つ入る。底本行が無い文書では
-        /// それが main_text になる。
+        /// 参照は `process` の最後に `hyoki` を呼び、その先頭が `<br />` なので、
+        /// **最後に描かれたセクション**の閉じ `</div>` の前に `<br />` が 1 つ入る。
+        /// 底本行も `［＃本文終わり］` も無い文書では、それが main_text になる。
         is_last: bool,
-        /// 入力が改行で終わっているか（末尾 `<br />` の数が変わる）
-        input_ends_with_newline: bool,
     },
     /// 本文終わり後（after_text）
     AfterText,
     /// 底本情報（bibliographical_information）
-    Bibliographical {
-        /// 入力が改行で終わっているか（末尾 `<br />` の数が変わる）
-        input_ends_with_newline: bool,
-    },
+    Bibliographical,
 }
 
 impl Section {
-    /// 文書全体の行からこのセクションの行を取り出す。
-    fn lines<'a>(&self, all_lines: &[&'a str]) -> Vec<&'a str> {
-        match self {
-            Section::MainText { .. } => extract_body_lines(all_lines),
-            Section::AfterText => extract_after_text_lines(all_lines),
-            Section::Bibliographical { .. } => extract_bibliographical_lines(all_lines),
-        }
-    }
-
     /// tail セクション（参照 tail_output）か。tail は出力へ自動リンクを掛け、
     /// 画像化できない外字の ※ を出さない。
     fn is_tail(&self) -> bool {
@@ -66,20 +46,15 @@ impl Section {
         match self {
             Section::MainText { .. } => doc.render_main_text_start(out),
             Section::AfterText => doc.render_after_text_header(out),
-            Section::Bibliographical { .. } => doc.render_bibliographical_header(out),
+            Section::Bibliographical => doc.render_bibliographical_header(out),
         }
     }
 
     fn render_close(&self, doc: &DocumentRenderer, out: &mut String) {
         match self {
-            Section::MainText {
-                is_last,
-                input_ends_with_newline,
-            } => doc.render_main_text_end(out, *is_last, *input_ends_with_newline),
+            Section::MainText { is_last } => doc.render_main_text_end(out, *is_last),
             Section::AfterText => doc.render_after_text_footer(out),
-            Section::Bibliographical {
-                input_ends_with_newline,
-            } => doc.render_bibliographical_footer(out, *input_ends_with_newline),
+            Section::Bibliographical => doc.render_bibliographical_footer(out),
         }
     }
 }
@@ -100,27 +75,9 @@ impl<'a> SectionRenderer<'a> {
         }
     }
 
-    /// セクション1つを `out` の末尾に描画する。
-    pub fn render(&mut self, out: &mut String, section: Section, all_lines: &[&str]) {
-        let lines = section.lines(all_lines);
-        if lines.is_empty() && section.skip_when_empty() {
-            return;
-        }
-
-        // くの字点は生の行から数える（注記内も拾うため）。Aozora AST は原文を
-        // 保持しないので、AST から描く経路（[`Self::render_ast`]）では呼び出し元が
-        // 別に渡す（[`crate::interchange`]）。
-        for line in &lines {
-            self.br.scan_kunoji(line);
-        }
-        let blocks = lower_to_blocks(&parse_document_raw(&lines));
-        self.render_ast(out, section, &blocks);
-    }
-
     /// 畳み終えた [`Block`] 列からセクション1つを描画する。
     ///
-    /// [`Self::render`] のうち「行を読んで畳む」手前だけを外したもの。交換形式の
-    /// JSON から読み戻した木をそのまま描くために分けてある。
+    /// 交換形式の JSON から読み戻した木も、テキストから畳んだ木も、同じここを通る。
     pub fn render_ast(&mut self, out: &mut String, section: Section, blocks: &[Block]) {
         if blocks.is_empty() && section.skip_when_empty() {
             return;
@@ -139,9 +96,31 @@ impl<'a> SectionRenderer<'a> {
         section.render_close(self.doc, out);
     }
 
-    /// くの字点の使用を外から知らせる（AST から描くとき用）。
-    pub fn merge_kunoji(&mut self, use_: &super::KunojiUse) {
-        self.br.merge_kunoji(use_);
+    /// 木の中の文字列からくの字点を数える（AST から描くとき用）。
+    ///
+    /// 参照実装は生のソース行を走査する。注記の中に書かれていても拾うためだが、
+    /// 木は注記の原文（`Note.raw`）まで保つので、木の中の文字列をすべて見れば
+    /// 同じ結果になる（全コーパスで一致を確認済み）。
+    pub fn scan_kunoji_in(&mut self, blocks: &[Block]) {
+        for block in blocks {
+            match block {
+                Block::Line { inline, .. } | Block::LineWrap { inline, .. } => {
+                    self.scan_kunoji_inlines(inline)
+                }
+                Block::Nested { children, .. } => self.scan_kunoji_in(children),
+            }
+        }
+    }
+
+    fn scan_kunoji_inlines(&mut self, inlines: &[Inline]) {
+        for inline in inlines {
+            for text in inline.kind.texts() {
+                self.br.scan_kunoji(text);
+            }
+            for children in inline.kind.child_lists() {
+                self.scan_kunoji_inlines(children);
+            }
+        }
     }
 
     /// 全セクションを通して溜まった「表記について」の材料。

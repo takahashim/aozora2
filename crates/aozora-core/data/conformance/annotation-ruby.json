@@ -82,7 +82,6 @@
   "aozora_ast": {
     "after_text": [],
     "bibliographical": [],
-    "ends_with_newline": false,
     "format": "aozora-ast",
     "header": {
       "author": "著",
@@ -93,10 +92,6 @@
       "subtitle": null,
       "title": "題",
       "translator": null
-    },
-    "kunoji": {
-      "dakuten": false,
-      "plain": false
     },
     "main_text": [
       {

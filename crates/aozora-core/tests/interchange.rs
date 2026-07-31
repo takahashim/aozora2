@@ -59,14 +59,12 @@ fn raw_document_round_trips_through_json() {
     }
 }
 
-/// 木の外から持ち回る情報が本当に効いているか（取りこぼしたら落ちる）。
+/// 木の外から持ち回るのはヘッダだけ。節の切り分けが効いているかも見る。
 #[test]
 fn document_carries_what_the_trees_do_not_model() {
     let doc = AozoraDocument::from_text(SOURCE);
     assert_eq!(doc.header.title.as_deref(), Some("作品名"), "題名");
     assert_eq!(doc.header.author.as_deref(), Some("著者名"), "著者");
-    assert!(doc.kunoji.plain, "くの字点は生の行からしか分からない");
-    assert!(doc.ends_with_newline, "末尾の改行");
     assert!(
         doc.after_text.is_empty(),
         "本文終わりが無ければ after_text は空"

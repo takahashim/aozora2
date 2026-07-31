@@ -18,7 +18,6 @@ mod options;
 mod presentation;
 mod section_renderer;
 
-pub use notation::KunojiUse;
 pub use options::{Quirks, RenderOptions};
 pub use presentation::html_escape;
 
@@ -35,14 +34,12 @@ pub struct DocumentSections<'a> {
 
 /// 節ごとの Aozora AST から**完全な HTML 文書**を組み立てる。
 ///
-/// [`render_via_blocks`] のうち「テキストを読んで節に切り、畳む」手前だけを外したもの。
-/// 木の外から要る情報（ヘッダ・くの字点・末尾の改行）を引数で受ける。交換形式
-/// （[`crate::interchange`]）から読み戻した木を描くために分けてある。
+/// 木の外から要るのはヘッダ情報だけ。くの字点は木の中の文字列から数え、末尾の改行が
+/// 作る空行は節の最後の行として木に入っている。交換形式（[`crate::interchange`]）から
+/// 読み戻した木をそのまま描ける。
 pub fn render_document_from_sections(
     header_info: &crate::document::HeaderInfo,
     sections: DocumentSections<'_>,
-    kunoji: &KunojiUse,
-    ends_with_newline: bool,
     options: &RenderOptions,
 ) -> String {
     use document_renderer::DocumentRenderer;
@@ -50,7 +47,15 @@ pub fn render_document_from_sections(
 
     let doc = DocumentRenderer::new(options);
     let mut renderer = SectionRenderer::new(&doc, options);
-    renderer.merge_kunoji(kunoji);
+    // くの字点は注記の中に書かれていても拾う必要がある。木は注記の原文（`Note.raw`）
+    // まで保つので、木の中の文字列をすべて走査すれば生の行を見るのと同じ結果になる。
+    for section in [
+        sections.main_text,
+        sections.after_text,
+        sections.bibliographical,
+    ] {
+        renderer.scan_kunoji_in(section);
+    }
 
     // 文書末尾の `<br />` は「最後に描かれたセクション」が出す。
     let main_text_is_last = sections.after_text.is_empty() && sections.bibliographical.is_empty();
@@ -62,16 +67,13 @@ pub fn render_document_from_sections(
         &mut output,
         Section::MainText {
             is_last: main_text_is_last,
-            input_ends_with_newline: ends_with_newline,
         },
         sections.main_text,
     );
     renderer.render_ast(&mut output, Section::AfterText, sections.after_text);
     renderer.render_ast(
         &mut output,
-        Section::Bibliographical {
-            input_ends_with_newline: ends_with_newline,
-        },
+        Section::Bibliographical,
         sections.bibliographical,
     );
     doc.render_notation_notes(&mut output, renderer.notation());
@@ -132,49 +134,7 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
 /// `lower_to_blocks`→`BlockRenderer` で描画する（BlockManager 非依存）。
 /// フッタ「表記について」の材料は全セクションを通して描画の副作用で溜まる。
 pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
-    use crate::document::extract_header_info;
-    use document_renderer::DocumentRenderer;
-    use section_renderer::{Section, SectionRenderer};
-
-    let mut lines: Vec<&str> = input.split("\r\n").collect();
-    if lines.last() == Some(&"") {
-        lines.pop();
-    }
-
-    let header_info = extract_header_info(&lines);
-    let doc = DocumentRenderer::new(options);
-    let mut sections = SectionRenderer::new(&doc, options);
-
-    // 文書末尾の `<br />` は「最後に描かれたセクション」が出す（参照 process の
-    // 末尾 `tail_output` ＋ `hyoki` 先頭）。底本行も `［＃本文終わり］` も無い文書では
-    // それが main_text になるので、後続 2 セクションが空かどうかを先に見ておく。
-    let main_text_is_last = crate::document::extract_after_text_lines(&lines).is_empty()
-        && crate::document::extract_bibliographical_lines(&lines).is_empty();
-    let input_ends_with_newline = input.ends_with('\n');
-
-    let mut output = String::new();
-    doc.render_html_head(&mut output, &header_info);
-    doc.render_metadata_section(&mut output, &header_info);
-    sections.render(
-        &mut output,
-        Section::MainText {
-            is_last: main_text_is_last,
-            input_ends_with_newline,
-        },
-        &lines,
-    );
-    sections.render(&mut output, Section::AfterText, &lines);
-    sections.render(
-        &mut output,
-        Section::Bibliographical {
-            input_ends_with_newline,
-        },
-        &lines,
-    );
-    doc.render_notation_notes(&mut output, sections.notation());
-    doc.render_card_section(&mut output);
-    doc.render_html_foot(&mut output);
-    output
+    crate::interchange::AozoraDocument::from_text(input).to_html(options)
 }
 
 #[cfg(test)]

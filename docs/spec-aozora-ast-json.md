@@ -146,9 +146,7 @@ RawAST 交換形式と同一（[spec-rawast-json.md](spec-rawast-json.md) の同
   "header": HeaderInfo,
   "main_text": [ Block, ... ],
   "after_text": [ Block, ... ],
-  "bibliographical": [ Block, ... ],
-  "kunoji": { "plain": Bool, "dakuten": Bool },
-  "ends_with_newline": Bool
+  "bibliographical": [ Block, ... ]
 }
 ```
 
@@ -160,11 +158,7 @@ RawAST 交換形式と同一（[spec-rawast-json.md](spec-rawast-json.md) の同
   `after_text` に入り（底本行も含む）、`bibliographical` は空になる。`［＃本文終わり］`
   が無く `底本：` があれば、そこから `bibliographical` に入る。
 
-### 木から導けないもの
-
-この形式は原文を保持しない（1 章）。そのため出力に要るのに木から読み取れない情報が
-あり、それだけを併せ持つ。どれも出力の形を決める**互換メタデータ**で、性格は
-`Break` や `CloseKind`（7 章）と同じである。
+### ヘッダ
 
 ```
 HeaderInfo = {
@@ -174,15 +168,15 @@ HeaderInfo = {
 }
 ```
 
-| | なぜ木から導けないか |
-|---|---|
-| `header` | 題名・著者はヘッダ行から抽出するもので、本文の木には入らない。行数によって解釈が変わる規則（2〜6 行だけを解釈し、1 行と 7 行以上は題名だけにする）は抽出の側にあり、ここは結果だけを運ぶ |
-| `kunoji` | フッタ「表記について」の項目。`／＼`（`plain`）と `／″＼`（`dakuten`）を使ったか。注記の中に書かれていても拾う必要があるため、**生の行**を走査して決まる |
-| `ends_with_newline` | 文書末尾の `<br />` の数が変わる |
+題名・著者はヘッダ行から抽出するもので、本文の木には入らない。この形式は原文を
+保持しない（1 章）ので、抽出した結果をここに持つ。行数によって解釈が変わる規則
+（2〜6 行だけを解釈し、1 行と 7 行以上は題名だけにする）は抽出の側にあり、この形式は
+結果だけを運ぶ。
 
-`kunoji` は**節に属する行だけ**から数える。どの節にも入らない行（先頭の注記凡例など）は
-出力に現れないので数えない。凡例には記法の説明として `「くの字点」は「／＼」で表しました`
-と書かれていることがあり、そこまで数えるとフッタの文面が変わってしまう。
+木から導けないのはこれだけである。フッタ「表記について」に出す「くの字点」の項目は、
+元の変換系が生のソース行を走査して決めるが、木は注記の原文（`Note` の `raw`）まで
+保つので、木の中の文字列をすべて見れば同じ結果になる。入力が改行で終わっていたか
+どうかも、その改行が作る空行が節の最後の行として木に入るので、別に持つ必要はない。
 
 原文そのものは戻らない。可逆性が要るなら [RawAST 交換形式](spec-rawast-json.md)を使う。
 
@@ -349,8 +343,6 @@ CloseKind = NoBreak | Newline | BareBreak              // 構成子（値を持�
               "translator": null, "editor": null, "henyaku": null },
   "after_text": [],
   "bibliographical": [],
-  "kunoji": { "plain": false, "dakuten": false },
-  "ends_with_newline": true,
   "main_text": [
     {
       "kind": "Line",

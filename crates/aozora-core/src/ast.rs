@@ -335,6 +335,67 @@ pub enum InlineKind {
     HardBreak,
 }
 
+impl InlineKind {
+    /// この要素が直接持つ文字列（子は含まない）。
+    ///
+    /// くの字点の数え上げのように「木の中の文字をすべて見る」処理のための入口。
+    /// 網羅一致にしてあるので、変種を足したときに拾い忘れるとコンパイルが通らない。
+    /// 注記の原文（`Note.raw`）も含める——参照実装は生のソース行を走査するので、
+    /// 記法として畳まれた部分の文字も数えるため。
+    pub fn texts(&self) -> Vec<&str> {
+        match self {
+            InlineKind::Text(s) | InlineKind::Kaeriten(s) => vec![s],
+            InlineKind::Note { raw, .. } | InlineKind::Okurigana { raw, .. } => vec![raw],
+            InlineKind::Gaiji { description, .. } => vec![description],
+            InlineKind::Accent { name, .. } => vec![name],
+            InlineKind::Img { alt, .. } => vec![alt],
+            InlineKind::AnnotationEnd { prefix, suffix, .. } => vec![prefix, suffix],
+            InlineKind::DakutenKatakana { num } => vec![num],
+            InlineKind::Ruby { .. }
+            | InlineKind::Style { .. }
+            | InlineKind::Midashi { .. }
+            | InlineKind::Tcy { .. }
+            | InlineKind::Keigakomi { .. }
+            | InlineKind::Yokogumi { .. }
+            | InlineKind::Caption { .. }
+            | InlineKind::Warichu { .. }
+            | InlineKind::Warigaki { .. }
+            | InlineKind::FontSize { .. }
+            | InlineKind::ChitsukiInline { .. }
+            | InlineKind::BlockInline { .. }
+            | InlineKind::HardBreak => vec![],
+        }
+    }
+
+    /// この要素が持つ子インライン列すべて。
+    pub fn child_lists(&self) -> Vec<&[Inline]> {
+        match self {
+            InlineKind::Ruby { base, ruby, .. } => vec![base, ruby],
+            InlineKind::Note { content, .. }
+            | InlineKind::Okurigana { content, .. }
+            | InlineKind::AnnotationEnd { content, .. } => vec![content],
+            InlineKind::Style { children, .. }
+            | InlineKind::Midashi { children, .. }
+            | InlineKind::Tcy { children }
+            | InlineKind::Keigakomi { children }
+            | InlineKind::Yokogumi { children }
+            | InlineKind::Caption { children }
+            | InlineKind::Warigaki { children }
+            | InlineKind::FontSize { children, .. }
+            | InlineKind::ChitsukiInline { children, .. }
+            | InlineKind::BlockInline { children, .. } => vec![children],
+            InlineKind::Text(_)
+            | InlineKind::Kaeriten(_)
+            | InlineKind::Gaiji { .. }
+            | InlineKind::Accent { .. }
+            | InlineKind::Img { .. }
+            | InlineKind::Warichu { .. }
+            | InlineKind::DakutenKatakana { .. }
+            | InlineKind::HardBreak => vec![],
+        }
+    }
+}
+
 /// Aozora ASTのインライン要素。各要素が位置範囲を自前で持つ。
 ///
 /// span は原則としてソース**行内**の絶対 char 位置だが、例外がある。
