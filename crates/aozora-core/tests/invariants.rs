@@ -6,6 +6,8 @@
 //! docs/spec-rawast-json.md / docs/spec-aozora-ast-json.md（交換形式）。
 
 use aozora_core::ast::{Block, Inline, InlineKind};
+use aozora_core::html::Quirks;
+use aozora_core::interchange::{AozoraDocument, RawDocument};
 use aozora_core::lower::lower_to_blocks;
 use aozora_core::node::NodeKind;
 use aozora_core::parser::parse_document_raw;
@@ -177,4 +179,63 @@ fn aozora_ast_block_lines_stay_within_the_document() {
         }
     }
     check(&ast, lines.len());
+}
+
+/// 互換フラグが木に触れるのは `unclosed_accent_break` だけである。
+///
+/// 他の 7 つは描画時（`html::block_renderer` / `html::document_renderer`）にしか
+/// 読まれない。交換形式の消費者にとってこれは重要な性質で——JSON を受け取った側は
+/// 「どの Quirks で作られたか」をほぼ気にしなくてよい——黙って崩れると気づけない。
+/// レンダ用フラグを畳み込みで読み始めたら、この検査が落ちる。
+#[test]
+fn only_the_unclosed_accent_quirk_reaches_the_aozora_ast() {
+    // Quirk が絡む記法を一通り含む文書（外字の入れ子・幅なし画像・アクセント・
+    // ヘッダのエスケープ・空幅の字下げ・濁点付き片仮名・未閉じ `〔`）。
+    let src = "題\"と\"引用\r\n著\r\n\r\n\
+        ※［＃「「莎」の草かんむり」、1-84-25］\r\n\
+        ［＃図（fig01.png）入る］\r\n\
+        〔e^〕とワ゛［＃1-7-82］\r\n\
+        ［＃ここから　字下げ］\r\n\
+        中身\r\n\
+        ［＃ここで字下げ終わり］\r\n\
+        〔未閉じの行\r\n\
+        次の行\r\n";
+
+    // 既定（全オン）と「`unclosed_accent_break` だけオン」で木が一致する
+    // ＝残る 7 つは畳み込みに影響しない。
+    let only_unclosed = Quirks {
+        unclosed_accent_break: true,
+        ..Quirks::none()
+    };
+    assert_eq!(
+        AozoraDocument::from_text(src, &Quirks::default()),
+        AozoraDocument::from_text(src, &only_unclosed),
+        "描画用の互換フラグが Aozora AST に漏れている"
+    );
+
+    // 逆に `unclosed_accent_break` は木を変える（この検査自体が空回りしていない証拠）。
+    assert_ne!(
+        AozoraDocument::from_text(src, &Quirks::default()),
+        AozoraDocument::from_text(src, &Quirks::none()),
+        "unclosed_accent_break が木に効いていない"
+    );
+}
+
+/// RawAST はどの互換フラグからも独立している。
+///
+/// `RawDocument::from_text` が `Quirks` を受け取らないので型の上で保証されるが、
+/// 将来フラグを足したくなったときに「ここは原文どおり」という意図が読めるよう残す。
+/// RawAST の不変条件は可逆性（原文へ戻せること）なので、互換の都合で内容を落としたり
+/// 足したりしてはならない。
+#[test]
+fn the_raw_ast_is_independent_of_quirks() {
+    let src = "題\r\n著\r\n\r\n〔未閉じの行\r\n次の行\r\n";
+    let raw = RawDocument::from_text(src);
+    assert_eq!(raw.to_text(), src);
+    // 同じ RawAST から、フラグ違いの 2 つの Aozora AST が導ける
+    // （フラグは畳み込みの引数であって、RawAST に焼き付いていない）。
+    assert_ne!(
+        raw.to_aozora(&Quirks::default()),
+        raw.to_aozora(&Quirks::none())
+    );
 }
