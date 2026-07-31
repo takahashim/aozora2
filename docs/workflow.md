@@ -56,6 +56,17 @@ aozora/
    ./target/release/aozora-htmlcheck --oracle-dir oracle \
        --baseline-out baseline-oracle.jsonl --out results-oracle.jsonl
    ```
+   交換形式まわりを触ったときは、全書庫規模の往復も回す（どちらも `results.jsonl` の
+   ZIP 一覧を食わせる。オラクルが無い作品も対象にできる）:
+   ```
+   # text → RawAST → text（原文に戻ること。RawAST の不変条件「可逆」）
+   cargo build --release --example roundtrip_text
+   ruby -rjson -e 'puts File.readlines("../aozora-htmlcheck/results.jsonl")
+       .map { |l| JSON.parse(l)["zip"] }' |
+     ./target/release/examples/roundtrip_text
+   # text → JSON → HTML が text → HTML と一致すること（2 つの木それぞれ）
+   ```
+   前者は 2026-07-31 に全 17509 作品で一致 17509・不一致 0 を確認した。
 3. 挙動を意図的に変える場合、その変更は次のどちらかである:
    - 互換性の改善（オラクルへの接近）
    - Quirk フラグ配下の切り替え可能な挙動
