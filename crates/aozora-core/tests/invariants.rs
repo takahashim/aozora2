@@ -239,3 +239,40 @@ fn the_raw_ast_is_independent_of_quirks() {
         raw.to_aozora(&Quirks::none())
     );
 }
+
+/// 行のノード列は、その行を**隙間なく覆う**（docs/spec-rawast-json.md）。
+///
+/// これが成り立つので、RawAST は各ノードに原文の写しを持たなくてよい——必要なら
+/// `RawLine.source` を `span` で切れば取り出せる。破れやすいのはアクセントで、
+/// `〔…〕` は木に残らず中身だけが並ぶため、区切りの 2 文字が宙に浮きやすい
+/// （`parser::widen_to_delimiters` が両端のノードに引き受けさせている）。
+#[test]
+fn nodes_tile_their_line_without_gaps() {
+    let sources = [
+        SOURCE,
+        // アクセント: 行頭・行中・行末、閉じない形、入れ子。
+        "〔e'〕cole\n\
+         前〔a e'〕後\n\
+         行末が〔e'〕\n\
+         〔未閉じの e' 行\n\
+         東京《〔e'〕》\n\
+         ［＃「〔e'〕」に傍点］",
+    ];
+
+    for src in sources {
+        let lines: Vec<&str> = src.split('\n').collect();
+        for line in parse_document_raw(&lines).lines {
+            let width = line.source.chars().count();
+            let mut pos = 0;
+            for node in &line.nodes {
+                assert_eq!(
+                    node.span.start, pos,
+                    "隙間か重なり: {:?} の {:?}",
+                    line.source, node
+                );
+                pos = pos.max(node.span.end);
+            }
+            assert_eq!(pos, width, "行末まで覆えていない: {:?}", line.source);
+        }
+    }
+}

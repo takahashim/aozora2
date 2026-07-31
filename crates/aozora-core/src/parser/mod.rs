@@ -166,7 +166,9 @@ fn parse_token_with_context(
     current_index: usize,
 ) -> Vec<Node> {
     let kinds = match &token.kind {
-        TokenKind::Accent { children } => return apply_accent_to_nodes(parse_tokens(children)),
+        TokenKind::Accent { children } => {
+            return widen_to_delimiters(apply_accent_to_nodes(parse_tokens(children)), token.span)
+        }
         TokenKind::Command { content } => {
             let paren = ParenContext {
                 open_before: has_open_paren_before(nodes),
@@ -248,6 +250,25 @@ fn parse_token_kinds(token: &Token) -> Vec<NodeKind> {
 /// テキストは e´ 等をアクセント文字（外字画像）に変換し、外字などはそのまま残す。
 /// 参照実装 AccentParser はブロック内の全文字を処理するので、内側のルビ親文字
 /// （例:〔｜Cafe'《カフエ》〕の Cafe'）にも再帰的に適用する。
+/// アクセントブロックの区切り `〔` `〕` を、両端のノードの span に含める。
+///
+/// アクセントは木に残らない——`〔…〕` の中身がそのまま行のノード列に並ぶ——ので、
+/// 中身の span をそのまま使うと区切りの 2 文字が**どのノードにも属さない**。それだと
+/// 「行のノード列は行を隙間なく覆う」（docs/spec-rawast-json.md の不変条件）が破れ、
+/// ノード列から行を復元できなくなる。区切りは構文としてこのブロックのものなので、
+/// 先頭ノードの始点と末尾ノードの終点を、ブロック全体を覆う `span` の端まで広げる。
+///
+/// 閉じ `〕` が無いまま行末に達した場合も同じで、`span` の終点が行末になっているだけ。
+fn widen_to_delimiters(mut nodes: Vec<Node>, span: Span) -> Vec<Node> {
+    if let Some(first) = nodes.first_mut() {
+        first.span.start = span.start;
+    }
+    if let Some(last) = nodes.last_mut() {
+        last.span.end = span.end;
+    }
+    nodes
+}
+
 fn apply_accent_to_nodes(nodes: Vec<Node>) -> Vec<Node> {
     use crate::accent::{parse_accent, AccentPart};
     let mut result = Vec::new();
@@ -312,7 +333,9 @@ fn parse_tokens(tokens: &[Token]) -> Vec<Node> {
     tokens
         .iter()
         .flat_map(|token| match &token.kind {
-            TokenKind::Accent { children } => apply_accent_to_nodes(parse_tokens(children)),
+            TokenKind::Accent { children } => {
+                widen_to_delimiters(apply_accent_to_nodes(parse_tokens(children)), token.span)
+            }
             _ => parse_token_kinds(token)
                 .into_iter()
                 .map(|kind| Node::new(kind, token.span))
@@ -633,14 +656,17 @@ mod intrinsic_span_tests {
 
     #[test]
     fn accent_split_nodes_keep_their_source_slices() {
+        // 区切り `〔` `〕` は両端のノードが引き受ける（widen_to_delimiters）。
+        // アクセントは木に残らないので、そうしないと 2 文字がどのノードにも属さず、
+        // 行のノード列が行を覆えなくなる。
         let nodes = parse_raw_nodes(&tokenize("〔a e'〕"));
         assert_eq!(nodes.len(), 2);
         assert!(matches!(&nodes[0].kind, NodeKind::Text(text) if text == "a "));
-        assert_eq!(nodes[0].span, Span::new(1, 3));
+        assert_eq!(nodes[0].span, Span::new(0, 3), "先頭は 〔 まで広がる");
         assert!(
             matches!(&nodes[1].kind, NodeKind::Accent { unicode: Some(text), .. } if text == "é")
         );
-        assert_eq!(nodes[1].span, Span::new(3, 5));
+        assert_eq!(nodes[1].span, Span::new(3, 6), "末尾は 〕 まで広がる");
     }
 
     #[test]

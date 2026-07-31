@@ -43,8 +43,8 @@
           {
             "kind": "Accent",
             "span": {
-              "end": 3,
-              "start": 1
+              "end": 4,
+              "start": 0
             },
             "value": {
               "code": "1-09-63",
@@ -98,8 +98,8 @@
               "kind": "Accent",
               "range_form": false,
               "span": {
-                "end": 3,
-                "start": 1
+                "end": 4,
+                "start": 0
               },
               "value": {
                 "code": "1-09-63",
