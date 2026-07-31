@@ -1,0 +1,156 @@
+{
+  "note": "割り注",
+  "source": "前［＃割り注］中身［＃割り注終わり］後",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "前"
+          },
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 7,
+              "start": 1
+            },
+            "value": {
+              "block_type": {
+                "kind": "Warichu"
+              },
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 9,
+              "start": 7
+            },
+            "value": "中身"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 18,
+              "start": 9
+            },
+            "value": {
+              "block_type": {
+                "kind": "Warichu"
+              },
+              "explicit_close": false,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 19,
+              "start": 18
+            },
+            "value": "後"
+          }
+        ],
+        "source": "前［＃割り注］中身［＃割り注終わり］後",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 1,
+                "start": 0
+              },
+              "value": "前"
+            },
+            {
+              "kind": "Warichu",
+              "range_form": false,
+              "span": {
+                "end": 7,
+                "start": 1
+              },
+              "value": {
+                "open": true,
+                "suppress_paren": false
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 9,
+                "start": 7
+              },
+              "value": "中身"
+            },
+            {
+              "kind": "Warichu",
+              "range_form": false,
+              "span": {
+                "end": 18,
+                "start": 9
+              },
+              "value": {
+                "open": false,
+                "suppress_paren": false
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 19,
+                "start": 18
+              },
+              "value": "後"
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

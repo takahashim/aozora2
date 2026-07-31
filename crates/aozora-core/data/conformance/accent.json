@@ -1,0 +1,74 @@
+{
+  "note": "アクセント分解",
+  "source": "〔e'〕cole",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Accent",
+            "span": {
+              "end": 3,
+              "start": 1
+            },
+            "value": {
+              "code": "1-09-63",
+              "name": "アキュートアクセント付きE小文字",
+              "unicode": "é"
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 8,
+              "start": 4
+            },
+            "value": "cole"
+          }
+        ],
+        "source": "〔e'〕cole",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Accent",
+              "range_form": false,
+              "span": {
+                "end": 3,
+                "start": 1
+              },
+              "value": {
+                "code": "1-09-63",
+                "name": "アキュートアクセント付きE小文字",
+                "unicode": "é"
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 8,
+                "start": 4
+              },
+              "value": "cole"
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "note": "画像（キャプション付き）",
+  "source": "［＃「図の説明」のキャプション付きの図（fig01.png、横1×縦2）入る］",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Img",
+            "span": {
+              "end": 39,
+              "start": 0
+            },
+            "value": {
+              "alt": "「図の説明」のキャプション付きの図",
+              "filename": "fig01.png",
+              "height": 2,
+              "is_photo": false,
+              "width": 1
+            }
+          }
+        ],
+        "source": "［＃「図の説明」のキャプション付きの図（fig01.png、横1×縦2）入る］",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Img",
+              "range_form": false,
+              "span": {
+                "end": 39,
+                "start": 0
+              },
+              "value": {
+                "alt": "「図の説明」のキャプション付きの図",
+                "filename": "fig01.png",
+                "height": 2,
+                "is_photo": false,
+                "width": 1
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

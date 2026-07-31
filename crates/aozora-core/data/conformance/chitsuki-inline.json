@@ -1,0 +1,103 @@
+{
+  "note": "地付き（行途中で開き行末で閉じる）",
+  "source": "本文［＃地付き］署名",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "本文"
+          },
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 8,
+              "start": 2
+            },
+            "value": {
+              "block_type": {
+                "kind": "Chitsuki"
+              },
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 10,
+              "start": 8
+            },
+            "value": "署名"
+          }
+        ],
+        "source": "本文［＃地付き］署名",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "None"
+          },
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "value": "本文"
+            },
+            {
+              "kind": "ChitsukiInline",
+              "range_form": false,
+              "span": {
+                "end": 10,
+                "start": 2
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 10,
+                      "start": 8
+                    },
+                    "value": "署名"
+                  }
+                ],
+                "width": 0
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

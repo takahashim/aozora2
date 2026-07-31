@@ -1,0 +1,94 @@
+{
+  "note": "装飾（前方参照形の傍点）",
+  "source": "対象［＃「対象」に傍点］の文",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "対象"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 12,
+              "start": 2
+            },
+            "value": {
+              "raw": "「対象」に傍点",
+              "spec": {
+                "kind": "Style",
+                "value": "SesameDot"
+              },
+              "target": "対象"
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 14,
+              "start": 12
+            },
+            "value": "の文"
+          }
+        ],
+        "source": "対象［＃「対象」に傍点］の文",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Style",
+              "range_form": false,
+              "span": {
+                "end": 12,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "対象"
+                  }
+                ],
+                "style_type": "SesameDot"
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 14,
+                "start": 12
+              },
+              "value": "の文"
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

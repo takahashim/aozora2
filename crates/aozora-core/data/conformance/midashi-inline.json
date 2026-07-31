@@ -1,0 +1,120 @@
+{
+  "note": "見出し（同行）",
+  "source": "［＃中見出し］章題［＃中見出終わり］",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 7,
+              "start": 0
+            },
+            "value": {
+              "block_type": {
+                "kind": "Midashi"
+              },
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": {
+                  "kind": "Naka"
+                },
+                "midashi_style": {
+                  "kind": "Normal"
+                },
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 9,
+              "start": 7
+            },
+            "value": "章題"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 18,
+              "start": 9
+            },
+            "value": {
+              "block_type": {
+                "kind": "Midashi"
+              },
+              "explicit_close": false,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃中見出し］章題［＃中見出終わり］",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "None"
+          },
+          "inline": [
+            {
+              "kind": "Midashi",
+              "range_form": true,
+              "span": {
+                "end": 18,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 9,
+                      "start": 7
+                    },
+                    "value": "章題"
+                  }
+                ],
+                "level": {
+                  "kind": "Naka"
+                },
+                "style": {
+                  "kind": "Normal"
+                }
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

@@ -23,3 +23,6 @@ serde = ["dep:serde"]
 
 [build-dependencies]
 serde_json.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

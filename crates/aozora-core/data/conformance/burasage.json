@@ -1,0 +1,133 @@
+{
+  "note": "ぶら下げ（折り返し字下げ）",
+  "source": "［＃ここから２字下げ、折り返して４字下げ］\n内容\n［＃ここで字下げ終わり］",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 21,
+              "start": 0
+            },
+            "value": {
+              "block_type": {
+                "kind": "Burasage"
+              },
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": true,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": 2,
+                "wrap_width": 4
+              }
+            }
+          }
+        ],
+        "source": "［＃ここから２字下げ、折り返して４字下げ］",
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 1,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "内容"
+          }
+        ],
+        "source": "内容",
+        "unclosed_accents": []
+      },
+      {
+        "line_no": 2,
+        "nodes": [
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 12,
+              "start": 0
+            },
+            "value": {
+              "block_type": {
+                "kind": "Jisage"
+              },
+              "explicit_close": true,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": null,
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃ここで字下げ終わり］",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Nested",
+        "value": {
+          "children": [
+            {
+              "kind": "Line",
+              "value": {
+                "brk": {
+                  "kind": "Br"
+                },
+                "inline": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "内容"
+                  }
+                ],
+                "line": 1
+              }
+            }
+          ],
+          "close": {
+            "kind": "Newline"
+          },
+          "kind": {
+            "kind": "Burasage",
+            "value": {
+              "width": 2,
+              "wrap_width": 4
+            }
+          },
+          "line": 0,
+          "open": {
+            "kind": "Newline"
+          }
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

@@ -1,0 +1,135 @@
+{
+  "note": "返り点と訓点送り仮名",
+  "source": "天［＃「レ」は返り点］下［＃（した）］",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "天"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 11,
+              "start": 1
+            },
+            "value": {
+              "raw": "「レ」は返り点",
+              "spec": {
+                "kind": "Inline",
+                "value": {
+                  "kind": "Kaeriten"
+                }
+              },
+              "target": "レ"
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 12,
+              "start": 11
+            },
+            "value": "下"
+          },
+          {
+            "kind": "Okurigana",
+            "span": {
+              "end": 19,
+              "start": 12
+            },
+            "value": "した"
+          }
+        ],
+        "source": "天［＃「レ」は返り点］下［＃（した）］",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 1,
+                "start": 0
+              },
+              "value": "天"
+            },
+            {
+              "kind": "Note",
+              "range_form": false,
+              "span": {
+                "end": 11,
+                "start": 1
+              },
+              "value": {
+                "content": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 7,
+                      "start": 0
+                    },
+                    "value": "「レ」は返り点"
+                  }
+                ],
+                "raw": "「レ」は返り点"
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 12,
+                "start": 11
+              },
+              "value": "下"
+            },
+            {
+              "kind": "Okurigana",
+              "range_form": false,
+              "span": {
+                "end": 19,
+                "start": 12
+              },
+              "value": {
+                "content": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "した"
+                  }
+                ],
+                "raw": "した"
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

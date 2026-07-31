@@ -4,6 +4,7 @@
 /// Token と Node が保持する。byte ではなく char 数なので、全角文字も1として数える
 /// （`line.chars().nth(start)` 等でそのまま使える）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Span {
     /// 開始 char オフセット（0 起点・含む）
     pub start: usize,

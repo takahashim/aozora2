@@ -1,0 +1,111 @@
+{
+  "note": "装飾（範囲形の太字）",
+  "source": "［＃太字］強調［＃太字終わり］",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "BlockStart",
+            "span": {
+              "end": 5,
+              "start": 0
+            },
+            "value": {
+              "block_type": {
+                "kind": "Style"
+              },
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": "Bold",
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 7,
+              "start": 5
+            },
+            "value": "強調"
+          },
+          {
+            "kind": "BlockEnd",
+            "span": {
+              "end": 15,
+              "start": 7
+            },
+            "value": {
+              "block_type": {
+                "kind": "Style"
+              },
+              "explicit_close": false,
+              "params": {
+                "annotation": null,
+                "font_size": null,
+                "has_close_paren": false,
+                "has_open_paren": false,
+                "is_block": false,
+                "level": null,
+                "midashi_style": null,
+                "style_type": "Bold",
+                "width": null,
+                "wrap_width": null
+              }
+            }
+          }
+        ],
+        "source": "［＃太字］強調［＃太字終わり］",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Style",
+              "range_form": true,
+              "span": {
+                "end": 15,
+                "start": 0
+              },
+              "value": {
+                "children": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 7,
+                      "start": 5
+                    },
+                    "value": "強調"
+                  }
+                ],
+                "style_type": "Bold"
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

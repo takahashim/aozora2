@@ -10,6 +10,8 @@ use crate::token::Span;
 
 /// 前方参照で対象に適用する指定
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum RefSpec {
     /// 装飾（傍点・傍線など）
     Style(StyleType),
@@ -132,6 +134,8 @@ impl RefSpec {
 
 /// インライン要素の種類
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum InlineKind {
     /// 縦中横
     Tcy,

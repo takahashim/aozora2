@@ -18,6 +18,8 @@ use crate::token::Span;
 
 /// ASTノード
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum NodeKind {
     /// プレーンテキスト
     Text(String),
@@ -282,8 +284,10 @@ impl NodeKind {
 
 /// RawASTのノード。各ノードが行内の絶対char spanを自前で持つ。
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Node {
     /// ノード種別と内容。
+    #[cfg_attr(feature = "serde", serde(flatten))]
     pub kind: NodeKind,
     /// ソース行内のchar位置範囲。
     pub span: Span,
@@ -291,6 +295,7 @@ pub struct Node {
 
 /// ルビの方向
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RubyDirection {
     /// 通常（縦書き右、横書き上）
     #[default]
@@ -301,6 +306,7 @@ pub enum RubyDirection {
 
 /// フォントサイズタイプ
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FontSizeType {
     /// 大きな文字
     Dai,

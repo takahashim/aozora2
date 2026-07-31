@@ -1,0 +1,64 @@
+{
+  "note": "字下げ（行スコープ）",
+  "source": "［＃３字下げ］本文の行",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "LineJisage",
+            "span": {
+              "end": 7,
+              "start": 0
+            },
+            "value": {
+              "width": 3
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 11,
+              "start": 7
+            },
+            "value": "本文の行"
+          }
+        ],
+        "source": "［＃３字下げ］本文の行",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "LineWrap",
+        "value": {
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 11,
+                "start": 7
+              },
+              "value": "本文の行"
+            }
+          ],
+          "kinds": [
+            {
+              "kind": "Jisage",
+              "value": {
+                "width": 3
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

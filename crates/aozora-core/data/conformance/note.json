@@ -1,0 +1,122 @@
+{
+  "note": "編集者注（中身にルビ）",
+  "source": "本文［＃現代語訳「松籟《しょうらい》を聞く」］",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "本文"
+          },
+          {
+            "kind": "Note",
+            "span": {
+              "end": 23,
+              "start": 2
+            },
+            "value": "現代語訳「松籟《しょうらい》を聞く」"
+          }
+        ],
+        "source": "本文［＃現代語訳「松籟《しょうらい》を聞く」］",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 2,
+                "start": 0
+              },
+              "value": "本文"
+            },
+            {
+              "kind": "Note",
+              "range_form": false,
+              "span": {
+                "end": 23,
+                "start": 2
+              },
+              "value": {
+                "content": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 5,
+                      "start": 0
+                    },
+                    "value": "現代語訳「"
+                  },
+                  {
+                    "kind": "Ruby",
+                    "range_form": false,
+                    "span": {
+                      "end": 14,
+                      "start": 5
+                    },
+                    "value": {
+                      "base": [
+                        {
+                          "kind": "Text",
+                          "range_form": false,
+                          "span": {
+                            "end": 7,
+                            "start": 5
+                          },
+                          "value": "松籟"
+                        }
+                      ],
+                      "direction": "Right",
+                      "keep_gaiji_notes_in_base": false,
+                      "ruby": [
+                        {
+                          "kind": "Text",
+                          "range_form": false,
+                          "span": {
+                            "end": 13,
+                            "start": 8
+                          },
+                          "value": "しょうらい"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 18,
+                      "start": 14
+                    },
+                    "value": "を聞く」"
+                  }
+                ],
+                "raw": "現代語訳「松籟《しょうらい》を聞く」"
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

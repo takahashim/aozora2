@@ -1,0 +1,76 @@
+{
+  "note": "外字（面区点と U+ 指定）",
+  "source": "陥※［＃「こざとへん＋井」、U+9631、133-8］",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 1,
+              "start": 0
+            },
+            "value": "陥"
+          },
+          {
+            "kind": "Gaiji",
+            "span": {
+              "end": 27,
+              "start": 1
+            },
+            "value": {
+              "description": "「こざとへん＋井」、U+9631、133-8",
+              "had_igeta": true,
+              "jis_code": null,
+              "unicode": "阱"
+            }
+          }
+        ],
+        "source": "陥※［＃「こざとへん＋井」、U+9631、133-8］",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 1,
+                "start": 0
+              },
+              "value": "陥"
+            },
+            {
+              "kind": "Gaiji",
+              "range_form": false,
+              "span": {
+                "end": 27,
+                "start": 1
+              },
+              "value": {
+                "description": "「こざとへん＋井」、U+9631、133-8",
+                "had_igeta": true,
+                "jis_code": null,
+                "unicode": "阱"
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

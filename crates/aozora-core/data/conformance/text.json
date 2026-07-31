@@ -1,0 +1,49 @@
+{
+  "note": "素のテキスト行",
+  "source": "吾輩は猫である。",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 8,
+              "start": 0
+            },
+            "value": "吾輩は猫である。"
+          }
+        ],
+        "source": "吾輩は猫である。",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 8,
+                "start": 0
+              },
+              "value": "吾輩は猫である。"
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}

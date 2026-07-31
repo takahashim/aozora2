@@ -13,6 +13,7 @@ macro_rules! style_types {
     ($( $(#[$meta:meta])* $variant:ident => $name:literal ),+ $(,)?) => {
         /// 装飾タイプ
         #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
         pub enum StyleType {
             $( $(#[$meta])* $variant, )+
         }

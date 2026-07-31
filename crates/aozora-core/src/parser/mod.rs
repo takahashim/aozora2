@@ -25,6 +25,7 @@ pub use ruby_parser::extract_ruby_base;
 /// として存在し、前方参照も未解決。行をまたぐ対応付けと解決は後段（Lowerer＝
 /// `crate::lower::lower_to_blocks`）が行い、[`crate::ast::Block`] のAozora AST木にする。
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RawLine {
     /// もとのソース行（くの字点走査などで参照する）
     pub source: String,
@@ -41,6 +42,7 @@ pub struct RawLine {
 
 /// 文書全体の RawAST（[`RawLine`] の列）。
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RawDoc {
     /// 行の列
     pub lines: Vec<RawLine>,

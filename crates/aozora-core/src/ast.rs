@@ -35,6 +35,8 @@ pub type AozoraAst = Vec<Block>;
 /// 「ブロックだけの行」（`［＃ここから…］` など）は器（[`Block::Nested`]）に
 /// 吸収され、`<br/>` 特別扱いの多くが構造から自然に従う。
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum Block {
     /// 内容の1行。インライン列と、行末の改行制御（互換メタデータ）を持つ。
     Line {
@@ -83,6 +85,8 @@ pub enum Block {
 /// 開始タグがその行の唯一の出力なので改行が付くが、行の途中で開くときは同じ行に
 /// 内容が続くので改行は付かない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum OpenKind {
     /// 開始タグの後に `\r\n` を出す（行頭で開く複数行ブロック）。
     Newline,
@@ -93,6 +97,8 @@ pub enum OpenKind {
 /// 入れ子ブロックの閉じタグの出力形（互換メタデータ）。参照実装 general_output の
 /// `@terprip` 判定を Lower 時に確定させたもの。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum CloseKind {
     /// `</div>`（改行なし）。次の開始タグや本文が同じ出力行に続く暗黙閉じ
     /// （兄弟 jisage・行スコープ chitsuki の implicit_close、先頭 BlockEnd＋後続本文）。
@@ -118,6 +124,7 @@ pub enum CloseKind {
 /// [`CloseKind::BurasageWrapped`] が**同じ値**を使う（後者は外側ぶら下げの幅で
 /// 閉じタグを包む）。取り違えないよう1つの型にまとめている。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct BurasageGeometry {
     /// margin-left em（折り返し字下げ幅。参照 wrap_width）。空（コンマなし）のとき
     /// None → margin-left を空文字（Quirk empty_indent_css）にする。
@@ -138,6 +145,8 @@ impl BurasageGeometry {
 /// 参照実装 INDENT_TYPE ＋ ブロック化しうるスタイルに対応。幅・レベル等の
 /// パラメータは種類ごとに持つ（RawAST の `BlockParams` を種類別に畳んだもの）。
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum BlockKind {
     /// 字下げ（N字下げ）。幅 em。幅が空（`［＃ここから字下げ］` の数字なし）のとき
     /// None。参照は空幅で `class="jisage_" style="margin-left: em"`（不正CSS）を出す
@@ -180,6 +189,8 @@ pub enum BlockKind {
 /// （architecture.md §4.3）。今後 Phase B3 で bare ブロック終了行の `</div><br/>`
 /// など細則を足しうる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum Break {
     /// 行末に `<br />` を出す（`@terprip=true` の通常行）。
     Br,
@@ -196,6 +207,8 @@ pub enum Break {
 /// 解決済み・子を `Vec<Inline>` にした形で写す。`BlockStart`/`BlockEnd`/
 /// `LineJisage`/`UnresolvedReference` 等のマーカー系はAozora ASTには現れない。
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(tag = "kind", content = "value"))]
 pub enum InlineKind {
     /// プレーンテキスト
     Text(String),
@@ -321,8 +334,10 @@ pub enum InlineKind {
 /// 位置として使う側は注記の内側に降りたかどうかを意識すること。
 /// 詳しくは docs/spec-ast.md「span が『実在』でない箇所」。
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Inline {
     /// インライン種別と内容。
+    #[cfg_attr(feature = "serde", serde(flatten))]
     pub kind: InlineKind,
     /// 位置範囲（原則はソース行内の絶対 char 位置。注記の中身だけ相対＝型の doc 参照）。
     pub span: Span,

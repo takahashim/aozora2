@@ -1,0 +1,178 @@
+{
+  "note": "ルビ（親文字の自動抽出と ｜ 明示）",
+  "source": "東京《とうきょう》と｜山手線《やまのてせん》",
+  "raw_ast": {
+    "format": "aozora-rawast/1",
+    "lines": [
+      {
+        "line_no": 0,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 2,
+              "start": 0
+            },
+            "value": "東京"
+          },
+          {
+            "kind": "Ruby",
+            "span": {
+              "end": 9,
+              "start": 2
+            },
+            "value": {
+              "children": [],
+              "direction": "Right",
+              "keep_gaiji_notes_in_base": false,
+              "ruby": [
+                {
+                  "kind": "Text",
+                  "span": {
+                    "end": 8,
+                    "start": 3
+                  },
+                  "value": "とうきょう"
+                }
+              ]
+            }
+          },
+          {
+            "kind": "Text",
+            "span": {
+              "end": 10,
+              "start": 9
+            },
+            "value": "と"
+          },
+          {
+            "kind": "Ruby",
+            "span": {
+              "end": 22,
+              "start": 10
+            },
+            "value": {
+              "children": [
+                {
+                  "kind": "Text",
+                  "span": {
+                    "end": 14,
+                    "start": 11
+                  },
+                  "value": "山手線"
+                }
+              ],
+              "direction": "Right",
+              "keep_gaiji_notes_in_base": false,
+              "ruby": [
+                {
+                  "kind": "Text",
+                  "span": {
+                    "end": 21,
+                    "start": 15
+                  },
+                  "value": "やまのてせん"
+                }
+              ]
+            }
+          }
+        ],
+        "source": "東京《とうきょう》と｜山手線《やまのてせん》",
+        "unclosed_accents": []
+      }
+    ]
+  },
+  "aozora_ast": {
+    "blocks": [
+      {
+        "kind": "Line",
+        "value": {
+          "brk": {
+            "kind": "Br"
+          },
+          "inline": [
+            {
+              "kind": "Ruby",
+              "range_form": false,
+              "span": {
+                "end": 9,
+                "start": 0
+              },
+              "value": {
+                "base": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 2,
+                      "start": 0
+                    },
+                    "value": "東京"
+                  }
+                ],
+                "direction": "Right",
+                "keep_gaiji_notes_in_base": false,
+                "ruby": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 8,
+                      "start": 3
+                    },
+                    "value": "とうきょう"
+                  }
+                ]
+              }
+            },
+            {
+              "kind": "Text",
+              "range_form": false,
+              "span": {
+                "end": 10,
+                "start": 9
+              },
+              "value": "と"
+            },
+            {
+              "kind": "Ruby",
+              "range_form": false,
+              "span": {
+                "end": 22,
+                "start": 10
+              },
+              "value": {
+                "base": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 14,
+                      "start": 11
+                    },
+                    "value": "山手線"
+                  }
+                ],
+                "direction": "Right",
+                "keep_gaiji_notes_in_base": false,
+                "ruby": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 21,
+                      "start": 15
+                    },
+                    "value": "やまのてせん"
+                  }
+                ]
+              }
+            }
+          ],
+          "line": 0
+        }
+      }
+    ],
+    "format": "aozora-ast/1"
+  }
+}
