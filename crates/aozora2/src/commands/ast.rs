@@ -8,6 +8,7 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
 
+use aozora_core::html::Quirks;
 use aozora_core::interchange::{AozoraDocument, RawDocument};
 use clap::Args as ClapArgs;
 
@@ -49,7 +50,11 @@ pub fn run(args: Args) -> io::Result<()> {
     let input = aozora_core::encoding::decode_to_utf8(&bytes);
 
     let json = match args.tree {
-        Tree::Aozora => to_json(&AozoraDocument::from_text(&input), args.pretty),
+        // CLI は互換フラグを出していないので、参照実装に一致する既定で畳む。
+        Tree::Aozora => to_json(
+            &AozoraDocument::from_text(&input, &Quirks::default()),
+            args.pretty,
+        ),
         Tree::Raw => to_json(&RawDocument::from_text(&input), args.pretty),
     }?;
 
@@ -90,7 +95,7 @@ pub fn read_document(path: Option<&std::path::Path>) -> io::Result<AozoraDocumen
     match probe.get("format").and_then(|v| v.as_str()) {
         Some(aozora_core::interchange::AOZORA_FORMAT) => serde_json::from_str(&text).map_err(bad),
         Some(aozora_core::interchange::RAWAST_FORMAT) => serde_json::from_str::<RawDocument>(&text)
-            .map(|d| d.to_aozora())
+            .map(|d| d.to_aozora(&Quirks::default()))
             .map_err(bad),
         other => Err(io::Error::new(
             io::ErrorKind::InvalidData,

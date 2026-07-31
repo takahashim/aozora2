@@ -134,7 +134,7 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
 /// `lower_to_blocks`→`BlockRenderer` で描画する（BlockManager 非依存）。
 /// フッタ「表記について」の材料は全セクションを通して描画の副作用で溜まる。
 pub fn render_via_blocks(input: &str, options: &RenderOptions) -> String {
-    crate::interchange::AozoraDocument::from_text(input).to_html(options)
+    crate::interchange::AozoraDocument::from_text(input, &options.quirks).to_html(options)
 }
 
 #[cfg(test)]
@@ -209,6 +209,31 @@ mod tests {
             off.contains("<h2 class=\"author\">著者&lt;A&amp;B&gt;</h2>"),
             "実際: {off}"
         );
+    }
+
+    /// quirk unclosed_accent_break: 対応する `〕` が無いまま行末に達した `〔` を、
+    /// 参照実装は記法の途中として扱い `"<br />\r\n"` を積んで改行ごと食べる。その行は
+    /// 出力されず内容が次の行と 1 つの出力単位になるので、単なる亀甲括弧でも内容や
+    /// `<br />` が隣のブロックの内側へ移る。既定（オン）では再現し、オフではただの
+    /// 文字として扱う（実文書 43670・60380・60385）。
+    #[test]
+    fn test_unclosed_accent_break_quirk() {
+        // 行スコープの包み: `<br />` が `</div>` の内側に入るか外に出るか（60380/60385）。
+        let wrap = "タイトル\r\n\r\n［＃地から１字上げ］〔一九四六年『来訪者』］\r\n\r\n";
+        let on = convert(wrap, &RenderOptions::default());
+        assert!(on.contains("〔一九四六年『来訪者』］<br />\r\n</div>"), "実際: {on}");
+
+        let off = convert(wrap, &RenderOptions::new().with_quirks(Quirks::none()));
+        assert!(off.contains("〔一九四六年『来訪者』］</div>"), "実際: {off}");
+        assert!(!off.contains("］<br />\r\n</div>"), "実際: {off}");
+
+        // 次の行がブロック命令: マージのぶんだけ `<br />` が 1 つ増えるか否か。
+        let block = "タイトル\r\n\r\n〔未閉じ\r\n［＃ここから２字下げ］\r\n中\r\n［＃ここで字下げ終わり］\r\n";
+        let on = convert(block, &RenderOptions::default());
+        assert!(on.contains("〔未閉じ<br />\r\n<br />\r\n<div class=\"jisage_2\""), "実際: {on}");
+
+        let off = convert(block, &RenderOptions::new().with_quirks(Quirks::none()));
+        assert!(off.contains("〔未閉じ<br />\r\n<div class=\"jisage_2\""), "実際: {off}");
     }
 
     /// quirk raw_image_alt: 参照実装 Tag::Img は alt を無エスケープで出す。

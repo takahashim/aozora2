@@ -46,6 +46,13 @@ pub struct Quirks {
     /// `../../../gaiji//1-07/…` と**スラッシュが二重**になる（他の外字画像は
     /// `"#{@gaiji_dir}#{@folder}/…"` で一重）。オフにすると一重にする。
     pub dakuten_katakana_double_slash: bool,
+    /// 対応する `〕` が無いまま行末に達した `〔` を、参照実装は**記法の途中**として扱う。
+    /// `AccentParser#general_output` が `"<br />\r\n"` を積んで改行ごと食べるため、その行は
+    /// 出力されず内容が次の行と 1 つの出力単位になる。結果、`〔` が単なる亀甲括弧
+    /// （アクセント文字を含まない）でも、内容や `<br />` が隣のブロックの**内側へ移る**
+    /// （43670・60380・60385）。作者が意図しえない差なので Quirk とする。
+    /// オフにすると未閉じ `〔` をただの文字として扱い、行のマージも起こさない。
+    pub unclosed_accent_break: bool,
 }
 
 impl Default for Quirks {
@@ -59,6 +66,7 @@ impl Default for Quirks {
             empty_indent_css: true,
             raw_image_alt: true,
             dakuten_katakana_double_slash: true,
+            unclosed_accent_break: true,
         }
     }
 }
@@ -74,6 +82,7 @@ impl Quirks {
             empty_indent_css: false,
             raw_image_alt: false,
             dakuten_katakana_double_slash: false,
+            unclosed_accent_break: false,
         }
     }
 }

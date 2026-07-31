@@ -5,6 +5,7 @@
 
 #![cfg(feature = "serde")]
 
+use aozora_core::html::Quirks;
 use aozora_core::html::{convert, RenderOptions};
 use aozora_core::interchange::{AozoraDocument, RawDocument};
 
@@ -31,7 +32,7 @@ fn expected(source: &str) -> String {
 #[test]
 fn aozora_document_round_trips_through_json() {
     for source in [SOURCE, SOURCE_AFTER_TEXT] {
-        let doc = AozoraDocument::from_text(source);
+        let doc = AozoraDocument::from_text(source, &Quirks::default());
         let json = serde_json::to_string(&doc).expect("直列化できる");
         let back: AozoraDocument = serde_json::from_str(&json).expect("読み戻せる");
         assert_eq!(back, doc, "JSON を往復しても同じ文書");
@@ -62,7 +63,7 @@ fn raw_document_round_trips_through_json() {
 /// 木の外から持ち回るのはヘッダだけ。節の切り分けが効いているかも見る。
 #[test]
 fn document_carries_what_the_trees_do_not_model() {
-    let doc = AozoraDocument::from_text(SOURCE);
+    let doc = AozoraDocument::from_text(SOURCE, &Quirks::default());
     assert_eq!(doc.header.title.as_deref(), Some("作品名"), "題名");
     assert_eq!(doc.header.author.as_deref(), Some("著者名"), "著者");
     assert!(
@@ -72,7 +73,7 @@ fn document_carries_what_the_trees_do_not_model() {
     assert!(!doc.bibliographical.is_empty(), "底本情報");
 
     // `［＃本文終わり］` があると、以降は底本行も含めて after_text に入る。
-    let with_after = AozoraDocument::from_text(SOURCE_AFTER_TEXT);
+    let with_after = AozoraDocument::from_text(SOURCE_AFTER_TEXT, &Quirks::default());
     assert!(!with_after.after_text.is_empty(), "本文終わり後");
     assert!(
         with_after.bibliographical.is_empty(),

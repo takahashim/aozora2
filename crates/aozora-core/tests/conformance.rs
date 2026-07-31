@@ -15,6 +15,7 @@
 
 use std::path::PathBuf;
 
+use aozora_core::html::Quirks;
 use aozora_core::interchange::RawDocument;
 use aozora_core::lower::lower_to_blocks;
 use aozora_core::parser::parse_document_raw;
@@ -43,7 +44,7 @@ struct Fixture {
 fn build(source: &str) -> (serde_json::Value, serde_json::Value) {
     let text = source.replace('\n', "\r\n");
     let raw = RawDocument::from_text(&text);
-    let aozora = raw.to_aozora();
+    let aozora = raw.to_aozora(&Quirks::default());
     (
         serde_json::to_value(&raw).expect("直列化できる"),
         serde_json::to_value(&aozora).expect("直列化できる"),

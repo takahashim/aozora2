@@ -15,8 +15,9 @@ use crate::ast::Block;
 use crate::document::{
     after_text_range, bibliographical_range, body_line_indices, extract_header_info, HeaderInfo,
 };
-use crate::html::{render_document_from_sections, DocumentSections, RenderOptions};
+use crate::html::{render_document_from_sections, DocumentSections, Quirks, RenderOptions};
 use crate::lower::lower_to_blocks;
+use crate::node::NodeKind;
 use crate::parser::{parse_document_raw, RawDoc, RawLine};
 
 /// RawAST 交換形式の名前
@@ -86,7 +87,11 @@ impl RawDocument {
     }
 
     /// 節ごとに畳んで Aozora AST の文書にする。
-    pub fn to_aozora(&self) -> AozoraDocument {
+    ///
+    /// `quirks` を取るのは [`Quirks::unclosed_accent_break`] のため。未閉じ `〔` を
+    /// ただの文字として扱うかどうかは**畳み方**（行をマージするか）を変えるので、
+    /// 描画ではなくここで効く。RawAST 側は原文どおりのまま変わらない。
+    pub fn to_aozora(&self, quirks: &Quirks) -> AozoraDocument {
         let lines: Vec<&str> = self.lines.iter().map(|l| l.source.as_str()).collect();
 
         // 参照実装が補う空行（原文に対応が無い行）は、空の RawLine を作って埋める。
@@ -95,13 +100,23 @@ impl RawDocument {
             nodes: Vec::new(),
             line_no,
         };
+        // Quirk オフなら未閉じ `〔` をただの文字にする。`UnclosedAccentBreak` を落とすと
+        // 行マージの引き金も素の `<br />` も同時に消えるので、これ 1 つで足りる。
+        let take = |i: usize| -> RawLine {
+            let mut line = self.lines[i].clone();
+            if !quirks.unclosed_accent_break {
+                line.nodes
+                    .retain(|n| !matches!(n.kind, NodeKind::UnclosedAccentBreak));
+            }
+            line
+        };
         let main_text: Vec<RawLine> = body_line_indices(&lines)
             .into_iter()
             .enumerate()
-            .map(|(n, i)| i.map_or_else(|| empty(n), |i| self.lines[i].clone()))
+            .map(|(n, i)| i.map_or_else(|| empty(n), take))
             .collect();
         let slice = |range: Option<std::ops::Range<usize>>| -> Vec<RawLine> {
-            range.map_or_else(Vec::new, |r| self.lines[r].to_vec())
+            range.map_or_else(Vec::new, |r| r.map(take).collect())
         };
         let after_text = slice(after_text_range(&lines));
         let bibliographical = slice(bibliographical_range(&lines));
@@ -120,14 +135,14 @@ impl RawDocument {
 
     /// 完全な HTML 文書を組み立てる（畳んでから描く）。
     pub fn to_html(&self, options: &RenderOptions) -> String {
-        self.to_aozora().to_html(options)
+        self.to_aozora(&options.quirks).to_html(options)
     }
 }
 
 impl AozoraDocument {
-    /// テキストから作る。
-    pub fn from_text(input: &str) -> Self {
-        RawDocument::from_text(input).to_aozora()
+    /// テキストから作る。`quirks` の意味は [`RawDocument::to_aozora`] を参照。
+    pub fn from_text(input: &str, quirks: &Quirks) -> Self {
+        RawDocument::from_text(input).to_aozora(quirks)
     }
 
     /// 完全な HTML 文書を組み立てる。
