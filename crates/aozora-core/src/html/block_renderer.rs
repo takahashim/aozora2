@@ -443,7 +443,7 @@ impl<'a> BlockRenderer<'a> {
         match &inline.kind {
             InlineKind::Text(s) => out.push_str(&html_escape(s)),
             // 未閉じ `〔` が行末に残した素の改行（参照 AccentParser#general_output）。
-            InlineKind::HardBreak => out.push_str("<br />\r\n"),
+            InlineKind::UnclosedAccentBreak => out.push_str("<br />\r\n"),
             InlineKind::Style {
                 children,
                 style_type,
@@ -980,7 +980,7 @@ fn inline_has_text(inline: &Inline) -> bool {
         // 参照 apply_warichu は状態を持たず、開閉を素の文字列でバッファに積む。
         InlineKind::Warichu { .. } => true,
         // 未閉じ `〔` が残す `"<br />\r\n"` も素の String としてバッファに載る。
-        InlineKind::HardBreak => true,
+        InlineKind::UnclosedAccentBreak => true,
         // 範囲形（`［＃中見出し］…［＃中見出し終わり］`）は、参照実装が**開始タグの
         // 文字列そのもの**を push_char でバッファへ積むので、中身が空でも String が
         // 残る（`［＃傍点］［＃傍点終わり］` もぶら下げに包まれる。実測）。

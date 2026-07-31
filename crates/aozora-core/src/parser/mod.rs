@@ -186,7 +186,7 @@ fn parse_token_with_context(
 fn parse_token_kinds(token: &Token) -> Vec<NodeKind> {
     match &token.kind {
         TokenKind::Text(text) => vec![NodeKind::Text(text.clone())],
-        TokenKind::HardBreak => vec![NodeKind::HardBreak],
+        TokenKind::UnclosedAccentBreak => vec![NodeKind::UnclosedAccentBreak],
 
         TokenKind::Ruby { children } => {
             // ルビの親文字はここでは未解決

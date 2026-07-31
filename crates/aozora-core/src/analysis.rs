@@ -449,7 +449,7 @@ fn classify(node: &Node) -> Option<SemTokenKind> {
     match &node.kind {
         NodeKind::Text(_) => None,
         // 素の改行は原文に対応する文字が無い（アクセントの行末効果）。色は付けない。
-        NodeKind::HardBreak => None,
+        NodeKind::UnclosedAccentBreak => None,
         NodeKind::Ruby { .. } => Some(SemTokenKind::Ruby),
         NodeKind::Midashi { .. } => Some(SemTokenKind::Heading),
         NodeKind::Style { .. } => Some(SemTokenKind::Emphasis),

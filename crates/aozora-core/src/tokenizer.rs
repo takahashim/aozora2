@@ -57,11 +57,11 @@ impl Tokenizer {
             ));
         }
         // 未閉じ `〔` が行末まで達したら、参照が積む `"<br />\r\n"` に当たる token を
-        // 内容の末尾に置く（[`TokenKind::HardBreak`]）。旗ではなく内容として持つので、
+        // 内容の末尾に置く（[`TokenKind::UnclosedAccentBreak`]）。旗ではなく内容として持つので、
         // 後段（RawAST の Node・Aozora AST の Inline）もそのまま写せる。
         if self.unclosed_accent_to_eol {
             let end = self.base + self.chars.len();
-            out.push(Token::new(TokenKind::HardBreak, Span::new(end, end)));
+            out.push(Token::new(TokenKind::UnclosedAccentBreak, Span::new(end, end)));
         }
         // ｜ は字句段階では単なるマーカー（RubyPrefix）として出るだけ。ここで
         // 直後のルビと畳んで明示ルビ（PrefixedRuby）を確定する。tokenize_children
@@ -460,7 +460,7 @@ mod tests {
         Command {
             content: String,
         },
-        HardBreak,
+        UnclosedAccentBreak,
         Gaiji {
             description: String,
             had_igeta: bool,
@@ -495,7 +495,7 @@ mod tests {
                 TokenKind::Accent { children } => Self::Accent {
                     children: children.into_iter().map(Self::from).collect(),
                 },
-                TokenKind::HardBreak => Self::HardBreak,
+                TokenKind::UnclosedAccentBreak => Self::UnclosedAccentBreak,
                 TokenKind::RubyPrefix => {
                     unreachable!("RubyPrefix markers are folded away inside tokenize()")
                 }
@@ -537,7 +537,7 @@ mod tests {
                 TokenKind::Text(_)
                 | TokenKind::Command { .. }
                 | TokenKind::Gaiji { .. }
-                | TokenKind::HardBreak
+                | TokenKind::UnclosedAccentBreak
                 | TokenKind::RubyPrefix => {}
             }
         }
@@ -646,7 +646,7 @@ mod tests {
         // AccentParser が `"<br />\r\n"` をバッファへ積むのに当たる）。
         let tokens = plain("〔Pardonnez a` mon");
         assert!(
-            matches!(tokens.as_slice(), [Token::Accent { .. }, Token::HardBreak]),
+            matches!(tokens.as_slice(), [Token::Accent { .. }, Token::UnclosedAccentBreak]),
             "未閉じ 〔 がトップレベルでアクセントブロック＋素の改行にならない: {tokens:?}"
         );
         // 入れ子（アクセント内容の再トークナイズ）では未閉じ 〔 はリテラル。

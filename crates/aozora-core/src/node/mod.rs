@@ -195,8 +195,9 @@ pub enum NodeKind {
         /// JISコードの末尾番号
         num: String,
     },
-    /// 行の途中に置かれる素の改行（[`crate::token::TokenKind::HardBreak`] 由来）。
-    HardBreak,
+    /// 未閉じ `〔` が行末に達した跡（[`crate::token::TokenKind::UnclosedAccentBreak`] 由来）。
+    /// 記法ではなく入力側の誤りの産物。
+    UnclosedAccentBreak,
 }
 
 impl NodeKind {
@@ -222,7 +223,7 @@ impl NodeKind {
             | NodeKind::Caption { children }
             | NodeKind::Midashi { children, .. } => Some(children),
             // スパン要素になれない（葉・マーカー・描画内容）。
-            NodeKind::HardBreak
+            NodeKind::UnclosedAccentBreak
             | NodeKind::Text(_)
             | NodeKind::Gaiji { .. }
             | NodeKind::Accent { .. }
@@ -255,7 +256,7 @@ impl NodeKind {
             | NodeKind::Yokogumi { children }
             | NodeKind::Caption { children }
             | NodeKind::Midashi { children, .. } => vec![children],
-            NodeKind::HardBreak => vec![],
+            NodeKind::UnclosedAccentBreak => vec![],
             NodeKind::AnnotationEnd { content, .. } => vec![content],
             // 子を持たない。
             NodeKind::Text(_)
@@ -430,7 +431,7 @@ impl Node {
     /// ノードからプレーンテキストを抽出
     pub fn to_text(&self) -> String {
         match &self.kind {
-            NodeKind::HardBreak => String::new(),
+            NodeKind::UnclosedAccentBreak => String::new(),
             NodeKind::Text(s) => s.clone(),
             NodeKind::Ruby { children, .. } => children.iter().map(|n| n.to_text()).collect(),
             NodeKind::Style { children, .. } => children.iter().map(|n| n.to_text()).collect(),

@@ -67,7 +67,7 @@ fn block_kind_emits_closing_tag(kind: &BlockKind) -> bool {
 /// 同行見出し・窓見出しは参照も旗を立てないので対象外。
 fn contains_normal_midashi(inlines: &[Inline]) -> bool {
     inlines.iter().any(|inline| match &inline.kind {
-        InlineKind::HardBreak => false,
+        InlineKind::UnclosedAccentBreak => false,
         InlineKind::Midashi { style, .. } => *style == MidashiStyle::Normal,
         InlineKind::BlockInline {
             kind: BlockKind::Midashi { style, .. },

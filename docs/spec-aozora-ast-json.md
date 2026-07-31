@@ -92,10 +92,10 @@ RawAST 交換形式と同一（[spec-rawast-json.md](spec-rawast-json.md) の同
   Unicode スカラー値を 1 と数える（`𥥔` U+25954 は BMP 外だが 1 char）。
 - 0 起点。
 - **行マージした行では `span` の原点が `Block.line` と違う**。未閉じ `〔` の行と
-  ぶら下げを開く行は、内容が次の行と 1 つの `Line` にまとまる（4 章
-  `LineWrap.unclosed_accent_to_eol` と 6 章 `HardBreak` を参照）。このとき前半の
+  ぶら下げを開く行は、内容が次の行と 1 つの `Line` にまとまる（6 章
+  `UnclosedAccentBreak` を参照）。このとき前半の
   インラインの `span` は**前の行**の位置、`Line.line` は**後の行**の番号になる。
-  `HardBreak` を含む行はマージ済みなので、char 位置を使う消費者はそれを見て避けること。
+  `UnclosedAccentBreak` を含む行はマージ済みなので、char 位置を使う消費者はそれを見て避けること。
 
 ### 文字列
 
@@ -199,7 +199,7 @@ Block =
 - `Nested` と `LineWrap` の違いは、包む範囲が複数行か 1 行かだけ。
 - `LineWrap.kinds` が列なのは、行スコープの字下げを 1 行に複数書けるため
   （`［＃２字下げ］あ［＃５字下げ］い`）。**外側から内側の順**に並ぶ。
-- アクセント記法の途中で行末に達した行は、内容の末尾に `HardBreak`（6 章）が入る。
+- アクセント記法の途中で行末に達した行は、内容の末尾に `UnclosedAccentBreak`（6 章）が入る。
   行スコープの包みでは、それが閉じ `</div>` より前の素の改行になる。
 
 ```json
@@ -276,15 +276,19 @@ Inline = { kind: 構成子名, value: 内容?, span: Span, range_form: Bool }
 | `Warichu` | `{ open: Bool, suppress_paren: Bool }` | 割り注（開閉マーカー） |
 | `ChitsukiInline` | `{ width: Nat, children: Inline* }` | 行途中で開き行末で閉じる地付き |
 | `BlockInline` | `{ kind: BlockKind, children: Inline* }` | 同一行で開閉するブロック形 |
-| `HardBreak` | （値なし） | 行の途中に置かれる素の改行 |
+| `UnclosedAccentBreak` | （値なし） | 未閉じ `〔` が行末に達した跡（記法ではない） |
 
 - `StyleType` の値は 2 章の一覧を参照。
 - `Note` / `Okurigana` の `content` は解決済みのインライン列で、`raw` は元の注記文字列。
   描画には `content` を使う。`raw` は診断・エディタ支援のための添え物。
-- `HardBreak` は**行末の改行ではなく行の内容の一部**である。アクセント記法の途中で
-  行末に達した行が次の行と 1 つの出力単位にまとまるとき、その境目に入る（4 章
-  `LineWrap.unclosed_accent_to_eol` と RawAST の同名フィールドを参照）。行末の改行を
-  出すかどうかは `Line.brk`（互換メタデータ）が別に持つ。
+- `UnclosedAccentBreak` は**記法ではない**。青空文庫記法に「ここで改行」に当たる書き方は
+  無く、これを生むのは対応する `〕` が無いまま行末に達した `〔`——つまり**入力側の誤り**
+  だけである（元の変換系はそこで `"<br />\r\n"` という文字列をバッファへ積む）。名前を
+  効果ではなく原因にしてあるのは、正当な記法と読み違えないため。
+- 行がこれで終わっているとき、そのマージ単位の後半が空なら閉じタグの前に改行が 2 つ
+  並ぶ（元の変換系の挙動をそのまま写している）。
+- 位置づけとしては**行末の改行ではなく行の内容の一部**で、マージした 2 行の境目に入る。
+  行末の改行を出すかどうかは `Line.brk`（互換メタデータ）が別に持つ。
 
 ```json
 {

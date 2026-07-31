@@ -149,7 +149,7 @@ pub fn lower_to_blocks_with_diagnostics(raw: &RawDoc) -> (AozoraAst, Vec<LowerDi
                 //
                 // 吸収した次の行が空行のときだけ扱う。中身のある行を本当にこの div の中へ
                 // 畳む必要がある入力はオラクルに現れないので、正しい姿を決められない。
-                // 末尾の `HardBreak` は行の内容としてそのまま包みの中に入るので、
+                // 末尾の `UnclosedAccentBreak` は行の内容としてそのまま包みの中に入るので、
                 // 閉じ `</div>` より前に `<br />` が出る（60380/60385）。次の行が
                 // 空行ならそれも吸収する（中身のある行を畳む必要がある入力は
                 // オラクルに現れないので、正しい姿を決められない）。
@@ -602,12 +602,12 @@ enum LineKind {
     Content,
 }
 
-/// 行が素の改行（[`NodeKind::HardBreak`]）で終わるか。
+/// 行が素の改行（[`NodeKind::UnclosedAccentBreak`]）で終わるか。
 ///
 /// 未閉じ `〔` が行末まで達したときトークナイザが置く。参照実装が
 /// `"<br />\r\n"` をバッファへ積むのに当たり、その行は次の行と 1 つの出力単位になる。
 fn ends_with_hard_break(nodes: &[Node]) -> bool {
-    matches!(nodes.last().map(|n| &n.kind), Some(NodeKind::HardBreak))
+    matches!(nodes.last().map(|n| &n.kind), Some(NodeKind::UnclosedAccentBreak))
 }
 
 /// この行がぶら下げ（折り返し字下げ）を開く行なら、(開始マーカーの位置, 種類) を返す。

@@ -97,7 +97,7 @@ fn inline_children(kind: &InlineKind) -> Vec<&[Inline]> {
         | InlineKind::Warichu { .. }
         | InlineKind::Kaeriten(_)
         | InlineKind::DakutenKatakana { .. }
-        | InlineKind::HardBreak => vec![],
+        | InlineKind::UnclosedAccentBreak => vec![],
     }
 }
 

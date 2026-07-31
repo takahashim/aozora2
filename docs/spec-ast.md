@@ -94,7 +94,7 @@ Inline には実在しない span が混じる**ので、位置として使う�
   それを写して**2 つのソース行を 1 つの `Block::Line` に畳む**。このとき前半のインラインの
   span は**前の行**の位置、`Block.line` は**後の行**の番号になる。`Block.line` を原点にして
   span を引くと誤った行に着地するので、行マージした行では char 位置を使わないこと
-  （`HardBreak` がその境目に入っているので、含む行はマージ済みと分かる）。
+  （`UnclosedAccentBreak` がその境目に入っているので、含む行はマージ済みと分かる）。
 
 ---
 
@@ -159,8 +159,10 @@ RawLine を構成する平坦ノード。**入れ子はマーカーで表し**�
 - `BlockParams { width, wrap_width, level, midashi_style, font_size, style_type, is_block,
   has_open_paren, has_close_paren, annotation }`（開始/終了タグ生成に必要な素材。全 10 項目）
 
-`NodeKind` には `HardBreak`（行の途中に置かれる素の改行）もある。未閉じ `〔` が行末まで
-達したときトークナイザが `TokenKind::HardBreak` を出し、そのまま Node・Inline へ写る。
+`NodeKind` には `UnclosedAccentBreak` もある。未閉じ `〔` が行末まで達したときトークナイザが
+`TokenKind::UnclosedAccentBreak` を出し、そのまま Node・Inline へ写る。**記法ではない**——
+青空文庫記法に「ここで改行」に当たる書き方は無く、これを生むのは入力側の誤りだけなので、
+効果（素の `<br />`）ではなく原因を名前にしてある。
 
 ### 前方参照の指定（`RefSpec`）
 
@@ -254,7 +256,7 @@ enum InlineKind {
     DakutenKatakana { num },
     ChitsukiInline { width, children },                // 行途中で開く地付き（行末で閉じる）
     BlockInline { kind: BlockKind, children },          // 同一行で開閉するブロック形コマンド
-    HardBreak,                                          // 行の途中に置かれる素の <br />（後述の行マージ）
+    UnclosedAccentBreak,                                // 未閉じ 〔 が行末に達した跡（記法ではない。後述の行マージ）
 }
 ```
 
@@ -344,7 +346,7 @@ enum CloseKind { NoBreak, Newline, BareBreak,
   **前後**にあった本文はどちらも次の行と同じ per-line ぶら下げ div に入る。
 - `AccentParser#general_output` は対応する `〕` が無いまま行末に達すると、文字列
   `"<br />\r\n"` を積んで戻る（改行は AccentParser が食べている）。参照が**旗ではなく
-  内容**として持つのに合わせ、こちらも行の末尾に `HardBreak` を置く
+  内容**として持つのに合わせ、こちらも行の末尾に `UnclosedAccentBreak` を置く
   （`TokenKind`/`NodeKind`/`InlineKind` に同名の変種があり、素通しで写る）。
   Lowerer はその末尾ノードを見て次の行とマージする。
 

@@ -1,5 +1,5 @@
 {
-  "note": "アクセント記法の途中で行末に達した行は、内容を次の行へ持ち越して 1 つの出力単位になる（行末に素の改行 HardBreak が入る）",
+  "note": "アクセント記法の途中で行末に達した行は、内容を次の行へ持ち越して 1 つの出力単位になる（行末に素の改行 UnclosedAccentBreak が入る）",
   "source": "題\n著\n\n〔未閉じの行\n次の行",
   "raw_ast": {
     "format": "aozora-rawast",
@@ -57,7 +57,7 @@
             "value": "未閉じの行"
           },
           {
-            "kind": "HardBreak",
+            "kind": "UnclosedAccentBreak",
             "span": {
               "end": 6,
               "start": 6
@@ -130,7 +130,7 @@
               "value": "未閉じの行"
             },
             {
-              "kind": "HardBreak",
+              "kind": "UnclosedAccentBreak",
               "range_form": false,
               "span": {
                 "end": 6,

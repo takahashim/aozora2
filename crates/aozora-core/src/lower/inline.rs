@@ -29,7 +29,7 @@ pub fn inline_from_node(node: &Node) -> Option<Inline> {
 fn inline_from_node_at(node: &Node, depth: usize) -> Option<Inline> {
     let out = match &node.kind {
         NodeKind::Text(s) => InlineKind::Text(s.clone()),
-        NodeKind::HardBreak => InlineKind::HardBreak,
+        NodeKind::UnclosedAccentBreak => InlineKind::UnclosedAccentBreak,
         NodeKind::Ruby {
             children,
             ruby,
