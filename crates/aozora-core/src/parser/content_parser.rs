@@ -31,7 +31,11 @@ pub fn try_parse_image(content: &str) -> Option<CommandResult> {
         return None;
     }
 
-    let (width, height) = parse_image_dimensions(parts.get(1).copied());
+    // 参照 `PAT_IMAGE = (.*)（(fig.+\.png)(、横([0-9]+)×縦([0-9]+))*）入る` の
+    // 寸法部は「無い」か「`、横N×縦N` の繰り返し」のどちらかしかない。数字を欠いた
+    // `、横×縦` は正規表現ごと一致せず、画像にならずに注記のまま出る
+    // （実文書 001054/18371 の `（fig18371_01.png、横×縦）入る`）。
+    let (width, height) = parse_image_dimensions(&parts[1..])?;
 
     // 説明部分を取得
     let desc_part = content[..info_start].trim();
@@ -64,32 +68,24 @@ pub fn contains_fig_png(content: &str) -> bool {
 }
 
 /// 画像サイズを解析
-fn parse_image_dimensions(size_part: Option<&str>) -> (Option<u32>, Option<u32>) {
-    let Some(size_part) = size_part else {
-        return (None, None);
-    };
-
-    let mut width = None;
-    let mut height = None;
-
-    // 横N×縦M パターン
-    if let Some(w_pos) = size_part.find('横') {
-        if let Some(x_pos) = size_part.find('×') {
-            let w_str = &size_part[w_pos + '横'.len_utf8()..x_pos];
-            width = w_str.parse().ok();
-        }
+fn parse_image_dimensions(size_parts: &[&str]) -> Option<(Option<u32>, Option<u32>)> {
+    // 寸法指定が無い形（`（fig….png）入る`）。参照の `(...)*` が 0 回の場合。
+    if size_parts.is_empty() {
+        return Some((None, None));
     }
 
-    if let Some(h_pos) = size_part.find('縦') {
-        let h_str = &size_part[h_pos + '縦'.len_utf8()..];
-        height = h_str
-            .trim_end_matches(|c: char| !c.is_ascii_digit())
-            .parse()
-            .ok();
+    // 1 つでも `横N×縦N` の形をしていなければ PAT_IMAGE 全体が一致しない。
+    let mut last = None;
+    for part in size_parts {
+        let caps = PAT_IMAGE_SIZE.captures(part)?;
+        last = Some((caps[1].parse().ok(), caps[2].parse().ok()));
     }
-
-    (width, height)
+    last
 }
+
+/// 参照 `PAT_IMAGE` の寸法部 `、横([0-9]+)×縦([0-9]+)`（`、` は分割済み）。
+/// Ruby(SJIS) の `[0-9]` は半角数字のみ。
+static PAT_IMAGE_SIZE: Lazy<Regex> = Lazy::new(|| Regex::new(r"^横([0-9]+)×縦([0-9]+)$").unwrap());
 
 /// 代替テキストを抽出
 /// 画像 alt からアクセント 〔...〕 の中身を落とす。

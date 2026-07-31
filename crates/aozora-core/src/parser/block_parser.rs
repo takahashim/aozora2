@@ -65,6 +65,11 @@ pub fn parse_block_start(content: &str) -> CommandResult {
         // 見出しの場合はレベルも設定
         if block_type == BlockType::Midashi {
             params.level = MidashiLevel::from_command(content);
+            // 参照 apply_midashi は行内形（`［＃窓中見出し］`）でもブロック形
+            // （`［＃ここから窓中見出し］`）でも同じ命令文字列から 窓/同行 を見る。
+            // ここで拾い忘れると `mado-naka-midashi` が `naka-midashi` になる
+            // （実文書 001402/49946）。
+            params.midashi_style = Some(MidashiStyle::from_command(content));
         }
         CommandResult::BlockStart { block_type, params }
     } else {
@@ -181,9 +186,10 @@ pub fn try_parse_line_indent(content: &str) -> Option<CommandResult> {
     // 参照の正規表現は `(\d*)字下げ` で**数字なしにも一致する**（幅が空になる）。
     // 空幅は不正な CSS `margin-left: em` を生むが、参照がそう出すので幅 None で通す
     // （Quirk empty_indent_css）。ここで None を返して注記化すると div ごと消える。
+    // 参照の `(\d*)字下げ` は**隣接する数字だけ**を取る。離れた場所の数字は拾わない
+    // （例:`最後の５行は底本では字下げなし` は 5 ではなく空幅。実文書 000096/936）。
     let normalized = convert_japanese_number(content);
-    let width =
-        extract_number_before(&normalized, "字下げ").or_else(|| extract_number(&normalized));
+    let width = extract_number_before(&normalized, "字下げ");
     Some(CommandResult::LineIndent { width })
 }
 

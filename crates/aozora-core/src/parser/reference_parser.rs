@@ -192,28 +192,30 @@ fn try_parse_annotation_ruby(target: &str, spec: &str) -> Option<CommandResult> 
     // 「の注記」の後ろに続きがあってもよい（例:「（ママ）」の注記、正しくは「十三」／
     // 「（ママ）」の注記がある）。従来は spec.ends_with("の注記") に限っていたため、
     // 末尾に続きがある注記ルビを取りこぼして注記化していた。
-    if !spec.contains("」の注記") {
+    // 参照は入れ子の ［＃…］ を**先に解決してタグにしてから** PAT_CHUUKI を当てるので、
+    // 照合には入れ子を除いた文字列を使う。除いた結果 `」の注記` が消えるなら外側は
+    // 注記のまま（例:「書卓が」は底本では「□□［＃「□□」に「二字欠落」の注記］が」）。
+    // 逆に外側に `」の注記` が残るなら、入れ子は解決されてルビ文字の一部になる
+    // （例:「シー・ラヴァーズ」に「16［＃「16」は縦中横］日に結成式」の注記）。
+    let (flat, map) = strip_nested_commands(spec);
+    if !flat.contains("」の注記") {
         return None;
     }
 
     // 「」で囲まれた注記内容を抽出する。参照実装の /「(.+?)」の注記/ と同じく、
     // 「」の注記」が続く位置まで伸ばす。注記の中に「」が入れ子になっていても切らない。
-    let start = spec.find('「')? + '「'.len_utf8();
-    let end = spec[start..]
+    // 位置は入れ子を除いた文字列で求め、切り出しは入れ子を含む元の文字列から行う。
+    let flat_start = flat.find('「')? + '「'.len_utf8();
+    let flat_end = flat[flat_start..]
         .match_indices("」の注記")
-        .map(|(i, _)| start + i)
+        .map(|(i, _)| flat_start + i)
         .next()?;
-    if end <= start {
+    if flat_end <= flat_start {
         return None;
     }
 
-    let annotation = &spec[start..end];
-    // 抽出した注記内容に入れ子コマンド ［＃ が含まれる場合は注記ルビにしない。
-    // 参照実装は入れ子の ［＃…］ を先に解決してから PAT_CHUUKI を当てるので、
-    // 例:「書卓が」は底本では「□□［＃「□□」に「二字欠落」の注記］が」 のような
-    // 入れ子注記を持つ命令は外側の「」の注記」に一致しない（＝外側は注記のまま）。
-    // こちらは平坦な文字列照合なので、注記内容に ［＃ があれば入れ子とみなし除外する。
-    if annotation.contains("［＃") {
+    let annotation = &spec[map[flat_start]..map[flat_end]];
+    if annotation.is_empty() {
         return None;
     }
     Some(CommandResult::AnnotationRuby {
@@ -262,11 +264,21 @@ fn is_rest_note_spec(spec: &str) -> bool {
 /// `contains` で見る前に入れ子を落とす。落とさないと
 /// `［＃「ｍ」の左に「52-［＃「52-」は縦中横］歳」］` の内側の「縦中横」を拾って、
 /// 外側を縦中横として解決してしまう（実文書 000311/15995 で発生）。
-fn without_nested_commands(spec: &str) -> std::borrow::Cow<'_, str> {
+pub(super) fn without_nested_commands(spec: &str) -> std::borrow::Cow<'_, str> {
     if !spec.contains('［') {
         return std::borrow::Cow::Borrowed(spec);
     }
+    std::borrow::Cow::Owned(strip_nested_commands(spec).0)
+}
+
+/// 入れ子コマンドを除いた文字列と、その各バイト位置に対応する元文字列のバイト位置。
+///
+/// 記法語の**照合**は入れ子を除いた文字列で行う一方、そこから切り出す内容
+/// （注記ルビのルビ文字など）は入れ子コマンドを含む**元の文字列**で欲しい。
+/// 対応表は除去後の各バイトに元のバイト位置を持ち、末尾に番兵として元の長さを置く。
+fn strip_nested_commands(spec: &str) -> (String, Vec<usize>) {
     let mut out = String::with_capacity(spec.len());
+    let mut map = Vec::with_capacity(spec.len() + 1);
     let mut pos = 0;
     while pos < spec.len() {
         let ch = spec[pos..].chars().next().expect("pos は char 境界");
@@ -274,10 +286,14 @@ fn without_nested_commands(spec: &str) -> std::borrow::Cow<'_, str> {
             pos = skip_bracketed(spec, pos);
             continue;
         }
+        for _ in 0..ch.len_utf8() {
+            map.push(pos);
+        }
         out.push(ch);
         pos += ch.len_utf8();
     }
-    std::borrow::Cow::Owned(out)
+    map.push(spec.len());
+    (out, map)
 }
 
 /// インライン要素（縦中横、罫囲み、横組み、キャプション）を解析

@@ -3,6 +3,7 @@
 //! 青空文庫形式の「〇〇」に傍点 のようなパターンを解決します。
 //! これらのコマンドは前方のテキストを参照し、装飾を適用します。
 
+use crate::delimiters::{GAIJI_MARK, RUBY_PREFIX};
 use crate::node::{BlockType, Node, NodeKind, RefSpec, RubyDirection};
 use crate::parser::ruby_parser::extract_ruby_base_from_nodes;
 use crate::token::Span;
@@ -256,6 +257,13 @@ fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Optio
     if target.is_empty() {
         return None;
     }
+    // `｜` を含む対象は参照実装では決して一致しない。参照は `｜` を読んだ時点で
+    // ルビ親文字ガード（`RubyBuffer#protected`）を立てるだけで、文字としては
+    // バッファに残さないため（次の dump_into まで復活しない）。
+    // 例:`｜○｜［＃「｜○｜」は縦中横］` は注記のまま（実文書 001142/46471）。
+    if target.contains(RUBY_PREFIX) {
+        return None;
+    }
     match &nodes[end_idx].kind {
         NodeKind::Text(s) => {
             if s.is_empty() {
@@ -285,6 +293,9 @@ fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Optio
             None
         }
         // 参照実装 ReferenceMentioned 相当のインラインコンテナ。
+        // 外字タグ単独はここに入らない（参照実装の `Tag::Gaiji` は
+        // `ReferenceMentioned` ではないので、対象の一部でも照合に使われず失敗する）。
+        // 中身として持つコンテナ経由でだけ照合される（[`extract_plain_text`] 参照）。
         kind if kind.inline_container_children().is_some() => {
             let node = &nodes[end_idx];
             let inner = extract_plain_text(node);
@@ -318,7 +329,18 @@ fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch,
         .children
         .iter()
         .fold(reference_span, |span, node| span.union(node.span));
-    let new_node = spec.resolve(m.children, combined_span);
+    let mut new_node = spec.resolve(m.children, combined_span);
+    // 参照は入れ子の ［＃…］ を**先に**タグへ解決してから外側の注記ルビを作るので、
+    // `<rt>` の中に縦中横や返り点が入る（例:「シー・ラヴァーズ」に
+    // 「16［＃「16」は縦中横］日に結成式」の注記）。`RefSpec::resolve` がある node 層は
+    // parser に依存しないため、入れ子の解釈だけここで補う。
+    if let RefSpec::AnnotationRuby { annotation } = spec {
+        if annotation.contains('［') {
+            if let NodeKind::Ruby { ruby, .. } = &mut new_node.kind {
+                *ruby = parse_annotation_text(annotation, combined_span);
+            }
+        }
+    }
     let mut replacement = Vec::new();
     if !m.prefix.is_empty() {
         let prefix_span = nodes[m.start_idx].span.split_at(m.prefix.chars().count()).0;
@@ -353,10 +375,42 @@ fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch,
 fn extract_plain_text(node: &Node) -> String {
     match &node.kind {
         NodeKind::Text(text) => text.clone(),
+        // 外字は参照実装では既にタグになっていて、対象文字列の側も入れ子コマンドが
+        // 解決済みなので、両辺とも同じ文字列で照合される。こちらはタグを持たないので
+        // 同じ 1:1 対応を持つ**元の記法**で代用する。空にしていたため
+        // `［＃「弾正太夫の風※［＃「蚌のつくり」…］」は中見出し］` のように対象へ外字を
+        // 含む前方参照が一致せず注記化していた（実文書 000255/47055）。
+        //
+        // ただし画像化できない外字（面区点を持たない＝`Tag::UnEmbedGaiji`）は別で、
+        // `RubyBuffer#create_ruby` が親文字の中では **`※` 1 文字**に置き換えて注記本体を
+        // ルビの外へ出す。よって親文字側は `※`、対象文字列側は `※［＃…］` となり
+        // 一致しない。ここを取り違えると、参照では照合に失敗して命令全体が注記になる
+        // ものを解決してしまい、ルビと底本注記を落とす（実文書 000051/1452）。
+        NodeKind::Gaiji {
+            description,
+            had_igeta,
+            jis_code,
+            ..
+        } => {
+            if jis_code.is_some() {
+                gaiji_source_form(description, *had_igeta)
+            } else {
+                GAIJI_MARK.to_string()
+            }
+        }
         kind => kind
             .inline_container_children()
             .map(|children| children.iter().map(extract_plain_text).collect())
             .unwrap_or_default(),
+    }
+}
+
+/// 外字ノードを元の記法（`※［＃説明］` / `＃` 無しなら `※［説明］`）に戻す。
+fn gaiji_source_form(description: &str, had_igeta: bool) -> String {
+    if had_igeta {
+        format!("※［＃{description}］")
+    } else {
+        format!("※［{description}］")
     }
 }
 

@@ -76,6 +76,52 @@ pub fn extract_ruby_base(text: &str) -> Option<RubyBaseResult> {
     })
 }
 
+/// このノードが単独でルビ親文字になるか（参照実装の `char_type == :else`）。
+///
+/// 参照実装で `:else` 以外を返すのは Gaiji・Accent・DakutenKatakana の 3 つだけで、
+/// 他のタグはすべて `:else`。ここでは加えて、参照実装ではルビバッファに積まれない
+/// 構造ノード（ブロックの開始終了・行字下げ・見出し・未解決参照）を除く。
+fn is_solo_ruby_base(kind: &NodeKind) -> bool {
+    match kind {
+        // 文字として親文字に連なるもの（文字種で切り出す側に回す）
+        NodeKind::Text(_)
+        | NodeKind::Gaiji { .. }
+        | NodeKind::Accent { .. }
+        | NodeKind::DakutenKatakana { .. } => false,
+        // 参照実装ではインラインタグとして積まれないもの
+        NodeKind::Midashi { .. }
+        | NodeKind::BlockStart { .. }
+        | NodeKind::BlockEnd { .. }
+        | NodeKind::LineJisage { .. }
+        | NodeKind::AnnotationEnd { .. }
+        | NodeKind::UnresolvedReference { .. } => false,
+        // ルビは**生成元**で分かれる。参照 `apply_ruby` は `《…》` で作った `Tag::Ruby` を
+        // `@buffer` へ直接積み（`@ruby_buf` は clear される）、直後にもう一つ `《…》` が
+        // 来ても親文字は空になる（`東京《とうきょう》《るび》` → 2 つ目は `<rb></rb>`）。
+        // 一方、注記・前方参照・注記付き範囲が作ったルビは `push_chars` 経由で
+        // `@ruby_buf` に入るので、次のルビの親文字になる
+        // （`起誓［＃「起誓」に「ママ」の注記］《きしょう》` → 入れ子ルビ）。
+        // この「生成元」を持つのが `keep_gaiji_notes_in_base` で、命令由来なら true、
+        // `《…》`/`｜《…》` 由来なら false（フィールド名は 2 つある効果の片方しか
+        // 表していないが、区別しているのは生成元そのもの）。
+        NodeKind::Ruby {
+            keep_gaiji_notes_in_base,
+            ..
+        } => *keep_gaiji_notes_in_base,
+        // 残りはすべて char_type :else のインラインタグ
+        NodeKind::Style { .. }
+        | NodeKind::Img { .. }
+        | NodeKind::Tcy { .. }
+        | NodeKind::Keigakomi { .. }
+        | NodeKind::Yokogumi { .. }
+        | NodeKind::Caption { .. }
+        | NodeKind::FontSize { .. }
+        | NodeKind::Kaeriten(_)
+        | NodeKind::Okurigana(_)
+        | NodeKind::Note(_) => true,
+    }
+}
+
 /// ノード列からルビ親文字を抽出
 ///
 /// ノード列の最後から、親文字になりうるノードを抽出します。
@@ -88,28 +134,14 @@ pub fn extract_ruby_base_from_nodes(nodes: &[Node]) -> Option<(Vec<Node>, Vec<No
     // 最後のノードから文字種別を取得
     let last_node = nodes.last()?;
 
-    // 参照実装 aozora2html では、注記のようなタグが来た時点で溜めていた親文字が
-    // 確定し（RubyBuffer#push_char が文字種 :else で dump_into する）、
-    // タグ自身が新しい親文字になる。直前が注記なら注記だけが親文字。
-    if matches!(&last_node.kind, NodeKind::Note(_)) {
-        let (remaining, base) = nodes.split_at(nodes.len() - 1);
-        return Some((remaining.to_vec(), base.to_vec()));
-    }
-
-    // 参照実装 RubyBuffer#create_ruby は蓄積した ruby_buf 全体を親文字にする。
-    // スタイル span 等のインラインタグ（char_type :else）が直前にあると、その
-    // タグが（前方参照で親文字を取り込んだ状態で）そのまま親文字になる。
-    // 例:「公事根源［＃「公事根源」は斜体］《くじこんげん》」→ 親文字は
-    // <span class="shatai">公事根源</span>。Note と同じくタグ単独を親文字にする。
-    //
-    // ただしインラインコンテナのうち、見出し（ブロック相当の <h*>）とルビ自身
-    // （ルビの入れ子になる）は親文字にしない。
-    let is_inline_tag = last_node.kind.inline_container_children().is_some()
-        && !matches!(
-            &last_node.kind,
-            NodeKind::Midashi { .. } | NodeKind::Ruby { .. }
-        );
-    if is_inline_tag {
+    // 参照実装 aozora2html では、文字種 `:else` のタグが来た時点で溜めていた親文字が
+    // 確定し（RubyBuffer#push_char が dump_into する）、そのタグ 1 つだけが新しい
+    // 親文字になる。`Aozora2Html::Tag#char_type` の既定は `:else` で、これを上書き
+    // するのは Gaiji(:kanji)・Accent(:hankaku)・DakutenKatakana(:katakana) だけ。
+    // つまり注記・スタイル span・ルビ・画像などはすべて「単独で親文字になる」。
+    // 例:「起誓［＃「起誓」に「ママ」の注記］《きしょう》」→ 親文字は入れ子のルビ、
+    // 「［＃…図…入る］《ラン》」→ 親文字は <img>。
+    if is_solo_ruby_base(&last_node.kind) {
         let (remaining, base) = nodes.split_at(nodes.len() - 1);
         return Some((remaining.to_vec(), base.to_vec()));
     }
@@ -208,6 +240,53 @@ mod tests {
 
     fn node(kind: NodeKind) -> Node {
         Node::new(kind, Span::new(0, 0))
+    }
+
+    fn ruby(base: &str, from_command: bool) -> Node {
+        node(NodeKind::Ruby {
+            children: vec![text(base)],
+            ruby: vec![text("るび")],
+            direction: crate::node::RubyDirection::Right,
+            keep_gaiji_notes_in_base: from_command,
+        })
+    }
+
+    /// ルビが親文字になるかは**生成元**で決まる。`《…》` 由来のルビは参照が
+    /// `@buffer` へ直接積むので次のルビの親文字にならず（`東京《とうきょう》《るび》`
+    /// の 2 つ目は `<rb></rb>`）、注記・前方参照由来のルビは `@ruby_buf` に入るので
+    /// 親文字になる（`起誓［＃「起誓」に「ママ」の注記］《きしょう》` は入れ子ルビ）。
+    #[test]
+    fn test_ruby_becomes_base_only_when_it_came_from_a_command() {
+        assert!(
+            extract_ruby_base_from_nodes(&[ruby("東京", false)]).is_none(),
+            "《…》 由来のルビは親文字にならない"
+        );
+
+        let (remaining, base) = extract_ruby_base_from_nodes(&[ruby("起誓", true)])
+            .expect("注記由来のルビは単独で親文字になる");
+        assert!(remaining.is_empty());
+        assert_eq!(base.len(), 1);
+        assert!(matches!(&base[0].kind, NodeKind::Ruby { .. }));
+    }
+
+    /// 画像・注記なども単独で親文字になる（参照 `Tag#char_type` の既定は `:else`）。
+    #[test]
+    fn test_image_and_note_become_solo_ruby_base() {
+        for kind in [
+            NodeKind::Img {
+                filename: "fig1_2.png".to_string(),
+                alt: "図".to_string(),
+                is_photo: false,
+                width: None,
+                height: None,
+            },
+            NodeKind::Note("注".to_string()),
+        ] {
+            let (remaining, base) = extract_ruby_base_from_nodes(&[text("あ"), node(kind.clone())])
+                .unwrap_or_else(|| panic!("{kind:?} は単独で親文字になるはず"));
+            assert_eq!(remaining.len(), 1, "{kind:?}");
+            assert_eq!(base.len(), 1, "{kind:?}");
+        }
     }
 
     #[test]

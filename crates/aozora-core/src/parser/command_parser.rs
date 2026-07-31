@@ -12,7 +12,7 @@ use super::block_parser::{
 use super::content_parser::{
     contains_fig_png, dakuten_katakana_num, is_kaeriten, try_parse_image, try_parse_okurigana,
 };
-use super::reference_parser::{try_parse_left_ruby, try_parse_reference};
+use super::reference_parser::{try_parse_left_ruby, try_parse_reference, without_nested_commands};
 
 /// コマンド解析結果
 #[derive(Debug, Clone, PartialEq)]
@@ -195,7 +195,30 @@ pub fn parse_command(content: &str) -> CommandResult {
         }
     }
 
-    // 3. 画像。参照実装の dispatch_aozora_command は fig…png の判定を
+    // 3. 割り注。参照 dispatch_aozora_command は `WARICHU_COMMAND`（割り注）を
+    //    **部分一致**で、画像・前方参照・字下げより先に見る。そのため
+    //    `「細字の部分」は割り注で処理` のような説明文でも割り注の開始になる
+    //    （実文書 000933/47196）。`ここから`/`ここで` で始まるものは参照ではさらに
+    //    手前でブロック開始・終了として処理されるので、ここでは除く。
+    //    照合は入れ子コマンドを除いた文字列で行う。参照は入れ子の ［＃…］ を先に
+    //    タグへ解決してから WARICHU_COMMAND を当てるので、内側にしか 割り注 が無い
+    //    注記（`「（［＃割り注］…［＃割り注終わり］）」は底本では…`）は割り注に
+    //    ならない（実文書 001395/51364）。
+    {
+        let outer = without_nested_commands(content);
+        if outer.contains("割り注")
+            && !content.starts_with("ここから")
+            && !content.starts_with("ここで")
+        {
+            return if outer.contains("終わり") {
+                CommandResult::WarichuEnd
+            } else {
+                CommandResult::WarichuStart
+            };
+        }
+    }
+
+    // 4. 画像。参照実装の dispatch_aozora_command は fig…png の判定を
     //    前方参照より先に置くので、ここでも先に見る。
     // 参照の dispatch は `/fig\d+_\d+\.png/` を含む注記を画像ルートへ回し、
     // PAT_IMAGE（`…）入る`）は末尾アンカー無しなので `入る。` のように後続文字が
@@ -207,17 +230,17 @@ pub fn parse_command(content: &str) -> CommandResult {
         }
     }
 
-    // 4. 後方参照パターン: 「対象」に/は/の 装飾
+    // 5. 後方参照パターン: 「対象」に/は/の 装飾
     if let Some(result) = try_parse_reference(content) {
         return result;
     }
 
-    // 5. ブロック開始: ここから...
+    // 6. ブロック開始: ここから...
     if content.starts_with("ここから") {
         return parse_block_start(content);
     }
 
-    // 6. ブロック終了: ここで...
+    // 7. ブロック終了: ここで...
     // 参照実装 dispatch は「ここで」で始まる命令を exec_block_end_command へ回し、
     // detect_command_mode がキーワード（字下げ等）だけを見て閉じる。終止語（終わり）
     // の綴りは不問で、「字下げ終り」（送り仮名欠き）や「字下げ終わり」」（余分な 」）
@@ -227,60 +250,55 @@ pub fn parse_command(content: &str) -> CommandResult {
         return parse_block_end(content);
     }
 
-    // 7. 注記付き範囲パターン
+    // 8. 注記付き範囲パターン
     if let Some(result) = try_parse_annotation_range(content) {
         return result;
     }
 
-    // 8. 傍記パターン（「対象」に「注記」の傍記）
+    // 9. 傍記パターン（「対象」に「注記」の傍記）
     if let Some(result) = try_parse_side_note(content) {
         return result;
     }
 
-    // 9. インライン終了: ...終わり
+    // 10. インライン終了: ...終わり
     if content.ends_with("終わり") {
         return parse_inline_end(content);
     }
 
-    // 10. 行単位字下げ: N字下げ
+    // 11. 行単位字下げ: N字下げ
     if let Some(result) = try_parse_line_indent(content) {
         return result;
     }
 
-    // 11. 行単位地付き/地から
+    // 12. 行単位地付き/地から
     if let Some(result) = try_parse_line_chitsuki(content) {
         return result;
     }
 
-    // 12. 濁点付き片仮名（`ワ゛［＃1-7-82］`）。参照 dispatch_aozora_command は
+    // 13. 濁点付き片仮名（`ワ゛［＃1-7-82］`）。参照 dispatch_aozora_command は
     //    前方参照（PAT_REF）の後・返り点の前に置くので、ここでも同じ位置にする。
     if let Some(num) = dakuten_katakana_num(content) {
         return CommandResult::DakutenKatakana { num };
     }
 
-    // 13. 返り点
+    // 14. 返り点
     if is_kaeriten(content) {
         return CommandResult::Kaeriten(content.to_string());
     }
 
-    // 14. 訓点送り仮名
+    // 15. 訓点送り仮名
     if let Some(okurigana) = try_parse_okurigana(content) {
         return CommandResult::Okurigana(okurigana);
     }
 
-    // 15. 訓点送り仮名（説明付き）
+    // 16. 訓点送り仮名（説明付き）
     if content.starts_with("訓点送り仮名") {
         return CommandResult::Note(content.to_string());
     }
 
-    // 16. 縦中横
+    // 17. 縦中横
     if content == "縦中横" {
         return CommandResult::TcyStart;
-    }
-
-    // 17. 割り注
-    if content == "割り注" {
-        return CommandResult::WarichuStart;
     }
 
     // 18. 罫囲み（インライン）
