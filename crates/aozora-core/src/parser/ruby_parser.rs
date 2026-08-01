@@ -105,6 +105,15 @@ fn is_solo_ruby_base(kind: &NodeKind) -> bool {
         // この「生成元」を持つのが `keep_gaiji_notes_in_base` で、命令由来なら true、
         // `《…》`/`｜《…》` 由来なら false（フィールド名は 2 つある効果の片方しか
         // 表していないが、区別しているのは生成元そのもの）。
+        // 左ルビ（`note_fallback` を持つもの）は、参照が前方参照の解決に入る手前で
+        // 注記へ逃がすので、そこでは `Tag::Note`（char_type :else）になる。つまり
+        // 単独の親文字として振る舞う。木では Ruby のまま持つが、親文字の切り出しは
+        // 参照と同じにする（`｜東京《とうきょう》［＃「東京」の左に…のルビ］《るび》`
+        // の `《るび》` が前のルビまで飲み込まないように）。
+        NodeKind::Ruby {
+            note_fallback: Some(_),
+            ..
+        } => true,
         NodeKind::Ruby {
             keep_gaiji_notes_in_base,
             ..

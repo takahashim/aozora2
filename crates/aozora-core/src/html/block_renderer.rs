@@ -386,7 +386,8 @@ impl<'a> BlockRenderer<'a> {
 
     /// ぶら下げブロックを per-line で描画する（参照 generate_burasage_start）。
     ///
-    /// 包むかどうかは [`has_inline_text`] で決める。
+    /// 包むかどうかは [`has_inline_text`] で決める（左ルビの退避で素の String が
+    /// 残るかどうかが互換フラグで変わるので、フラグを渡す）。
     /// 内容行は個別に burasage div で包み（内側 `<br />` なし）、空行は素の `<br />`。
     /// 行以外の子（行スコープ包み・入れ子ブロック・見出し等）は包まずそのまま描画する。
     fn render_burasage(
@@ -400,7 +401,9 @@ impl<'a> BlockRenderer<'a> {
             match child {
                 // 参照 general_output と同順で判定する。まず包むか（blank_type==false）、
                 // 次に `<br />` を出すか（terprip）。
-                Block::Line { inline, .. } if has_inline_text(inline) => {
+                Block::Line { inline, .. }
+                    if has_inline_text(inline, self.options.quirks.left_ruby_as_note) =>
+                {
                     out.push_str(&format!(
                         "<div class=\"burasage\" style=\"margin-left: {margin}em; text-indent: {text_indent}em;\">"
                     ));
@@ -975,8 +978,10 @@ impl<'a> BlockRenderer<'a> {
 /// 行全体がブロック div になる行（行スコープの字下げ・地付き）は、そもそも
 /// [`Block::Line`] ではなく [`Block::LineWrap`] になるのでこの判定には来ない
 /// （参照の `blank_type == :inline` に相当し、包まず行末は `\r\n` だけ）。
-fn has_inline_text(inlines: &[Inline]) -> bool {
-    inlines.iter().any(inline_has_text)
+fn has_inline_text(inlines: &[Inline], left_ruby_as_note: bool) -> bool {
+    inlines
+        .iter()
+        .any(|inline| inline_has_text(inline, left_ruby_as_note))
 }
 
 /// [`has_inline_text`] の1要素版。
@@ -985,8 +990,18 @@ fn has_inline_text(inlines: &[Inline]) -> bool {
 /// コンパイラが黙って「本文あり」を選び、ぶら下げの包み判定が静かにずれる
 /// （実際に罫囲み・横組み・キャプション・外字・アクセント・返り点・送り仮名の
 /// 7種類がこれで誤判定していた）。
-fn inline_has_text(inline: &Inline) -> bool {
+fn inline_has_text(inline: &Inline, left_ruby_as_note: bool) -> bool {
     match &inline.kind {
+        // 左ルビを注記へ退避するとき、親文字はルビに畳まれず**そのまま**バッファへ
+        // 積まれる（参照が前方参照の解決前に逃がすので、親文字は元の姿のまま残る）。
+        // だから String が残るかは親文字の中身しだい——`あいう` なら残り、
+        // `東京《とうきょう》` のように既にタグなら残らない。退避しないなら
+        // `<ruby class="leftrb">` タグ自身になるので、通常のルビと同じく残らない。
+        InlineKind::Ruby {
+            base,
+            note_fallback: Some(_),
+            ..
+        } if left_ruby_as_note => has_inline_text(base, left_ruby_as_note),
         // 素の String。空文字列はバッファに何も残さない。
         InlineKind::Text(s) => !s.is_empty(),
         // 参照 apply_warichu は状態を持たず、開閉を素の文字列でバッファに積む。

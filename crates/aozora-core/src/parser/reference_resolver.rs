@@ -353,7 +353,7 @@ fn apply_front_reference(
     // ——ルビ・外字——が解決されず参照と食い違う）。
     if let RefSpec::DirectionalRuby { .. } = spec {
         if let NodeKind::Ruby { note_fallback, .. } = &mut new_node.kind {
-            *note_fallback = Some(parse_annotation_text(&raw, combined_span));
+            *note_fallback = Some(parse_annotation_text(raw, combined_span));
         }
     }
     let mut replacement = Vec::new();
