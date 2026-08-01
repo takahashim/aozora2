@@ -1,8 +1,8 @@
 //! Aozora AST（[`Block`] 木）を本文HTMLに変換する新バックエンド。
 //!
-//! docs/plan-neutral-ast.md Phase B4。旧 `renderer.rs`＋`BlockManager` を置き換える
-//! ことを目指すが、まだ**最小核**（jisage の Nested と内容行、インラインは Text
-//! のみ）。旧経路と本文HTMLが byte 一致することを確認しながら記法を1種類ずつ足す。
+//! 旧 `renderer.rs`＋`BlockManager`（出力 HTML を詮索して行制御を後追いする経路）を
+//! 置き換えたもの。ブロックの入れ子も行末の改行も Lower 時に確定しているので、
+//! ここは木を歩いて文字列にするだけで状態を持たない。
 //! バックエンドは木を**状態なしに歩く**だけ（BlockManager を持たない）。
 
 use crate::ast::{

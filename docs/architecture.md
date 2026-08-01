@@ -213,8 +213,8 @@ Lower 時に一度だけ計算し、Aozora AST の Line 単位の互換メタデ
 
 こうすると (1) ブロック構造が木＝コードを読めば構造が分かる、(2) 逐次互換挙動が
 Lowerer の 1 箇所に隔離され参照引退時にまとめて落とせる、(3) バックエンドが
-中立＝第2バックエンド（EPUB/plain）が書ける、の 3 つが同時に立つ。
-実行計画は docs/plan-neutral-ast.md。
+中立＝第2バックエンド（EPUB/plain）が書ける、の 3 つが同時に立つ。**実施済み**
+（決定記録は 5 章）。
 
 ### 4.4 位置情報（任意・品質向上）
 
@@ -291,7 +291,7 @@ Lowerer の 1 箇所に隔離され参照引退時にまとめて落とせる、
   後追いする現行方式が div/br 均衡・ぶら下げ等のエッジの真因。architecture は
   変更せず §4 を実行する（Lowerer に `@indent_stack`/`@terprip`/`@noprint` を移植し
   Aozora AST の break・close メタデータへ畳む）。並行実装＋全件 byte 一致で切替、
-  BlockManager と出力HTML詮索を撤去する。実行計画 docs/plan-neutral-ast.md。
+  BlockManager と出力HTML詮索を撤去する。
 
 ---
 
@@ -315,7 +315,7 @@ docs/workflow.md に従う。
 - **段2b/2c（完了 2026-07）**: Lowerer によるブロック部分木化・`Line.brk`（互換
   ストリーミングモデル）集約、BlockManager と出力HTML詮索の撤去（4 章の型の壁の完成）。
   契機は div/br 均衡・ぶら下げの残差が「レンダ時詮索では安全に再現できない」限界に
-  達したこと。経緯は docs/plan-neutral-ast.md。
+  達したこと。
 - **コメント→テスト監査（完了 2026-07）**・**命名・同居の規約（完了 2026-07）**・
   **記法のデータ駆動化（継続中）**。実施状況は docs/workflow.md §8。
 - **交換形式（完了 2026-07-31）**: 2 つの AST を JSON で出し入れできるようにした

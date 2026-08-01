@@ -172,5 +172,4 @@ Lowerer は行ループに持ち越し（`carry`）を持ち、これらの行�
 | エディタ支援（ハイライト・診断・アウトライン, `analysis`） | **RawAST** | 各生ノードに char 単位 span（`nodes[i].span`）と原文を持つ |
 | 位置 → 意味の対応（将来の LSP） | 両方 | RawAST の span で位置特定、Aozora AST で構造理解 |
 
-関連ドキュメント: [`plan-neutral-ast.md`](plan-neutral-ast.md)（移行計画）、
-[`plan-lsp.md`](plan-lsp.md)（`analysis` レイヤと LSP 設計）。
+関連ドキュメント: [`plan-lsp.md`](plan-lsp.md)（`analysis` レイヤと LSP 設計）。

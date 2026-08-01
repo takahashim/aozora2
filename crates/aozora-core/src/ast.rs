@@ -7,7 +7,7 @@
 //! ブロックは部分木・行末の改行は互換メタデータ [`Break`]/[`CloseKind`]）。
 //!
 //! 本番の HTML／プレーンテキスト変換はこの木のみを経由する。仕様は
-//! docs/spec-ast.md、移行の経緯は docs/plan-neutral-ast.md。
+//! docs/spec-aozora-ast-json.md（形）と docs/spec-ast.md（位置づけ・span の意味論）。
 //!
 //! RawAST の [`crate::node::Node`] とは別型にすることで、バックエンドが
 //! ソース文字列や `BlockStart`/`BlockEnd` マーカーを見られないようにする

@@ -1,6 +1,6 @@
 //! Lowerer: RawAST（平坦マーカー）→ Aozora AST（block ⊃ line ⊃ inline の木）
 //!
-//! architecture.md §4.1/§4.3・docs/plan-neutral-ast.md（Phase B2〜）。
+//! architecture.md §4.1/§4.3。
 //! 参照実装 `@indent_stack`/`implicit_close`/`@terprip` の逐次モデルを Lower 時に
 //! 一度だけ計算し、ブロックを部分木に畳み、行末の改行を [`Break`] メタデータへ
 //! 載せる。バックエンドはこの木を状態なしに歩くだけになる。

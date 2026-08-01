@@ -238,7 +238,7 @@ architecture.md 6 章「移行の段階」の順序に従って進めてきた�
 
 - **Aozora AST 木化・BlockManager 撤去（完了）**: 旧ストリーミング経路を撤去し、HTML・
   プレーンテキストとも Aozora AST のみから描画する。下記「次の作業の選択肢 1（renderer の
-  行制御の作り直し）」はこれで達成済み。経緯は docs/plan-neutral-ast.md。
+  行制御の作り直し）」はこれで達成済み。
 - **位置情報の intrinsic 化（完了）**: `Token`/`Node`/`Inline` がそれぞれ自前の char span を
   持つ。span の実在性（合成ノードの継承・ルビ親文字吸収の合併・注記の中身の別原点）は
   docs/spec-ast.md。
@@ -800,7 +800,7 @@ Quirk にはしない。判定基準の「作者が意図しえない差」に�
 **Aozora AST 移行の完了（2026-07-25〜28）**: 上の「次の作業の選択肢 1（renderer の行制御の
 作り直し）」を実施した。参照の `@indent_stack`/`general_output` モデルを Lowerer へ移し、
 `BlockManager` と出力HTML詮索を撤去。HTML・プレーンテキストとも Aozora AST のみから
-状態レスに描画する。経緯とフェーズ記録は docs/plan-neutral-ast.md。
+状態レスに描画する。
 
 ---
 

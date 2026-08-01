@@ -2,7 +2,7 @@
 //!
 //! 青空文庫形式のテキストをHTMLに変換します。
 //!
-//! # 経路（docs/plan-neutral-ast.md）
+//! # 経路
 //!
 //! 本番は**Aozora AST新経路のみ**: [`convert`]/[`convert_line`] → [`render_via_blocks`]
 //! （`lower_to_blocks` → [`block_renderer::BlockRenderer`]）。本文は状態を持たない
@@ -128,7 +128,7 @@ pub fn convert_line(line: &str, options: &RenderOptions) -> String {
     block_renderer::render_line_inline(line, options)
 }
 
-/// Aozora AST 新経路で**全文書**を組み立てる（docs/plan-neutral-ast.md B4）。
+/// Aozora AST から**全文書**を組み立てる。
 /// head/metadata/card の枠は [`document_renderer::DocumentRenderer`]、各セクション
 /// （本文・本文終わり後・底本情報）は [`section_renderer::SectionRenderer`] が
 /// `lower_to_blocks`→`BlockRenderer` で描画する（BlockManager 非依存）。
