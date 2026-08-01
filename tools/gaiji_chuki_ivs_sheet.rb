@@ -22,22 +22,18 @@
 # そのまま置く——こちらは辞書が実際に描いている形そのもの。
 
 require 'json'
+require_relative 'gaiji_chuki_data'
+require_relative 'gaiji_glyph_svg'
 
 DATA = File.expand_path('../crates/aozora-core/data', __dir__)
 OUT = ARGV[0] || File.expand_path('../tmp/gaiji_chuki_ivs.html', __dir__)
-
-def read_tsv(path)
-  rows = File.readlines(path, chomp: true).map { |l| l.split("\t", -1) }
-  head = rows.shift
-  rows.map { |r| head.zip(r).to_h }
-end
 
 def h(str)
   str.to_s.gsub('&', '&amp;').gsub('<', '&lt;').gsub('>', '&gt;').gsub('"', '&quot;')
 end
 
-entries = read_tsv(File.join(DATA, 'gaiji_chuki.tsv'))
-outlines = read_tsv(File.join(DATA, 'gaiji_chuki_glyphs.tsv')).group_by { |g| g['id'] }
+entries = GaijiChuki.read_tsv(File.join(DATA, 'gaiji_chuki.tsv'))
+outlines = GaijiChuki.read_tsv(File.join(DATA, 'gaiji_chuki_glyphs.tsv')).group_by { |g| g['id'] }
 jis2ucs = JSON.parse(File.read(File.join(DATA, 'jis2ucs.json')))
 
 # 注記になっている代用字から字を取り出す。`※［＃「七／（七＋七）」、第3水準1-14-3］` は 㐂。
@@ -52,93 +48,17 @@ def sub_char(note, jis2ucs)
   nil
 end
 
-# build_gaiji_chuki_html.rb と同じ組み立て。あちらは表示、こちらは検分に使う。
-# SVG のパスから座標を拾って外接矩形を出す。M/L/C はすべて絶対座標で、C だけ 3 点。
-def path_extent(d, dx)
-  xs = []
-  ys = []
-  d.scan(/[MLC]([^MLCZ]*)/) do
-    nums = Regexp.last_match(1).scan(/-?\d*\.?\d+/).map(&:to_f)
-    nums.each_slice(2) { |x, y| next if y.nil?; xs << x + dx; ys << y }
-  end
-  xs.empty? ? nil : [xs.min, ys.min, xs.max, ys.max]
-end
-
-# 輪郭の座標系での全角 1 文字ぶん。実測の外接矩形から。
-GLYPH_EM = 9.2
-
-# poppler が描けなかったパーツは輪郭を持たない（`d` が空で `ivs` と `box` がある）。
-# `box` は poppler が実際に置いた枠——字は間違っていても位置と大きさは正しいので、
-# そこへ字を流し込む。辞書はパーツを横 0.7 倍などに潰して組むので、これが要る。
-def part_box(p)
-  b = p[%q{box}].to_s.split(%q{ }).map(&:to_f)
-  b.size == 4 ? b : nil
-end
-
-def part_extent(p)
-  # マスクは字より大きいので外接矩形には数えない。塗るだけ。
-  return nil if p[%q{fill}].to_s.delete(%q{ }) == %q{rgb(100%,100%,100%)}
-  # パスも dy だけ下がる。ここを忘れると viewBox が足りず上が切れる。
-  if p[%q{ivs}].to_s.empty?
-    e = path_extent(p[%q{d}], p[%q{dx}].to_f) or return nil
-    dy0 = p[%q{dy}].to_f
-    return [e[0], e[1] + dy0, e[2], e[3] + dy0]
-  end
-
-
-  b = part_box(p) or return nil
-  dx = p[%q{dx}].to_f
-  dy = p[%q{dy}].to_f
-  [b[0] + dx, b[1] + dy, b[2] + dx, b[3] + dy]
-end
-
-def part_svg(p, fill)
-  # マスクは背景色で塗る。色は CSS 側に任せる（地の色は表示の文脈で決まる）。
-  if p[%q{fill}].to_s.delete(%q{ }) == %q{rgb(100%,100%,100%)}
-    return %(<path class="mask" d="#{h p[%q{d}]}" transform="translate(#{p[%q{dx}]},#{p[%q{dy}]})"/>)
-  end
-
-  return %(<path d="#{h p[%q{d}]}" fill="#{fill}" transform="translate(#{p[%q{dx}]},#{p[%q{dy}]})"/>) if p[%q{ivs}].to_s.empty?
-
-  b = part_box(p) or return %q{}
-  ch = p[%q{ivs}].split(%q{ }).map { |c| c.to_i(16) }.pack(%q{U*})
-  dx = p[%q{dx}].to_f
-  # box は content stream から出した em の箱。高さがそのまま font-size、幅が textLength。
-  size = (b[3] - b[1]).round(3)
-  # dy は上下に積む字のずれ。<path> の transform と同じだけ <text> にも効かせる。
-  dy = p[%q{dy}].to_f
-  %(<text x="#{(b[0] + dx).round(3)}" y="#{(b[3] - size * 0.12 + dy).round(3)}" font-size="#{size}" ) +
-    %(textLength="#{(b[2] - b[0]).round(3)}" lengthAdjust="spacingAndGlyphs" fill="#{fill}">#{h ch}</text>)
-end
-
-# 輪郭を 1 つの SVG にする。1 文字が複数パーツで組まれることがあり、同じ id の行を
-# dx だけ右にずらして重ねる。色は辞書の凡例がそのまま入っている。
-def outline_svg(parts)
-  boxes = parts.filter_map { |p| part_extent(p) }
-  return nil if boxes.empty?
-
-  x0 = boxes.map(&:first).min
-  y0 = boxes.map { |b| b[1] }.min
-  x1 = boxes.map { |b| b[2] }.max
-  y1 = boxes.map(&:last).max
-  pad = [(x1 - x0), (y1 - y0)].max * 0.06
-  view = [x0 - pad, y0 - pad, (x1 - x0) + pad * 2, (y1 - y0) + pad * 2]
-  paths = parts.map { |p| part_svg(p, '#1c1a18') }
-  %(<svg viewBox="#{view.map { |v| v.round(3) }.join(' ')}" role="img">#{paths.join}</svg>)
-end
-
-
-# 部品を組み立てて作ってある字か。マスク以外のパーツが 2 つ以上あればそう。
-def composed?(parts)
-  parts.to_a.count { |p| p['fill'].to_s.delete(' ') != 'rgb(100%,100%,100%)' } > 1
+# 字形の SVG。検分用なので凡例の色は使わず単色にする。
+def glyph_svg(parts)
+  GaijiGlyphSvg.render(parts, fill: ->(_) { %q{#1c1a18} }, escape: method(:h))
 end
 
 targets = entries.reject { |e| e['ivs'].empty? && e['cid'].empty? }
 cells = targets.map do |e|
   parts = outlines[e['id']]
-  composed = composed?(parts)
+  composed = GaijiGlyphSvg.composed?(parts)
   glyph, kind = if e['ivs'].empty?
-                  [outline_svg(parts || []) || '<span class="none">—</span>',
+                  [glyph_svg(parts || []) || '<span class="none">—</span>',
                    composed ? '合成' : '輪郭']
                 else
                   [h(e['ivs'].split(' ').map { |c| c.to_i(16) }.pack('U*')), 'IVS']
@@ -181,7 +101,7 @@ part_of_ids = lambda do |e|
   b && e['ids'].length > 1 && e['ids'].each_char.any?(b)
 end
 wrong_n = targets.count { |e| part_of_ids.call(e) }
-composed_n = targets.count { |e| composed?(outlines[e['id']]) }
+composed_n = targets.count { |e| GaijiGlyphSvg.composed?(outlines[e['id']]) }
 odd_n = targets.count do |e|
   b = base_of.call(e)
   b && !e['sub'].empty? && b != e['sub'] && !part_of_ids.call(e)

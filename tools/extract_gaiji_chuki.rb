@@ -39,7 +39,7 @@
 # 出力:
 #   gaiji_chuki.tsv         1 行 1 エントリ（後述の列）
 #   gaiji_chuki_glyphs.tsv  符号位置を持たない字の輪郭。1 行 1 パーツ（id・part・fill・
-#                           dx・dy・d・ivs）。字形は「部品を描いては白い矩形で消す」
+#                           dx・dy・d・ivs・box）。組み立ては tools/gaiji_glyph_resolver.rb。字形は「部品を描いては白い矩形で消す」
 #                           手順で組んであるので、行の順に dx・dy だけずらして重ねる。
 #                           白い塗りつぶし（マスク）も 1 行として入っている。
 #                           非埋め込みの Ryumin で描かれたパーツは poppler が別の字を
@@ -66,11 +66,10 @@
 #            空  = 符号位置で字形が決まるか、字形欄が空
 
 require 'rexml/document'
-require 'set'
 require 'open3'
-require 'tmpdir'
 require_relative 'pdf_text_runs'
 require_relative 'gaiji_ids'
+require_relative 'gaiji_glyph_resolver'
 
 USAGE = 'usage: extract_gaiji_chuki.rb <pdf> <IVD_Sequences.txt> <ids.txt> <outdir>'
 PDF = ARGV[0] or abort USAGE
@@ -78,12 +77,7 @@ IVD_PATH = ARGV[1] or abort USAGE
 IDS_PATH = ARGV[2] or abort USAGE
 OUTDIR = ARGV[3] or abort USAGE
 
-# 字形と注記の間に入る空白の CID（Adobe-Japan1）。パーツと数えないよう除く。
-SPACE_CID = 633
-
 SUB_KINDS = '包摂適用|統合適用|デザイン差|78ï¼?互換包摂|78 ?互換包摂'
-XHTML = 'http://www.w3.org/1999/xhtml'
-SVGNS = 'http://www.w3.org/2000/svg'
 
 # --- PDF から読む ---------------------------------------------------------
 
@@ -120,59 +114,6 @@ def bands(words)
     end
   end
   out.map { |b| b[:words].sort_by(&:x0) }
-end
-
-# ページのグリフ輪郭。`<defs>` の `<g id="glyph-N-M"><path d>` を `<use x y>` が参照する。
-def page_glyphs(page)
-  tmp = File.join(Dir.tmpdir, "gaiji_p#{page}.svg")
-  system('pdftocairo', '-svg', '-f', page.to_s, '-l', page.to_s, PDF, tmp, out: File::NULL,
-                                                                          err: File::NULL)
-  doc = REXML::Document.new(File.read(tmp))
-  defs = {}
-  REXML::XPath.match(doc, "//*[local-name()='g'][@id]").each do |g|
-    next unless g['id'].start_with?('glyph-')
-
-    path = REXML::XPath.first(g, "*[local-name()='path']")
-    defs[g['id']] = path['d'] if path
-  end
-  # `<use>` だけでなく**白い塗りつぶし**も拾う。辞書の字形は「部品を描いては白い矩形で
-  # 消す」手順で組んであり、マスクを落とすと部品が全部重なってつぶれる。描いた順が意味を
-  # 持つので、1 本の配列に並べたまま返す。
-  ops = []
-  walk = lambda do |el, fill|
-    f = el.attributes['fill'] || fill
-    el.elements.each do |c|
-      case c.name
-      when 'use'
-        href = (c.attributes['xlink:href'] || c.attributes['href']).to_s.delete('#')
-        ops << { kind: :glyph, x: c.attributes['x'].to_f, y: c.attributes['y'].to_f, ref: href, fill: f }
-      when 'path'
-        # 塗りは <g> ではなく <path> 自身に付いている。親の値で見ると拾えない。
-        pf = c.attributes['fill'] || f
-        d = c.attributes['d'].to_s
-        ops << { kind: :mask, d: d, fill: pf } if pf.to_s.delete(' ') == 'rgb(100%,100%,100%)' && !d.empty?
-      end
-      walk.call(c, f)
-    end
-  end
-  walk.call(doc.root, nil)
-  File.delete(tmp) if File.exist?(tmp)
-  [defs, ops]
-end
-
-# path の全座標から外接矩形を出す。M/L/C はすべて絶対座標。
-def path_box(d)
-  xs = []
-  ys = []
-  d.scan(/[MLC]([^MLCZ]*)/) do
-    Regexp.last_match(1).scan(/-?\d*\.?\d+/).map(&:to_f).each_slice(2) do |x, y|
-      next if y.nil?
-
-      xs << x
-      ys << y
-    end
-  end
-  xs.empty? ? nil : [xs.min, ys.min, xs.max, ys.max]
 end
 
 # --- エントリを組み立てる -------------------------------------------------
@@ -312,8 +253,7 @@ pdf.pages.each_with_index do |pdf_page, page_index|
   found = entries_on_page(page, state)
   next if found.empty?
 
-  defs = ops = runs = fonts = nil
-  height = pdf.resolve(pdf_page[:MediaBox])[3]
+  resolver = GaijiGlyphResolver.new(pdf, pdf_page, page, PDF, ivd)
   found.each_with_index do |e, i|
     e[:id] = "p#{page}-#{i}"
     e[:page] = page
@@ -322,109 +262,17 @@ pdf.pages.each_with_index do |pdf_page, page_index|
     # 符号位置を持つものは字形が符号位置で決まるので、同定の手間をかけない。
     next if box.nil? || !e[:jis].empty? || !e[:unicode].empty?
 
-    x0, x1, y0, y1 = box
-    # まず content stream の CID を見る。非埋め込みの Ryumin-Light は Adobe-Japan1
-    # なので、CID がそのまま字形の同定になる（IVD で異体字セレクタ列に落ちる）。
-    if runs.nil?
-      runs = PdfTextRuns.of(pdf, pdf_page)
-      fonts = PdfTextRuns.fonts(pdf, pdf_page)
-    end
-    # 1 文字を複数のパーツで組んでいることがある。`三／二` は 三 と 二 を上下に、
-    # `冫＋虫` は 冫 と 虫 を左右に、別々の run として置いてある。先頭だけ採ると字では
-    # なく部品を指してしまうので、枠に入る run は全部拾う。
-    #
-    # 字形と注記の間には空白（CID 633）が入っていて、これも枠に入る。パーツと数えると
-    # ほぼ全件が「複数パーツ」になるので除く。
-    hits = runs.select do |r|
-      r.cids.size == 1 && r.cids[0] != SPACE_CID && r.x >= x0 && r.x <= x1 &&
-        (height - r.y) > y0 - 2 && (height - r.y) < y1 + 0.5
-    end
-    # 描いた順のまま持つ。輪郭のパーツと 1 対 1 で対応させるため。
-    used = Set.new
-    hit = hits.first
-    if hit
-      e[:cid] = hits.map { |r| r.cids[0] }.join(' ')
-      # **CID 1 つで字を指せるのは、パーツが 1 つのときだけ。** 複数パーツの字は「部品を
-      # 描いては白い矩形で消す」手順で組んであり（`土へん＋奇` は 坪 を描いて 平 を消す）、
-      # どれか 1 つの CID も、パーツを並べた列も、字を表さない。輪郭の経路に回せばマスクごと
-      # 拾えるので、そちらに任せる。
-      #
-      # CID が字の同定になるのは非埋め込みの Ryumin（Adobe-Japan1）だけ。埋め込みサブセット
-      # の CID はそのフォント内でしか意味を持たない。
-      base, embedded = fonts[hit.font] || ['', false]
-      if hits.size == 1 && !embedded && base.include?('Ryumin')
-        e[:ivs] = ivd[hit.cids[0]].to_s
-        next unless e[:ivs].empty?
-      end
-    end
+    glyph = resolver.resolve(box) or next
 
-    # 埋め込みサブセットの CID はそのフォント内でしか意味を持たない（ToUnicode も
-    # 無い）ので、そちらは輪郭を残す。
-    # 1 文字が複数のパーツで描かれていることがある（単一のフォントに字が無く、部品を
-    # 並べて組んでいる）。範囲に入る `<use>` をすべて拾い、先頭からの相対位置で持つ。
-    defs, ops = page_glyphs(page) if defs.nil?
-    # 描いた順のまま、この字の枠に入るものだけを取る。マスクは枠と重なるかで見る。
-    in_box = ops.select do |op|
-      if op[:kind] == :glyph
-        op[:x] >= x0 && op[:x] <= x1 && op[:y] > y0 - 2 && op[:y] < y1 + 0.5 && defs[op[:ref]]
-      else
-        b = path_box(op[:d])
-        b && b[0] < x1 + 2 && b[2] > x0 - 2 && b[1] < y1 + 4 && b[3] > y0 - 12
-      end
-    end
-    glyph_ops = in_box.select { |op| op[:kind] == :glyph }
-    next if glyph_ops.empty?
+    e[:ivs] = glyph.ivs
+    e[:cid] = glyph.cid
+    next if glyph.parts.empty?
 
-    origin = glyph_ops.map { |op| op[:x] }.min
-    baseline = glyph_ops.first[:y]
     e[:glyph] = '1'
-    in_box.each_with_index do |op, n|
-      if op[:kind] == :mask
-        # マスクはページ座標のまま。原点とベースラインぶん寄せれば字形の座標系に乗る。
-        glyphs << { id: e[:id], part: n, fill: op[:fill], dx: (-origin).round(3),
-                    dy: (-baseline).round(3), d: op[:d], ivs: '', box: '' }
-        next
-      end
-
-      x = op[:x]
-      ref = op[:ref]
-      fill = op[:fill]
-      # そのパーツを描いているのが非埋め込みの Ryumin なら、poppler は代替フォントで CID を
-      # 解決できず**別の字を描く**。輪郭をそのまま残すと二重写しになるので、輪郭は捨てて
-      # 異体字セレクタ列だけ持つ。読み手の Adobe-Japan1 フォントに描かせれば正しく出る。
-      # パーツと run の対応。x だけでは縦に積む字（同じ x）を取り違えるので y も見る
-      # （run の y は PDF 座標・下からなので height で折り返す）。さらに **同じ run を二度
-      # 使わない**——`竹かんむり／擧` は 2 つのパーツが 0.17 しか離れておらず、近さだけで
-      # 選ぶと両方が同じ run に当たる。近い順に 1 つずつ取る。
-      run = hits.each_with_index.reject { |_, i| used.include?(i) }
-                .min_by { |r, _| (r.x - x).abs + ((height - r.y) - op[:y]).abs }
-      run, idx = run
-      if run && ((run.x - x).abs > 1.5 || ((height - run.y) - op[:y]).abs > 1.5)
-        run = nil
-      else
-        used << idx
-      end
-      ryumin = run && begin
-        b, emb = fonts[run.font] || ['', false]
-        !emb && b.include?('Ryumin')
-      end
-      seq = ryumin ? ivd[run.cids[0]].to_s : ''
-      # 輪郭は捨てるが、**枠は content stream の変形から出す**。辞書はパーツを横 0.7 倍
-      # などに潰して組むので（`.7 0 0 1 0 0 cm`）、等倍で置くと隣のパーツと重なる。全角の
-      # 字は em の縦 0.88 上・0.12 下に収まるものとして箱にする。
-      box = if seq.empty?
-              nil
-            else
-              [0, -(run.sy * 0.88), run.sx, run.sy * 0.12]
-            end
-      # 上下に積む字（`三／二`）はパーツごとにベースラインが違う。dy を捨てると重なる。
-      glyphs << { id: e[:id], part: n, fill: fill || 'black', dx: (x - origin).round(3),
-                  dy: (op[:y] - baseline).round(3), d: seq.empty? ? defs[ref] : '', ivs: seq,
-                  box: box ? box.map { |v| v.round(3) }.join(' ') : '' }
-    end
+    glyph.parts.each { |part| glyphs << part.merge(id: e[:id]) }
   end
   # 説明文から組み立ての IDS を導く。符号位置の有無に関係なく引けるので、同定の
-  # 独立した手がかりになる（符号位置を持つエントリでの正解率 98.5%）。
+  # 独立した手がかりになる（符号位置を持つエントリでの正解率 98.1%）。
   found.each do |e|
     e[:ids] = e[:ids_char] = e[:glyphwiki] = ''
     next if e[:desc].to_s.empty?
@@ -458,7 +306,7 @@ File.open(File.join(OUTDIR, 'gaiji_chuki.tsv'), 'w') do |f|
 end
 File.open(File.join(OUTDIR, 'gaiji_chuki_glyphs.tsv'), 'w') do |f|
   f.puts %w[id part fill dx dy d ivs box].join("\t")
-  glyphs.each { |g| f.puts [g[:id], g[:part], g[:fill], g[:dx], g[:dy], g[:d], g[:ivs], g[:box]].join("\t") }
+  glyphs.each { |g| f.puts g.values_at(:id, :part, :fill, :dx, :dy, :d, :ivs, :box).join("\t") }
 end
 warn "エントリ #{entries.size} / IVS #{entries.count { |e| !e[:ivs].to_s.empty? }}"\
      " / 輪郭 #{glyphs.map { |g| g[:id] }.uniq.size}"\

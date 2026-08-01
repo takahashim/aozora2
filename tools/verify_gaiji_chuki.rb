@@ -23,19 +23,14 @@
 #   5. ivs     基底字が字全体を指しているか（部品を拾っていないか）
 #   6. HTML    --html を渡したとき、TSV の全 id が記事として出ているか
 #
-# 注記の復元は tools/build_gaiji_chuki_html.rb と同じ規則。あちらが表示のために使い、
-# こちらが検証に使う。
+# 注記の復元規則は tools/gaiji_chuki_data.rb に置いて表示器と共有している。**独立なのは
+# 抽出器に対してだけ**で、規則そのものが誤っていればこの照合が落ちるので、それで担保する。
 
 require 'optparse'
 require 'open3'
+require_relative 'gaiji_chuki_data'
 
 DATA = File.expand_path('../crates/aozora-core/data', __dir__)
-
-def read_tsv(path)
-  rows = File.readlines(path, chomp: true).map { |l| l.split("\t", -1) }
-  head = rows.shift
-  rows.map { |r| head.zip(r).to_h }
-end
 
 # TSV に持たない飾りは両側から落として比べる。
 #
@@ -52,27 +47,16 @@ def page_text(pdf, page)
   st.success? ? normalize(out) : nil
 end
 
-# TSV の列から注記を組み直す。build_gaiji_chuki_html.rb と同じ規則:
-# 説明は全文で、外側にもう一段ある書き方（`「尅」の「寸」に代えて「土」`）は括り直さない。
-# `ページ数-行数` は面区点が無いときだけ付く。
-def note(e)
-  return nil if e['desc'].empty?
-
-  body = e['desc'].start_with?('「') ? e['desc'] : "「#{e['desc']}」"
-  tail = if !e['jis'].empty?
-           "、第#{e['level']}水準#{e['jis']}"
-         elsif !e['unicode'].empty?
-           "、U+#{e['unicode']}"
-         else
-           ''
-         end
-  normalize("※［＃#{body}#{tail}］")
+# 注記の組み直しは GaijiChuki と共有する。**独立なのは抽出器に対してだけ**で、規則そのものは
+# 表示器と同じものを使う。規則が誤っていればこの照合が落ちるので、それで担保する。
+def reconstruct(entry)
+  n = GaijiChuki.note(entry)
+  n && normalize(n)
 end
 
-def substitution(e)
-  return nil if e['sub'].empty?
-
-  normalize("→［#{e['sub_kind']}#{e['sub']}］#{e['sub_rule']}")
+def substitution_of(entry)
+  sub = GaijiChuki.substitution(entry)
+  sub && normalize(sub)
 end
 
 # PDF のページの生の行。エントリは「画数．」で始まる（★ は別部首からの再掲）。
@@ -136,7 +120,7 @@ def check_notes(entries, pdf, verbose)
   entries.each do |e|
     page = e['page'].to_i
     text = (cache[page] ||= page_text(pdf, page) || '')
-    [note(e), substitution(e)].compact.each do |s|
+    [reconstruct(e), substitution_of(e)].compact.each do |s|
       next if text.include?(s)
 
       # 説明自体は出てくるなら、崩れているのは括りや並びのほう。PDF が注記を 2 行に
@@ -153,7 +137,7 @@ def check_notes(entries, pdf, verbose)
     puts "  ? #{e['id']} p#{e['page']} 説明は出てくるが注記の形が違う（折り返し・誤植）"
     puts "      組み直し: #{s}"
   end if verbose || soft.size <= 30
-  total = entries.sum { |e| [note(e), substitution(e)].compact.size }
+  total = entries.sum { |e| [reconstruct(e), substitution_of(e)].compact.size }
   puts "  #{total} 件中 ✗ #{hard.size} 件 / ? #{soft.size} 件"
   hard.size
 end
@@ -166,7 +150,7 @@ def check_links(entries, verbose)
   by_id = entries.to_h { |e| [e['id'], e] }
   bad = 0
   {
-    'gaiji_chuki_glyphs.tsv' => ->(row, e) { e && !e['glyph'].empty? },
+    'gaiji_chuki_glyphs.tsv' => ->(_row, e) { e && !e['glyph'].empty? },
     'gaiji_chuki_mj.tsv' => lambda { |row, e|
       e && !e['glyph'].empty? && e['sub'] == row['sub'] && e['desc'].include?(row['desc'])
     }
@@ -174,7 +158,7 @@ def check_links(entries, verbose)
     path = File.join(DATA, name)
     next puts "  #{name} が無いのでスキップ" unless File.exist?(path)
 
-    rows = read_tsv(path)
+    rows = GaijiChuki.read_tsv(path)
     ng = rows.reject { |row| ok.call(row, by_id[row['id']]) }
     puts "  #{name}: #{rows.size} 行 / 合わない #{ng.size}"
     ng.first(verbose ? 100 : 5).each { |row| puts "    ✗ #{row['id']}" }
@@ -183,19 +167,18 @@ def check_links(entries, verbose)
   bad
 end
 
-# `ivs`/`cid` は content stream の CID から取る。1 文字を複数のパーツで組んでいる字は
-# ` / ` 区切りで全パーツを持っているので対象外。単独のはずなのに基底字が組み立ての「部品」
-# として現れたら、まだ片方しか拾えていない。IDS は説明から別途導いたもので判定は独立。
+# `ivs` が入るのは 1 パーツで描かれている字だけ（組み立ててある字は輪郭側が持つ）。その
+# はずなのに基底字が組み立ての「部品」として現れたら、パーツの片方しか拾えていない。
+# IDS は説明から別途導いたものなので、判定としては独立している。
 def check_ivs(entries, verbose)
   puts '== ivs（基底字が字全体ではなく部品になっていないか）=='
   bad = entries.select do |e|
-    next false if e['ivs'].empty? || e['ivs'].include?(' / ') || e['ids'].length < 2
+    next false if e['ivs'].empty? || e['ids'].length < 2
 
     base = [e['ivs'].split(' ').first.to_i(16)].pack('U')
     e['ids'].each_char.any?(base)
   end
-  multi = entries.count { |e| e['ivs'].include?(' / ') }
-  puts "  ivs #{entries.count { |e| !e['ivs'].empty? }} 件（うち複数パーツ #{multi}）/ 部品を指している #{bad.size} 件"
+  puts "  ivs #{entries.count { |e| !e['ivs'].empty? }} 件 / 部品を指している #{bad.size} 件"
   bad.first(verbose ? 100 : 6).each do |e|
     base = [e['ivs'].split(' ').first.to_i(16)].pack('U')
     puts "    ✗ #{e['id']} ids=#{e['ids']} 基底=#{base} desc=#{e['desc']}"
@@ -235,7 +218,7 @@ def main(argv)
     return 2
   end
 
-  entries = read_tsv(opts[:tsv] || File.join(DATA, 'gaiji_chuki.tsv'))
+  entries = GaijiChuki.read_tsv(opts[:tsv] || File.join(DATA, 'gaiji_chuki.tsv'))
   puts "#{entries.size} 項目を #{File.basename(pdf)} と照合する"
   bad = check_counts(entries, pdf, opts[:verbose])
   bad += check_radicals(entries, pdf)

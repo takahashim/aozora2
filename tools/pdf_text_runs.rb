@@ -36,15 +36,16 @@ module PdfTextRuns
 
   # ページのテキスト描画を Run の列で返す。座標は PDF ユーザ空間（左下原点）。
   #
-  # **CTM は伸縮まで追う。** 辞書は字形を組むときに `.7 0 0 1 0 0 cm` のように部品を横へ
-  # 潰す。平行移動だけ見ていると、部品の大きさが分からず並べたときに重なる。
+  # **CTM もテキスト行列も伸縮まで追う。** 辞書は字形を組むときに `.7 0 0 1 0 0 cm` のように
+  # 部品を横へ潰す。平行移動だけ見ていると、部品の大きさが分からず並べたときに重なる。
   def self.of(pdf, page)
     data = pdf.content(page)
     stack = []
     ctm = IDENTITY.dup
+    tm = IDENTITY.dup   # テキスト行列
+    tlm = IDENTITY.dup  # テキスト行の行列。Td はここに積み、Tm は両方を置き換える
     font = nil
     size = 0.0
-    lx = ly = 0.0
     args = []
     runs = []
 
@@ -56,16 +57,18 @@ module PdfTextRuns
         when 'Q' then ctm = stack.pop || IDENTITY.dup
         when 'cm'
           ctm = mul(args[-6..].map(&:to_f), ctm) if args.size >= 6
-        when 'BT' then lx = ly = 0.0
+        when 'BT'
+          tm = IDENTITY.dup
+          tlm = IDENTITY.dup
         when 'Td', 'TD'
           if args.size >= 2
-            lx += args[-2].to_f
-            ly += args[-1].to_f
+            tlm = mul([1.0, 0.0, 0.0, 1.0, args[-2].to_f, args[-1].to_f], tlm)
+            tm = tlm.dup
           end
         when 'Tm'
           if args.size >= 6
-            lx = args[-2].to_f
-            ly = args[-1].to_f
+            tlm = args[-6..].map(&:to_f)
+            tm = tlm.dup
           end
         when 'Tf'
           if args.size >= 2
@@ -76,9 +79,8 @@ module PdfTextRuns
           cids = Array(args.last).grep(Array).flatten + Array(args.last).grep(String)
           cids = cids.grep(/\Ahex:/).flat_map { |h| h[4..].scan(/..../).map { |c| c.to_i(16) } }
           unless cids.empty?
-            x = ctm[0] * lx + ctm[2] * ly + ctm[4]
-            y = ctm[1] * lx + ctm[3] * ly + ctm[5]
-            runs << Run.new(font, x, y, cids, (size * ctm[0]).abs, (size * ctm[3]).abs)
+            trm = mul(tm, ctm)
+            runs << Run.new(font, trm[4], trm[5], cids, (size * trm[0]).abs, (size * trm[3]).abs)
           end
         end
         args = []

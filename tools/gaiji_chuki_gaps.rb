@@ -11,15 +11,14 @@
 # の順。上ほど字形が一意に決まる。既定では下 3 段だけを並べる。
 
 require 'set'
+require_relative 'gaiji_chuki_data'
 
 path = ARGV.find { |a| !a.start_with?('-') } ||
        File.expand_path('../crates/aozora-core/data/gaiji_chuki.tsv', __dir__)
 all = ARGV.include?('--all')
 
-rows = File.readlines(path, chomp: true).map { |l| l.split("\t", -1) }
-header = rows.shift
-col = header.each_with_index.to_h
-val = ->(row, name) { row[col.fetch(name)].to_s }
+rows = GaijiChuki.read_tsv(path)
+val = ->(row, name) { row.fetch(name).to_s }
 have = ->(row, name) { !val.call(row, name).empty? }
 
 # ids が 1 文字なら組み立てではなく「その字の別字形」の意味（gaiji_chuki.md 参照）。
@@ -65,7 +64,8 @@ show.each do |key|
 end
 
 # 全列が空同然のもの——抽出漏れであって「符号位置が無い字」ではない。
-broken = rows.reject { |row| header.each_index.any? { |i| i > 3 && !row[i].to_s.empty? } }
+meaty = %w[desc jis level unicode sub sub_kind sub_rule cross ivs cid glyph ids ids_char glyphwiki]
+broken = rows.reject { |row| meaty.any? { |k| !row[k].to_s.empty? } }
 return if broken.empty?
 
 puts "\n=== 抽出漏れの疑い（desc 以降が全部空） (#{broken.size}) ==="
