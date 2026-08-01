@@ -45,6 +45,11 @@ aozora2 html input.txt --title "タイトル" -o output.html
 | [aozora2](./crates/aozora2/) | [![crates.io](https://img.shields.io/crates/v/aozora2.svg)](https://crates.io/crates/aozora2) | メインCLI（strip, html サブコマンド） |
 | [aozora-core](./crates/aozora-core/) | [![crates.io](https://img.shields.io/crates/v/aozora-core.svg)](https://crates.io/crates/aozora-core) | コアライブラリ（トークナイザ、パーサー、外字変換等） |
 | [aozora2text](./crates/aozora2text/) | [![crates.io](https://img.shields.io/crates/v/aozora2text.svg)](https://crates.io/crates/aozora2text) | 後方互換CLI（`aozora2 strip` のラッパー） |
+| [aozora_farm](./crates/aozora_farm/) | — | GUI（青空ファーム）。エディタとHTMLプレビュー |
+
+aozora_farm は Tauri + CodeMirror 6 のデスクトップアプリなので crates.io では配布しない。
+GTK/webkit のシステムライブラリが要るため既定のビルド・テストからも外してあり、
+`cargo build -p aozora_farm` と明示したときだけビルドされる。
 
 ## ライセンス
 
