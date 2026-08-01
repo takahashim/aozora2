@@ -9,7 +9,9 @@
 
 ```
 curl -O https://www.unicode.org/ivd/data/2022-09-13/IVD_Sequences.txt
-ruby tools/extract_gaiji_chuki.rb gaiji_chuki.pdf IVD_Sequences.txt crates/aozora-core/data
+curl -O https://raw.githubusercontent.com/cjkvi/cjkvi-ids/master/ids.txt
+ruby tools/extract_gaiji_chuki.rb gaiji_chuki.pdf IVD_Sequences.txt ids.txt \
+    crates/aozora-core/data
 ```
 
 poppler-utils（pdftotext・pdftocairo）が要る。PDF 自体の読み取りは `tools/mini_pdf.rb`
@@ -34,6 +36,12 @@ poppler-utils（pdftotext・pdftocairo）が要る。PDF 自体の読み取り�
 | `ivs` | 字形の Adobe-Japan1 異体字セレクタ列（823 件。例 `51E1 E0101`） |
 | `cid` | 字形の CID（`ivs` が引けなかったときの手がかり） |
 | `glyph` | `1` なら `gaiji_chuki_glyphs.tsv` に輪郭がある |
+| `ids` | 説明を組み立ての IDS にしたもの（7821 件。例 `⿰旬力`） |
+| `ids_char` | `ids` を CHISE の IDS 表で引いた字（5699 件） |
+| `glyphwiki` | `ids` から作った GlyphWiki の合成グリフ名（例 `u2ff0-u65ec-u529b`） |
+
+`ids` が 1 文字のときは組み立てではなく「その字の別字形」の意味なので、`ids_char` と
+`glyphwiki` は空にしてある。
 
 `desc` が**両方向の結合キー**になる。読む側は「説明だけの注記」を字へ解決でき、書く側
 （OCR など）は字から慣用の注記を引ける。
@@ -62,12 +70,48 @@ p10-4 「凡」→［包摂適用 凡］規準37
 
 | 同定できた手段 | 件数 |
 |---|---|
-| **IVS（Adobe-Japan1）** | **823** |
-| 輪郭（埋め込みフォントで描かれた字） | 222 |
-| 手がかり無し（字形欄が空） | 82 |
+| **IVS（Adobe-Japan1・CID から直接）** | **823** |
+| MJ 文字図形（輪郭照合。`gaiji_chuki_mj.tsv`） | 139 |
+| IDS から字（説明の組み立てから） | 284 |
+| GlyphWiki の合成グリフ名 | 444 |
+| **いずれかで同定** | **1010（90%）** |
+| どれも無い | 117 |
 
 埋め込みサブセットフォントの CID はそのフォント内でしか意味を持たず ToUnicode も無いので、
-そちらは輪郭を残すしかない。
+そちらは輪郭を残すしかない（222 件）。
+
+## 説明文から組み立てを導く（`ids` 列）
+
+説明文は部品の組み立てを表す小さな言語になっている。
+
+| 記法 | IDS | 例 |
+|---|---|---|
+| `＋` | ⿰（左右） | `口＋畢` → ⿰口畢 |
+| `／` | ⿱（上下） | `髟／舌` → ⿱髟舌 |
+| `＜` | ⿴/⿵/⿷/⿶ | `囗＜力` → ⿴囗力、`匚＜工` → ⿷匚工（囲む側で変わる） |
+| `−` | 対応なし | `尓−小`（変換できない） |
+
+部品は文字そのもののほか「にんべん」のような呼び名や「膠のつくり」のような他の字からの
+参照で書かれる。前者は `tools/gaiji_ids.rb` の語彙表、後者は CHISE の IDS 表の分解で解く。
+
+**規則の妥当性はデータ自身で検算できる。** 符号位置を持つエントリで「説明 → IDS →
+IDS 表 → 符号位置」がエントリ自身の U+ と一致するかを見ると、2769 件中 2728 件が一致した
+（**98.5%**）。不一致 41 件は `にんべん＋蜈のつくり → 俣 / 俁` のような字形の揺れで、
+辞書と CHISE のどちらが正しいか判断が要る性質のもの。
+
+符号位置が無い組み立ては GlyphWiki の合成グリフ名で参照できる。`旬＋力`（『小公女』が
+底本の字形を示すために使っている字）は <https://glyphwiki.org/wiki/u2ff0-u65ec-u529b>
+に実在する。部品が増えるほど登録は少なくなる。
+
+## `gaiji_chuki_mj.tsv` — 輪郭照合で特定した 139 件
+
+`tools/match_glyphs_ipamj.py` で作る**任意の**成果物。IPAmj明朝がライセンス同意の先に
+あり、MJ 文字情報一覧表も別途入手が要るので、抽出器本体とは分けてある。対象は `glyph=1`
+の 222 件で、代用字の異体字を IPAmj明朝から描いて重なりの良いものを選ぶ。
+
+較正では、正解と分かっているペアの IoU が中央値 0.61、無関係なペアが 0.22 で分離する。
+`iou>=0.40` かつ 2 位と 0.05 以上の差があるものだけを載せた（139 件・IoU 中央値 0.95）。
+`runner_up` と `candidates` を残してあるので、確度は利用側でも判断できる。
 
 ## `gaiji_chuki_glyphs.tsv` — 222 字
 

@@ -61,11 +61,13 @@ require 'rexml/document'
 require 'open3'
 require 'tmpdir'
 require_relative 'pdf_text_runs'
+require_relative 'gaiji_ids'
 
-USAGE = 'usage: extract_gaiji_chuki.rb <pdf> <IVD_Sequences.txt> <outdir>'
+USAGE = 'usage: extract_gaiji_chuki.rb <pdf> <IVD_Sequences.txt> <ids.txt> <outdir>'
 PDF = ARGV[0] or abort USAGE
 IVD_PATH = ARGV[1] or abort USAGE
-OUTDIR = ARGV[2] or abort USAGE
+IDS_PATH = ARGV[2] or abort USAGE
+OUTDIR = ARGV[3] or abort USAGE
 
 SUB_KINDS = '包摂適用|統合適用|デザイン差|78ï¼?互換包摂|78 ?互換包摂'
 XHTML = 'http://www.w3.org/1999/xhtml'
@@ -120,6 +122,23 @@ end
 
 # --- エントリを組み立てる -------------------------------------------------
 
+# 説明は先頭の 「…」 の中身。ただし部品の記述が入れ子の 「」 を使うことがあるので
+# （`「月＋（「亶」の「回」に代えて「面から一、二画目をとったもの」）」`）、最初の
+# 」 で切ってはいけない。対応を数えて外側の閉じを探す。
+def balanced_desc(spec)
+  return '' unless spec.start_with?('「')
+
+  depth = 0
+  spec.each_char.with_index do |c, i|
+    depth += 1 if c == '「'
+    if c == '」'
+      depth -= 1
+      return spec[1...i] if depth.zero?
+    end
+  end
+  ''
+end
+
 def parse_entry(text)
   m = text.match(/\A\s*(★\s*)?(\d+)．\s*\S*?\s*(※［＃.*|→［.*)\z/m)
   return nil unless m
@@ -136,7 +155,7 @@ def parse_entry(text)
   spec = spec.to_s.gsub(/、?ページ数-行数/, '').gsub(/\s+/, '')
   {
     strokes: strokes,
-    desc: spec[/\A「([^」]*)」/, 1] || '',
+    desc: balanced_desc(spec),
     jis: spec[/第([34])水準([0-9]+-[0-9]+-[0-9]+)/, 2] || '',
     level: spec[/第([34])水準/, 1] || '',
     unicode: spec[/U\+([0-9A-F]{4,6})/, 1] || '',
@@ -189,10 +208,12 @@ end
 # --- 出力 -----------------------------------------------------------------
 
 COLUMNS = %i[id page radical strokes desc jis level unicode sub sub_kind sub_rule cross
-             ivs cid glyph].freeze
+             ivs cid glyph ids ids_char glyphwiki].freeze
 
 pdf = MiniPdf.new(PDF)
 ivd = PdfTextRuns.load_ivd(IVD_PATH)
+ids_to_code, ids_of_code = GaijiIds.load_table(IDS_PATH)
+ids_conv = GaijiIds::Converter.new(ids_of_code)
 entries = []
 glyphs = []
 state = { radical: nil }
@@ -247,6 +268,23 @@ pdf.pages.each_with_index do |pdf_page, page_index|
                   d: defs[ref] }
     end
   end
+  # 説明文から組み立ての IDS を導く。符号位置の有無に関係なく引けるので、同定の
+  # 独立した手がかりになる（符号位置を持つエントリでの正解率 98.5%）。
+  found.each do |e|
+    e[:ids] = e[:ids_char] = e[:glyphwiki] = ''
+    next if e[:desc].to_s.empty?
+
+    begin
+      ids = ids_conv.convert(e[:desc])
+    rescue GaijiIds::Unconvertible
+      next
+    end
+    e[:ids] = ids
+    next if ids.length == 1  # 説明が 1 文字なら「その字の別字形」の意味。組み立てではない。
+
+    e[:ids_char] = ids_to_code[ids].to_s
+    e[:glyphwiki] = GaijiIds.glyphwiki_name(ids)
+  end
   entries.concat(found)
   warn "p#{page}: #{found.size} 件" if page % 20 == 0
 end
@@ -260,4 +298,6 @@ File.open(File.join(OUTDIR, 'gaiji_chuki_glyphs.tsv'), 'w') do |f|
   glyphs.each { |g| f.puts [g[:id], g[:part], g[:fill], g[:dx], g[:d]].join("\t") }
 end
 warn "エントリ #{entries.size} / IVS #{entries.count { |e| !e[:ivs].to_s.empty? }}"\
-     " / 輪郭 #{glyphs.map { |g| g[:id] }.uniq.size}"
+     " / 輪郭 #{glyphs.map { |g| g[:id] }.uniq.size}"\
+     " / IDS #{entries.count { |e| !e[:ids].to_s.empty? }}"\
+     " / IDS から字 #{entries.count { |e| !e[:ids_char].to_s.empty? }}"
