@@ -36,6 +36,15 @@ pub enum RefSpec {
         /// ルビとして表示する注記
         annotation: String,
     },
+    /// 左ルビ・下ルビ（`「対象」の左に「ヨミ」のルビ`。`下に` や `の注記` も同じ）。
+    ///
+    /// 元の変換系はこの記法を解決せず注記へ逃がす（`PAT_REST_NOTES` の
+    /// "avoid to try complex ruby -- escape to notes"）。木は意味を保つために
+    /// 左ルビとして畳み、退避先の内容は `note_fallback` に併せ持つ。
+    DirectionalRuby {
+        /// ルビとして表示する文字列
+        annotation: String,
+    },
     /// 傍記（対象の各文字の脇に注記を並べる）
     SideNote {
         /// 各文字に添える注記
@@ -83,6 +92,7 @@ impl RefSpec {
                         .collect(),
                     direction: RubyDirection::Right,
                     keep_gaiji_notes_in_base: true,
+                    note_fallback: None,
                 },
                 None => NodeKind::Gaiji {
                     description: String::new(),
@@ -114,6 +124,15 @@ impl RefSpec {
                 ruby: vec![Node::text(annotation, span)],
                 direction: RubyDirection::Right,
                 keep_gaiji_notes_in_base: true,
+                note_fallback: None,
+            },
+            RefSpec::DirectionalRuby { annotation } => NodeKind::Ruby {
+                children,
+                ruby: vec![Node::text(annotation, span)],
+                direction: RubyDirection::Left,
+                keep_gaiji_notes_in_base: true,
+                // 退避先の内容は解決器が原文から作って差し込む（ここでは原文を持たない）。
+                note_fallback: None,
             },
             RefSpec::SideNote { annotation } => {
                 // 親文字の文字数だけ注記を繰り返し、&nbsp; で区切る
@@ -125,6 +144,7 @@ impl RefSpec {
                     ruby: vec![Node::text(&repeated, span)],
                     direction: RubyDirection::Right,
                     keep_gaiji_notes_in_base: true,
+                    note_fallback: None,
                 }
             }
         };

@@ -249,6 +249,7 @@ mod tests {
             ruby: vec![text("るび")],
             direction: crate::node::RubyDirection::Right,
             keep_gaiji_notes_in_base: from_command,
+            note_fallback: None,
         })
     }
 

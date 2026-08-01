@@ -217,6 +217,9 @@ pub enum InlineKind {
         direction: RubyDirection,
         /// 親文字内の外字注記を rb 内に残すか（`crate::node::NodeKind::Ruby` 参照）。
         keep_gaiji_notes_in_base: bool,
+        /// 既定の HTML 出力がこのルビを注記へ退避するときに出す内容（互換メタデータ）。
+        /// 左ルビだけが持つ（`crate::node::NodeKind::Ruby` 参照）。
+        note_fallback: Option<Vec<Inline>>,
     },
     /// 装飾（傍点・傍線・太字・斜体など）
     Style {

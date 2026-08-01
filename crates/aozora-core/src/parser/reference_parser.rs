@@ -339,28 +339,27 @@ fn try_parse_inline_element(target: &str, spec: &str) -> Option<CommandResult> {
 
 /// 左ルビパターンを解析
 pub fn try_parse_left_ruby(content: &str) -> Option<CommandResult> {
-    // パターン: 「親文字」の左に「ルビ」のルビ
+    // 参照 PAT_REST_NOTES = `(左|下)に「(.*)」の(ルビ|注記|傍記)`。うち ルビ・注記 を
+    // 左ルビとして畳む（傍記は対象の各文字に添えるもので別物なので畳まない）。
+    // 形は `「対象」{の|に|は}(左|下)に「ルビ」の(ルビ|注記)`。
     let start = content.find('「')?;
-    let first_end = content.find('」')?;
-    if first_end <= start {
-        return None;
-    }
-
+    let first_end = content[start..].find('」')? + start;
     let target = &content[start + '「'.len_utf8()..first_end];
     let rest = &content[first_end + '」'.len_utf8()..];
 
-    if !rest.contains("の左に") || !rest.contains("のルビ") {
+    // 方向語（左に／下に）の直後の 「…」 がルビ。
+    let dir = rest.find("左に").or_else(|| rest.find("下に"))?;
+    let after_dir = &rest[dir + "左に".len()..];
+    let ruby_start = after_dir.find('「')?;
+    let ruby_end = after_dir[ruby_start..].find('」')? + ruby_start;
+    let ruby = &after_dir[ruby_start + '「'.len_utf8()..ruby_end];
+
+    // 閉じ 」 の直後が `のルビ` か `の注記` であること（`の傍記` は畳まない）。
+    let tail = &after_dir[ruby_end + '」'.len_utf8()..];
+    if !tail.starts_with("のルビ") && !tail.starts_with("の注記") {
         return None;
     }
 
-    // ルビ部分を抽出
-    let ruby_start = rest.find('「')?;
-    let ruby_end = rest.rfind('」')?;
-    if ruby_end <= ruby_start {
-        return None;
-    }
-
-    let ruby = &rest[ruby_start + '「'.len_utf8()..ruby_end];
     Some(CommandResult::LeftRuby {
         target: target.to_string(),
         ruby: ruby.to_string(),

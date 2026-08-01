@@ -1,6 +1,6 @@
 {
-  "note": "ルビ（親文字の自動抽出と ｜ 明示）",
-  "source": "題\n著\n\n東京《とうきょう》と｜山手線《やまのてせん》",
+  "note": "左ルビ（元の変換系は注記へ退避するが、木は Ruby{direction:Left} で意味を保つ）",
+  "source": "題\n著\n\n対象［＃「対象」の左に「ヨミ」のルビ］\n下対象［＃「下対象」の下に「シタ」のルビ］",
   "raw_ast": {
     "format": "aozora-rawast",
     "lines": [
@@ -46,73 +46,58 @@
               "end": 2,
               "start": 0
             },
-            "value": "東京"
+            "value": "対象"
           },
           {
-            "kind": "Ruby",
+            "kind": "UnresolvedReference",
             "span": {
-              "end": 9,
+              "end": 19,
               "start": 2
             },
             "value": {
-              "children": [],
-              "direction": "Right",
-              "keep_gaiji_notes_in_base": false,
-              "note_fallback": null,
-              "ruby": [
-                {
-                  "kind": "Text",
-                  "span": {
-                    "end": 8,
-                    "start": 3
-                  },
-                  "value": "とうきょう"
+              "raw": "「対象」の左に「ヨミ」のルビ",
+              "spec": {
+                "kind": "DirectionalRuby",
+                "value": {
+                  "annotation": "ヨミ"
                 }
-              ]
-            }
-          },
-          {
-            "kind": "Text",
-            "span": {
-              "end": 10,
-              "start": 9
-            },
-            "value": "と"
-          },
-          {
-            "kind": "Ruby",
-            "span": {
-              "end": 22,
-              "start": 10
-            },
-            "value": {
-              "children": [
-                {
-                  "kind": "Text",
-                  "span": {
-                    "end": 14,
-                    "start": 11
-                  },
-                  "value": "山手線"
-                }
-              ],
-              "direction": "Right",
-              "keep_gaiji_notes_in_base": false,
-              "note_fallback": null,
-              "ruby": [
-                {
-                  "kind": "Text",
-                  "span": {
-                    "end": 21,
-                    "start": 15
-                  },
-                  "value": "やまのてせん"
-                }
-              ]
+              },
+              "target": "対象"
             }
           }
         ],
-        "source": "東京《とうきょう》と｜山手線《やまのてせん》"
+        "source": "対象［＃「対象」の左に「ヨミ」のルビ］"
+      },
+      {
+        "line_no": 4,
+        "nodes": [
+          {
+            "kind": "Text",
+            "span": {
+              "end": 3,
+              "start": 0
+            },
+            "value": "下対象"
+          },
+          {
+            "kind": "UnresolvedReference",
+            "span": {
+              "end": 21,
+              "start": 3
+            },
+            "value": {
+              "raw": "「下対象」の下に「シタ」のルビ",
+              "spec": {
+                "kind": "DirectionalRuby",
+                "value": {
+                  "annotation": "シタ"
+                }
+              },
+              "target": "下対象"
+            }
+          }
+        ],
+        "source": "下対象［＃「下対象」の下に「シタ」のルビ］"
       }
     ],
     "version": "0.1"
@@ -149,7 +134,7 @@
               "kind": "Ruby",
               "range_form": false,
               "span": {
-                "end": 9,
+                "end": 19,
                 "start": 0
               },
               "value": {
@@ -161,40 +146,50 @@
                       "end": 2,
                       "start": 0
                     },
-                    "value": "東京"
+                    "value": "対象"
                   }
                 ],
-                "direction": "Right",
-                "keep_gaiji_notes_in_base": false,
-                "note_fallback": null,
+                "direction": "Left",
+                "keep_gaiji_notes_in_base": true,
+                "note_fallback": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 19,
+                      "start": 0
+                    },
+                    "value": "「対象」の左に「ヨミ」のルビ"
+                  }
+                ],
                 "ruby": [
                   {
                     "kind": "Text",
                     "range_form": false,
                     "span": {
-                      "end": 8,
-                      "start": 3
+                      "end": 19,
+                      "start": 0
                     },
-                    "value": "とうきょう"
+                    "value": "ヨミ"
                   }
                 ]
               }
-            },
-            {
-              "kind": "Text",
-              "range_form": false,
-              "span": {
-                "end": 10,
-                "start": 9
-              },
-              "value": "と"
-            },
+            }
+          ],
+          "line": 3
+        }
+      },
+      {
+        "kind": "Line",
+        "value": {
+          "brk": "Br",
+          "inline": [
             {
               "kind": "Ruby",
               "range_form": false,
               "span": {
-                "end": 22,
-                "start": 10
+                "end": 21,
+                "start": 0
               },
               "value": {
                 "base": [
@@ -202,30 +197,40 @@
                     "kind": "Text",
                     "range_form": false,
                     "span": {
-                      "end": 14,
-                      "start": 11
+                      "end": 3,
+                      "start": 0
                     },
-                    "value": "山手線"
+                    "value": "下対象"
                   }
                 ],
-                "direction": "Right",
-                "keep_gaiji_notes_in_base": false,
-                "note_fallback": null,
+                "direction": "Left",
+                "keep_gaiji_notes_in_base": true,
+                "note_fallback": [
+                  {
+                    "kind": "Text",
+                    "range_form": false,
+                    "span": {
+                      "end": 21,
+                      "start": 0
+                    },
+                    "value": "「下対象」の下に「シタ」のルビ"
+                  }
+                ],
                 "ruby": [
                   {
                     "kind": "Text",
                     "range_form": false,
                     "span": {
                       "end": 21,
-                      "start": 15
+                      "start": 0
                     },
-                    "value": "やまのてせん"
+                    "value": "シタ"
                   }
                 ]
               }
             }
           ],
-          "line": 3
+          "line": 4
         }
       }
     ],

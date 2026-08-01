@@ -289,7 +289,7 @@ Inline = { kind: 構成子名, value: 内容?, span: Span, range_form: Bool }
 | 構成子 | 内容 | 記法 |
 |---|---|---|
 | `Text` | `Text` | 素の文字列 |
-| `Ruby` | `{ base: Inline*, ruby: Inline*, direction, keep_gaiji_notes_in_base: Bool }` | `漢字《かんじ》` |
+| `Ruby` | `{ base: Inline*, ruby: Inline*, direction, keep_gaiji_notes_in_base: Bool, note_fallback: Inline*? }` | `漢字《かんじ》` |
 | `Style` | `{ children: Inline*, style_type: StyleType }` | 傍点・傍線・太字・斜体 |
 | `Midashi` | `{ children: Inline*, level, style }` | 同行・窓見出し |
 | `Gaiji` | `{ description: Text, unicode: Text?, jis_code: Text?, had_igeta: Bool }` | `※［＃…］` |
@@ -316,6 +316,9 @@ Inline = { kind: 構成子名, value: 内容?, span: Span, range_form: Bool }
 - `Ruby` の `keep_gaiji_notes_in_base` は、親文字に画像化できない外字があるとき、その注記
   `［＃…］` を親文字の中に残すか。`［＃注記付き］…終わり` の範囲ルビ由来なら真。偽なら
   描画時に注記をルビの外へ出す。
+- `Ruby` の `note_fallback` は、既定の HTML 出力がこのルビを注記へ退避するときに出す内容。
+  左ルビ・下ルビ（`「対象」の左に「ヨミ」のルビ`）だけが持ち、通常のルビは `null`。
+  詳しくは下の「左ルビ」。
 - `Img` の `is_photo` は図の説明に「写真」を含むか（描画のクラス分けに使う）。
 - `AnnotationEnd` の `prefix` / `suffix` はマーカー原文の前後の文字列（`左に「` と
   `」の注記付き終わり` など）、`content` はその間の注記内容。
@@ -335,6 +338,22 @@ Inline = { kind: 構成子名, value: 内容?, span: Span, range_form: Bool }
   現れるので、この形式を読む側は必ず扱えなければならない（出ない文書があるだけで、
   形式の定義から外れるわけではない）。互換の選択のうちこの木に届くのはこれだけで、
   残りは描画時にしか効かない。RawAST はどの選択からも独立している。
+
+### 左ルビ
+
+- 左ルビ・下ルビは `Ruby { direction: "Left" }` として木に入る。意味は保たれるので、
+  この形式を読む消費者は左側の注釈として扱える。
+- ただし既定の HTML 出力では注記になる。元の変換系がこの記法を解決せず注記へ逃がす
+  ためで（書かれた当時の CSS ではルビの位置を替えられなかった）、既存の公開 HTML と
+  一致させるには同じ退避が要る。そのとき出す内容が `note_fallback` である。
+- 退避先を木に持つのは、注記の中の入れ子記法（ルビ・外字）が解決済みである必要が
+  あるため。原文の文字列だけでは、それを描く側が記法のパーサを持つことになる
+  （1 章の不変条件 3 に反する）。
+- 生産者の選択でこの退避をやめると `<ruby class="leftrb">` として出せる。今日の CSS
+  なら `ruby-position: under` で縦書きの左側に表示できる。どちらを選んでも
+  木は同じ（`Ruby { direction: "Left", note_fallback: … }`）で、変わるのは描画だけ。
+- 両側ルビ（右と左の両方に注釈）は表現できない。`Ruby` は注釈を 1 つしか持たない
+  （9 章の未決）。
 
 ```json
 {
@@ -489,17 +508,13 @@ CloseKind = NoBreak | Newline | BareBreak              // 構成子（値を持�
   節内の位置を入れている（原文由来の行番号と原点が混ざる）。`null` にする案が有力。
 - `Break` の `None` という名前。JSON では文字列 `"None"` になり、`null` と紛らわしい。
   /2 での改名を検討。
-- 左ルビ・両側ルビ。記法（`「…」の左に「…」のルビ`。`下に` も同じ扱い）はあるが、
-  元の変換系は解析するだけで HTML には出さない（ルビ文字列を落とし、`<rt>` が空の
-  ruby を出す。書かれた当時の CSS ではルビの位置を替えられなかったため）。現行の
-  生産者は解釈もせず `Note` のまま出すので、`Left` を持つ木は生まれない。
-  片側だけの左ルビは、今日の CSS なら `ruby-position: under`（縦書きで左側）で
-  表現できるので、解決して `Left` の木を作る実装は可能になっている。難しいまま
-  残るのは両側ルビで、HTML Living Standard のルビには 2 つ目の注釈を書く要素が
-  無く（`<rtc>` は入っていない）、いまの `Ruby { base, ruby, direction }` も注釈を
-  片側しか持てないので表現できない。本形式は backend-neutral を掲げる以上、HTML で
-  書きにくいことは表現しない理由にはならない——片側の解決を実装するか、注釈を
+- 両側ルビ（右と左の両方に注釈）。`Ruby` は注釈を 1 つしか持たないので表現できない。
+  HTML Living Standard のルビにも 2 つ目の注釈を書く要素が無い（`<rtc>` は入って
+  いない）が、本形式は backend-neutral を掲げる以上それは理由にならない。注釈を
   2 つ持てる形にするかが論点。
+- `note_fallback` の置き場所。左ルビだけのために `Ruby` が退避用の内容を持つのは、
+  意味の木としては異物である。互換メタデータを別の層へ分ける案（この節の 2 つ目）と
+  合わせて整理したい。
 - `Note` の `raw` を必須にするか。解決済みの `content` があれば描画はできるが、
   往復（AST → 記法）を考えると原文が要る。
 - 位置情報の必須性。`span` / `line` はエディタ支援のためのもので、変換だけなら不要。

@@ -470,7 +470,19 @@ impl<'a> BlockRenderer<'a> {
                 ruby,
                 direction,
                 keep_gaiji_notes_in_base,
+                note_fallback,
             } => {
+                // 左ルビは元の変換系が注記へ逃がす。既定ではそれを再現し、親文字を
+                // 素で出してから退避先の内容を注記として出す（木は左ルビのまま）。
+                if let (true, Some(fallback)) =
+                    (self.options.quirks.left_ruby_as_note, note_fallback)
+                {
+                    self.render_inlines(base, out);
+                    self.notation.mark_notes();
+                    let inner = self.render_note_content(fallback);
+                    out.push_str(&format!("<span class=\"notes\">［＃{inner}］</span>"));
+                    return;
+                }
                 // 親文字に画像化できない外字があると、参照は rb に外字記号 ※ だけ残し
                 // 注記 <span class="notes">…</span> をルビの外（trailing）へ出す。
                 // ［＃注記付き］範囲ルビ等（keep_gaiji_notes_in_base）は通常描画のまま。

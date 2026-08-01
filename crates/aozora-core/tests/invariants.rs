@@ -276,3 +276,53 @@ fn nodes_tile_their_line_without_gaps() {
         }
     }
 }
+
+/// 左ルビは木では `Ruby { direction: Left }` として保たれ、既定の HTML では
+/// 元の変換系と同じく注記へ退避する（docs/spec-aozora-ast-json.md）。
+#[test]
+fn left_ruby_is_kept_in_the_tree_and_escapes_to_a_note_in_html() {
+    use aozora_core::ast::{Inline, InlineKind};
+    use aozora_core::html::{Quirks, RenderOptions};
+    use aozora_core::interchange::AozoraDocument;
+
+    let src = "題\r\n著\r\n\r\n対象［＃「対象」の左に「ヨミ」のルビ］\r\n";
+
+    for quirks in [Quirks::default(), Quirks::none()] {
+        let doc = AozoraDocument::from_text(src, &quirks);
+        let mut found = None;
+        walk_blocks(&doc.main_text, &mut |inline: &Inline| {
+            if let InlineKind::Ruby {
+                direction,
+                note_fallback,
+                ..
+            } = &inline.kind
+            {
+                found = Some((*direction, note_fallback.is_some()));
+            }
+        });
+        let (direction, has_fallback) = found.expect("左ルビが木に無い");
+        assert_eq!(
+            direction,
+            aozora_core::node::RubyDirection::Left,
+            "左ルビは direction=Left で持つ"
+        );
+        assert!(has_fallback, "退避先の内容を併せ持つ");
+    }
+
+    // 既定は注記へ退避（元の変換系と同じ出力）。
+    let on = AozoraDocument::from_text(src, &Quirks::default()).to_html(&RenderOptions::default());
+    assert!(
+        on.contains("対象<span class=\"notes\">［＃「対象」の左に「ヨミ」のルビ］</span>"),
+        "既定は注記へ退避する: {on}"
+    );
+    assert!(!on.contains("leftrb"), "既定でルビを出さない");
+
+    // オフにすると左ルビとして出す。
+    let quirks = Quirks::none();
+    let off = AozoraDocument::from_text(src, &quirks)
+        .to_html(&RenderOptions::default().with_quirks(quirks));
+    assert!(
+        off.contains("<ruby class=\"leftrb\"><rb>対象</rb>"),
+        "オフでは左ルビを出す: {off}"
+    );
+}

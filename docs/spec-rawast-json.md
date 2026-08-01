@@ -216,7 +216,7 @@ Node = { kind: 構成子名, value: 内容?, span: Span }
 | 構成子 | 内容 | 記法 |
 |---|---|---|
 | `Text` | `Text` | 素の文字列 |
-| `Ruby` | `{ children: Node*, ruby: Node*, direction: RubyDirection, keep_gaiji_notes_in_base: Bool }` | `漢字《かんじ》` |
+| `Ruby` | `{ children: Node*, ruby: Node*, direction: RubyDirection, keep_gaiji_notes_in_base: Bool, note_fallback: Node*? }` | `漢字《かんじ》` |
 | `Style` | `{ children: Node*, style_type: StyleType }` | 傍点・傍線・太字・斜体 |
 | `Midashi` | `{ children: Node*, level: MidashiLevel, style: MidashiStyle }` | 見出し |
 | `Gaiji` | `{ description: Text, unicode: Text?, jis_code: Text?, had_igeta: Bool }` | `※［＃…］` |
@@ -241,12 +241,14 @@ Node = { kind: 構成子名, value: 内容?, span: Span }
   `unicode` は `é`。`unicode` は合成列のこともあり、対応が無ければ `null`。
 - `Ruby` の `children` が空なのは、親文字がまだ確定していない段階を表す（`｜` の無いルビは
   直前のテキストから親文字を切り出す処理が要る）。
+- `Ruby` の `note_fallback` は左ルビだけが持つ（[Aozora AST 交換形式](spec-aozora-ast-json.md)
+  の 6 章）。通常のルビは `null`。
 - `Ruby` の `keep_gaiji_notes_in_base` は、親文字に画像化できない外字があるとき、その注記
   `［＃…］` を親文字の中に残すか。`［＃注記付き］…終わり` の範囲ルビ由来なら真。偽なら
   描画時に注記をルビの外へ出す。
-- `Ruby` の `direction` が `"Left"` になる木は、現行の生産者からは生まれない。左ルビの
-  記法（`「…」の左に「…」のルビ`）は現状解釈されず、生成時から `Note` になる。
-  背景と扱いは [Aozora AST 交換形式](spec-aozora-ast-json.md)の未決を参照。
+- `Ruby` の `direction` が `"Left"` になるのは左ルビ・下ルビ（4.4 の `DirectionalRuby`）を
+  解決したとき。RawAST は前方参照を未解決のまま持つ形式なので、生成した直後の RawAST には
+  `UnresolvedReference` として現れる。
 - `Img` の `is_photo` は図の説明に「写真」を含むか（描画のクラス分けに使う）。
 - `AnnotationEnd` の `prefix` / `suffix` はマーカー原文の前後の文字列（`左に「` と
   `」の注記付き終わり` など）、`content` はその間の注記内容。
@@ -332,6 +334,7 @@ RefSpec =
   | FontSize        { size_type: FontSizeType, level: Nat }
   | Inline          "Tcy" | "Keigakomi" | "Yokogumi" | "Caption" | "Kaeriten" | "Okurigana"
   | AnnotationRuby  { annotation: Text }
+  | DirectionalRuby { annotation: Text }
   | SideNote        { annotation: Text }
   | EmbeddedGaiji   { jis_code: Text, annotation_ruby: Node*? }
   | DakutenKatakana { num: Text }
@@ -353,6 +356,10 @@ RefSpec =
 - 対象が見つからなければ、解決の段階で `Note(raw)` になる
   - 記法として解釈できなかったものは編集者注として出す、というのが青空文庫形式の扱い
 - `AnnotationRuby` は `「対象」に「注記」の注記`。対象を親文字、注記をルビにする。
+- `DirectionalRuby` は左ルビ・下ルビ（`「対象」の左に「ヨミ」のルビ`。`下に` や
+  `の注記` も同じ）。対象を親文字、注記を左側のルビにする。元の変換系はこの記法を
+  解決せず注記へ逃がすので、解決した木は退避先の内容も併せ持つ
+  （[Aozora AST 交換形式](spec-aozora-ast-json.md)の `Ruby.note_fallback`）。
 - `SideNote` は傍記。対象の各文字の脇に注記を 1 文字ずつ並べる。
 - `EmbeddedGaiji` は面区点コード指定の前方参照（`「5」はローマ数字、1-13-25` の置換形と、
   `「対象」に「※［＃…］…」の注記` の注記形）。`annotation_ruby` は注記形のときの

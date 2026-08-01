@@ -188,8 +188,11 @@ pub fn parse_command(content: &str) -> CommandResult {
         }
     }
 
-    // 2. 左ルビパターン（後方参照より先にチェック）
-    if content.contains("の左に") && content.contains("のルビ") {
+    // 2. 左ルビ・下ルビ（後方参照より先にチェック）。参照 PAT_REST_NOTES と同じ位置で、
+    //    前方参照の解決より手前に置く。
+    if (content.contains("左に") || content.contains("下に"))
+        && (content.contains("のルビ") || content.contains("の注記"))
+    {
         if let Some(result) = try_parse_left_ruby(content) {
             return result;
         }

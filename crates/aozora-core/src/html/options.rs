@@ -53,6 +53,15 @@ pub struct Quirks {
     /// （43670・60380・60385）。作者が意図しえない差なので Quirk とする。
     /// オフにすると未閉じ `〔` をただの文字として扱い、行のマージも起こさない。
     pub unclosed_accent_break: bool,
+    /// 左ルビ・下ルビ（`「対象」の左に「ヨミ」のルビ`）を注記として出す。
+    ///
+    /// 元の変換系はこの記法を解決せず注記へ逃がす（`PAT_REST_NOTES` の
+    /// "avoid to try complex ruby -- escape to notes"）。書かれた当時の CSS では
+    /// ルビの位置を替えられなかったためで、記法としては有効なものが表示されない。
+    /// 木は左ルビとして畳んだうえで、既定ではこの退避を再現する。
+    /// オフにすると `<ruby class="leftrb">` で出す（CSS の `ruby-position: under`
+    /// で左側に表示できる）。
+    pub left_ruby_as_note: bool,
 }
 
 impl Default for Quirks {
@@ -67,6 +76,7 @@ impl Default for Quirks {
             raw_image_alt: true,
             dakuten_katakana_double_slash: true,
             unclosed_accent_break: true,
+            left_ruby_as_note: true,
         }
     }
 }
@@ -83,6 +93,7 @@ impl Quirks {
             raw_image_alt: false,
             dakuten_katakana_double_slash: false,
             unclosed_accent_break: false,
+            left_ruby_as_note: false,
         }
     }
 }

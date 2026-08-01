@@ -150,6 +150,7 @@ fn resolve_annotation_ranges(nodes: &mut Vec<Node>) {
                                 ruby: annotation_nodes,
                                 direction: RubyDirection::Right,
                                 keep_gaiji_notes_in_base: true,
+                                note_fallback: None,
                             },
                             range,
                         );
@@ -206,7 +207,7 @@ fn resolve_style_references_collecting(nodes: &mut Vec<Node>, failed: &mut Vec<S
             // から連続した接尾辞スパンとして対象を探す。i == 0 なら前が無い。
             if i > 0 {
                 if let Some(m) = search_front_reference(&nodes[..i], i - 1, &target_clone) {
-                    apply_front_reference(nodes, &mut i, m, &spec_clone);
+                    apply_front_reference(nodes, &mut i, m, &spec_clone, &raw_clone);
                     continue;
                 }
             }
@@ -323,7 +324,13 @@ fn search_front_reference(nodes: &[Node], end_idx: usize, target: &str) -> Optio
 
 /// 照合結果をノード列に適用する。start_idx..=（注記の直前）を
 /// [分割前半?][解決済みノード] に置き換え、注記自身を除去する。
-fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch, spec: &RefSpec) {
+fn apply_front_reference(
+    nodes: &mut Vec<Node>,
+    i: &mut usize,
+    m: FrontRefMatch,
+    spec: &RefSpec,
+    raw: &str,
+) {
     let reference_span = nodes[*i].span;
     let combined_span = m
         .children
@@ -339,6 +346,14 @@ fn apply_front_reference(nodes: &mut Vec<Node>, i: &mut usize, m: FrontRefMatch,
             if let NodeKind::Ruby { ruby, .. } = &mut new_node.kind {
                 *ruby = parse_annotation_text(annotation, combined_span);
             }
+        }
+    }
+    // 左ルビは元の変換系が注記へ逃がす。既定の HTML でそのとおり出せるよう、注記の
+    // 原文を解析した内容を木に併せ持つ（原文をそのまま出すと、注記の中の入れ子記法
+    // ——ルビ・外字——が解決されず参照と食い違う）。
+    if let RefSpec::DirectionalRuby { .. } = spec {
+        if let NodeKind::Ruby { note_fallback, .. } = &mut new_node.kind {
+            *note_fallback = Some(parse_annotation_text(&raw, combined_span));
         }
     }
     let mut replacement = Vec::new();
@@ -456,6 +471,7 @@ mod tests {
                 ruby: vec![text("とうきょう")],
                 direction: RubyDirection::Right,
                 keep_gaiji_notes_in_base: false,
+                note_fallback: None,
             }),
         ];
 
@@ -480,6 +496,7 @@ mod tests {
                 ruby: vec![text("とうきょう")],
                 direction: RubyDirection::Right,
                 keep_gaiji_notes_in_base: false,
+                note_fallback: None,
             }),
         ];
 
@@ -503,6 +520,7 @@ mod tests {
             ruby: vec![text("とうきょう")],
             direction: RubyDirection::Right,
             keep_gaiji_notes_in_base: false,
+            note_fallback: None,
         });
         assert!(
             search_front_reference(&[text("東京"), pending], 1, "東京").is_none(),
@@ -515,6 +533,7 @@ mod tests {
             ruby: vec![text("とうきょう")],
             direction: RubyDirection::Right,
             keep_gaiji_notes_in_base: false,
+            note_fallback: None,
         });
         let m =
             search_front_reference(&[resolved], 0, "東京").expect("親文字が入っていれば照合できる");
@@ -696,6 +715,7 @@ mod tests {
         // 親文字ノード列の中で解決してから <rb> に入れる（子への再帰）。
         let mut nodes = vec![node(NodeKind::Ruby {
             keep_gaiji_notes_in_base: false,
+            note_fallback: None,
             children: vec![
                 text("瀕"),
                 node(NodeKind::UnresolvedReference {

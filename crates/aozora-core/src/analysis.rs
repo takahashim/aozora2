@@ -491,8 +491,10 @@ fn classify_ref_spec(spec: &RefSpec) -> SemTokenKind {
     match spec {
         RefSpec::Midashi { .. } => SemTokenKind::Heading,
         RefSpec::Style(_) | RefSpec::FontSize { .. } => SemTokenKind::Emphasis,
-        // ルビとして表示されるもの（注記ルビ・傍記）。
-        RefSpec::AnnotationRuby { .. } | RefSpec::SideNote { .. } => SemTokenKind::Ruby,
+        // ルビとして表示されるもの（注記ルビ・傍記・左ルビ）。
+        RefSpec::AnnotationRuby { .. }
+        | RefSpec::SideNote { .. }
+        | RefSpec::DirectionalRuby { .. } => SemTokenKind::Ruby,
         // 外字画像になるもの（句点コード指定・濁点付き片仮名）。
         RefSpec::EmbeddedGaiji { .. } | RefSpec::DakutenKatakana { .. } => SemTokenKind::Gaiji,
         // 縦中横・罫囲み・横組み・キャプション・返り点・訓点送り仮名。

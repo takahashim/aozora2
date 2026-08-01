@@ -179,6 +179,7 @@
                 ],
                 "direction": "Right",
                 "keep_gaiji_notes_in_base": true,
+                "note_fallback": null,
                 "ruby": [
                   {
                     "kind": "Text",
@@ -222,6 +223,7 @@
                 ],
                 "direction": "Right",
                 "keep_gaiji_notes_in_base": true,
+                "note_fallback": null,
                 "ruby": [
                   {
                     "kind": "Text",

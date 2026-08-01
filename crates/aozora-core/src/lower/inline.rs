@@ -35,11 +35,15 @@ fn inline_from_node_at(node: &Node, depth: usize) -> Option<Inline> {
             ruby,
             direction,
             keep_gaiji_notes_in_base,
+            note_fallback,
         } => InlineKind::Ruby {
             base: to_inlines_at(children, depth),
             ruby: to_inlines_at(ruby, depth),
             direction: *direction,
             keep_gaiji_notes_in_base: *keep_gaiji_notes_in_base,
+            note_fallback: note_fallback
+                .as_ref()
+                .map(|nodes| to_inlines_at(nodes, depth)),
         },
         NodeKind::Style {
             children,

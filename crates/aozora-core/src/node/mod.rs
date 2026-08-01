@@ -38,6 +38,13 @@ pub enum NodeKind {
         /// rb 内に入る。`《》` ルビ（create_ruby）は UnEmbedGaiji を escape して
         /// notes をルビの後ろに出すので false。
         keep_gaiji_notes_in_base: bool,
+        /// 既定の HTML 出力がこのルビを注記へ退避するときに出す内容（互換メタデータ）。
+        ///
+        /// 左ルビ・下ルビ（`「対象」の左に「ヨミ」のルビ`）だけが持つ。元の変換系は
+        /// この記法を解決せず注記へ逃がす（`PAT_REST_NOTES` の "avoid to try complex
+        /// ruby -- escape to notes"）ので、木は意味（左ルビ）を保ちつつ、退避先の
+        /// 内容をここに併せ持つ。通常のルビは `None`。
+        note_fallback: Option<Vec<Node>>,
     },
 
     /// 装飾（傍点、傍線、太字など）
@@ -528,6 +535,7 @@ mod tests {
             ruby: vec![Node::text("かんじ", Span::new(2, 5))],
             direction: RubyDirection::Right,
             keep_gaiji_notes_in_base: false,
+            note_fallback: None,
         });
         assert_eq!(node.to_text(), "漢字");
     }

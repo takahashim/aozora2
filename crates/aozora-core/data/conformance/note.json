@@ -138,6 +138,7 @@
                       ],
                       "direction": "Right",
                       "keep_gaiji_notes_in_base": false,
+                      "note_fallback": null,
                       "ruby": [
                         {
                           "kind": "Text",

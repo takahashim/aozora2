@@ -199,6 +199,7 @@ fn parse_token_kinds(token: &Token) -> Vec<NodeKind> {
                 ruby: ruby_nodes,
                 direction: RubyDirection::Right,
                 keep_gaiji_notes_in_base: false,
+                note_fallback: None,
             }]
         }
 
@@ -222,6 +223,7 @@ fn parse_token_kinds(token: &Token) -> Vec<NodeKind> {
                 ruby: ruby_nodes,
                 direction: RubyDirection::Right,
                 keep_gaiji_notes_in_base: false,
+                note_fallback: None,
             }]
         }
 
@@ -308,12 +310,14 @@ fn apply_accent_to_nodes(nodes: Vec<Node>) -> Vec<Node> {
                 ruby,
                 direction,
                 keep_gaiji_notes_in_base,
+                note_fallback,
             } => result.push(Node::new(
                 NodeKind::Ruby {
                     children: apply_accent_to_nodes(children),
                     ruby,
                     direction,
                     keep_gaiji_notes_in_base,
+                    note_fallback,
                 },
                 span,
             )),
@@ -473,10 +477,14 @@ fn command_to_node_kind(result: CommandResult, raw: &str, paren: ParenContext) -
             explicit_close: false,
         },
 
-        CommandResult::LeftRuby { target, ruby } => {
-            // Ruby版と同様、左ルビは注記として出力（未実装機能）
-            NodeKind::Note(format!("「{target}」の左に「{ruby}」のルビ"))
-        }
+        // 左ルビ・下ルビ。元の変換系は解決せず注記へ逃がすが、木は意味を保つために
+        // 前方参照として扱い、解決器が Ruby（direction=Left）に畳む。既定の HTML は
+        // `note_fallback` を使って注記のまま出す（解決に失敗すれば注記になる）。
+        CommandResult::LeftRuby { target, ruby } => NodeKind::UnresolvedReference {
+            target,
+            spec: RefSpec::DirectionalRuby { annotation: ruby },
+            raw: raw.to_string(),
+        },
 
         CommandResult::AnnotationRuby { target, annotation } => NodeKind::UnresolvedReference {
             target,
