@@ -61,7 +61,10 @@ impl Tokenizer {
         // 後段（RawAST の Node・Aozora AST の Inline）もそのまま写せる。
         if self.unclosed_accent_to_eol {
             let end = self.base + self.chars.len();
-            out.push(Token::new(TokenKind::UnclosedAccentBreak, Span::new(end, end)));
+            out.push(Token::new(
+                TokenKind::UnclosedAccentBreak,
+                Span::new(end, end),
+            ));
         }
         // ｜ は字句段階では単なるマーカー（RubyPrefix）として出るだけ。ここで
         // 直後のルビと畳んで明示ルビ（PrefixedRuby）を確定する。tokenize_children
@@ -646,7 +649,10 @@ mod tests {
         // AccentParser が `"<br />\r\n"` をバッファへ積むのに当たる）。
         let tokens = plain("〔Pardonnez a` mon");
         assert!(
-            matches!(tokens.as_slice(), [Token::Accent { .. }, Token::UnclosedAccentBreak]),
+            matches!(
+                tokens.as_slice(),
+                [Token::Accent { .. }, Token::UnclosedAccentBreak]
+            ),
             "未閉じ 〔 がトップレベルでアクセントブロック＋素の改行にならない: {tokens:?}"
         );
         // 入れ子（アクセント内容の再トークナイズ）では未閉じ 〔 はリテラル。

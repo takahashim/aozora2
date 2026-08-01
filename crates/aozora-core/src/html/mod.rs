@@ -221,19 +221,31 @@ mod tests {
         // 行スコープの包み: `<br />` が `</div>` の内側に入るか外に出るか（60380/60385）。
         let wrap = "タイトル\r\n\r\n［＃地から１字上げ］〔一九四六年『来訪者』］\r\n\r\n";
         let on = convert(wrap, &RenderOptions::default());
-        assert!(on.contains("〔一九四六年『来訪者』］<br />\r\n</div>"), "実際: {on}");
+        assert!(
+            on.contains("〔一九四六年『来訪者』］<br />\r\n</div>"),
+            "実際: {on}"
+        );
 
         let off = convert(wrap, &RenderOptions::new().with_quirks(Quirks::none()));
-        assert!(off.contains("〔一九四六年『来訪者』］</div>"), "実際: {off}");
+        assert!(
+            off.contains("〔一九四六年『来訪者』］</div>"),
+            "実際: {off}"
+        );
         assert!(!off.contains("］<br />\r\n</div>"), "実際: {off}");
 
         // 次の行がブロック命令: マージのぶんだけ `<br />` が 1 つ増えるか否か。
         let block = "タイトル\r\n\r\n〔未閉じ\r\n［＃ここから２字下げ］\r\n中\r\n［＃ここで字下げ終わり］\r\n";
         let on = convert(block, &RenderOptions::default());
-        assert!(on.contains("〔未閉じ<br />\r\n<br />\r\n<div class=\"jisage_2\""), "実際: {on}");
+        assert!(
+            on.contains("〔未閉じ<br />\r\n<br />\r\n<div class=\"jisage_2\""),
+            "実際: {on}"
+        );
 
         let off = convert(block, &RenderOptions::new().with_quirks(Quirks::none()));
-        assert!(off.contains("〔未閉じ<br />\r\n<div class=\"jisage_2\""), "実際: {off}");
+        assert!(
+            off.contains("〔未閉じ<br />\r\n<div class=\"jisage_2\""),
+            "実際: {off}"
+        );
     }
 
     /// quirk raw_image_alt: 参照実装 Tag::Img は alt を無エスケープで出す。

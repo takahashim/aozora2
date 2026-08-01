@@ -607,7 +607,10 @@ enum LineKind {
 /// 未閉じ `〔` が行末まで達したときトークナイザが置く。参照実装が
 /// `"<br />\r\n"` をバッファへ積むのに当たり、その行は次の行と 1 つの出力単位になる。
 fn ends_with_hard_break(nodes: &[Node]) -> bool {
-    matches!(nodes.last().map(|n| &n.kind), Some(NodeKind::UnclosedAccentBreak))
+    matches!(
+        nodes.last().map(|n| &n.kind),
+        Some(NodeKind::UnclosedAccentBreak)
+    )
 }
 
 /// この行がぶら下げ（折り返し字下げ）を開く行なら、(開始マーカーの位置, 種類) を返す。

@@ -6,7 +6,11 @@ use std::io::BufRead;
 fn main() {
     let mut paths: Vec<String> = std::env::args().skip(1).collect();
     if paths.is_empty() {
-        paths = std::io::stdin().lock().lines().map_while(Result::ok).collect();
+        paths = std::io::stdin()
+            .lock()
+            .lines()
+            .map_while(Result::ok)
+            .collect();
     }
     let (mut ok, mut ng, mut err) = (0usize, 0usize, 0usize);
     for p in &paths {
@@ -24,5 +28,8 @@ fn main() {
             }
         }
     }
-    println!("一致 {ok} / 不一致 {ng} / 読めず {err}（計 {}）", paths.len());
+    println!(
+        "一致 {ok} / 不一致 {ng} / 読めず {err}（計 {}）",
+        paths.len()
+    );
 }
