@@ -12,7 +12,9 @@
 require_relative 'mini_pdf'
 
 module PdfTextRuns
-  Run = Struct.new(:font, :x, :y, :cids)
+  # sx / sy は、その run の全角 1 文字ぶんの大きさ（フォントサイズに CTM の伸縮をかけたもの）。
+  # 辞書の字形は部品を横 0.7 倍などに潰して組んであり、そこを知らないと部品が重なる。
+  Run = Struct.new(:font, :x, :y, :cids, :sx, :sy)
 
   TOKEN = /
       \/(?<name>[A-Za-z0-9\#+._-]+)
@@ -23,12 +25,25 @@ module PdfTextRuns
     | (?<op>[A-Za-z*'"]+)
   /x
 
+  IDENTITY = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0].freeze
+
+  # 行列の積（PDF の 2×3 表現）。`cm` は今の CTM の**前**に掛かる。
+  def self.mul(m, n)
+    [m[0] * n[0] + m[1] * n[2], m[0] * n[1] + m[1] * n[3],
+     m[2] * n[0] + m[3] * n[2], m[2] * n[1] + m[3] * n[3],
+     m[4] * n[0] + m[5] * n[2] + n[4], m[4] * n[1] + m[5] * n[3] + n[5]]
+  end
+
   # ページのテキスト描画を Run の列で返す。座標は PDF ユーザ空間（左下原点）。
+  #
+  # **CTM は伸縮まで追う。** 辞書は字形を組むときに `.7 0 0 1 0 0 cm` のように部品を横へ
+  # 潰す。平行移動だけ見ていると、部品の大きさが分からず並べたときに重なる。
   def self.of(pdf, page)
     data = pdf.content(page)
     stack = []
-    ctm = [0.0, 0.0]
+    ctm = IDENTITY.dup
     font = nil
+    size = 0.0
     lx = ly = 0.0
     args = []
     runs = []
@@ -38,20 +53,33 @@ module PdfTextRuns
       if (op = m[:op])
         case op
         when 'q' then stack.push(ctm)
-        when 'Q' then ctm = stack.pop || [0.0, 0.0]
+        when 'Q' then ctm = stack.pop || IDENTITY.dup
         when 'cm'
-          ctm = [ctm[0] + args[-2].to_f, ctm[1] + args[-1].to_f] if args.size >= 6
+          ctm = mul(args[-6..].map(&:to_f), ctm) if args.size >= 6
         when 'BT' then lx = ly = 0.0
         when 'Td', 'TD'
           if args.size >= 2
             lx += args[-2].to_f
             ly += args[-1].to_f
           end
-        when 'Tf' then font = args[-2] if args.size >= 2
+        when 'Tm'
+          if args.size >= 6
+            lx = args[-2].to_f
+            ly = args[-1].to_f
+          end
+        when 'Tf'
+          if args.size >= 2
+            font = args[-2]
+            size = args[-1].to_f
+          end
         when 'TJ', 'Tj'
           cids = Array(args.last).grep(Array).flatten + Array(args.last).grep(String)
           cids = cids.grep(/\Ahex:/).flat_map { |h| h[4..].scan(/..../).map { |c| c.to_i(16) } }
-          runs << Run.new(font, ctm[0] + lx, ctm[1] + ly, cids) unless cids.empty?
+          unless cids.empty?
+            x = ctm[0] * lx + ctm[2] * ly + ctm[4]
+            y = ctm[1] * lx + ctm[3] * ly + ctm[5]
+            runs << Run.new(font, x, y, cids, (size * ctm[0]).abs, (size * ctm[3]).abs)
+          end
         end
         args = []
         next
