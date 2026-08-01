@@ -1,12 +1,31 @@
-# 青空文庫 AST 仕様（RawAST / Aozora AST）
+# 青空文庫 AST（RawAST / Aozora AST）
 
-本書は aozora-core が用いる 2 種類の抽象構文木（AST）を定義する。
+aozora-core が用いる 2 種類の抽象構文木について、**木の形そのものではなく、実装から
+しか見えない事柄**を書く。
 
 - **RawAST（生AST）** … ソースに忠実な中間表現。行単位・平坦なマーカー・前方参照は
   未解決で、**文字（char）単位の位置情報**を持つ。字句解析＋構文解析の忠実な結果。
 - **Aozora AST** … 解決・構造化された正規表現。ブロックが入れ子の木になり、前方参照は
   解決済み、記法マーカーは型付きノードに畳まれる。HTML／プレーンテキストのどちらの
   バックエンドからも描画できる（＝backend-neutral。旧称「中立AST」）。
+
+## 詳細の在り処
+
+構成子の一覧・フィールド・不変条件は交換形式の仕様が持つ。**そちらは
+`tools/verify_ast_spec.rb` が実装と突き合わせて検査する**ので、二重に書くと本書側だけが
+黙って古くなる。
+
+| 知りたいこと | 見る文書 |
+|---|---|
+| RawAST の器・`Node` の全構成子・マーカー・`BlockParams`・`RefSpec`・不変条件 | [spec-rawast-json.md](spec-rawast-json.md) |
+| Aozora AST の `Block` / `BlockKind` / `Inline` / 互換メタデータ・不変条件 | [spec-aozora-ast-json.md](spec-aozora-ast-json.md) |
+| 字句トークン（`TokenKind`）と走査の手続き | [spec-tokenizer.md](spec-tokenizer.md) |
+| 前方参照の解決順序と規則 | [spec-reference-resolver.md](spec-reference-resolver.md) |
+| Rust の型との対応 | 上記 2 つの交換形式仕様の付録 A |
+
+本書に残すのは、パイプライン上の位置づけ、**span の意味論**（実在しない span がどこに
+混じるか）、Lowerer の挙動、2 つの木の使い分け。いずれも JSON には現れないか、形を
+見ただけでは分からない事柄である。
 
 ## 命名について
 
@@ -58,11 +77,11 @@ struct Node { kind: NodeKind, span: Span }
 ```
 
 - **Token** … `tokenize` は `Vec<Token>` を返す。入れ子を含む全トークンが行内絶対spanを持つ。
-- **RawAST** … `RawLine.nodes[i]` は `Node`。各生ノード自身が char 精度の位置
-  （`.span`）を持つ（旧: `nodes` と並行配列 `spans` の 1:1 対応）。
-- **Aozora AST** … 各 `Block` は由来行番号 `line: usize`（本文 0 起点）を持つ。char 精度の
-  範囲は持たない（必要なら RawAST 側の `nodes[i].span` を参照する。エディタ支援
-  `analysis` は RawAST の span を使う）。
+- **RawAST** … `RawLine.nodes[i]` は `Node`。各生ノード自身が char 精度の位置（`.span`）を
+  持ち、行のノード列はその行を隙間なく覆う（不変条件は spec-rawast-json.md「位置」）。
+- **Aozora AST** … 各 `Block` は由来行番号 `line: usize`（本文 0 起点）を持つ。`Inline` も
+  span を持つが、下記のとおり実在しないものが混じる。エディタ支援 `analysis` は RawAST
+  の span を使う。
 
 行番号 `line_no` / `line` はいずれも**本文（`extract_body_lines` 後）における 0 起点**。
 
@@ -89,6 +108,10 @@ Inline には実在しない span が混じる**ので、位置として使う�
 - **合併**: ルビ親文字の後方吸収では、親文字が `《》` より**前**の本文に在る。Ruby ノードの
   span は `union(親文字spans, 読みspan)` に広げる。子（親文字）は自身の前方の span を保つので、
   「子が親マーカーより前にある」ことが正しく表れる。
+- **区切りの引き受け**: アクセント `〔…〕` はブロックとして木に残らず中身だけが並ぶので、
+  素朴に実装すると区切りの 2 文字がどのノードにも属さない。`parser::widen_to_delimiters`
+  が先頭ノードの始点と末尾ノードの終点をブロックの端まで広げて引き受けている
+  （行を隙間なく覆う不変条件のため）。
 - **別の行が混じる（行マージ）**: 参照実装には出力を飛ばしてバッファを次の行へ持ち越す
   経路が 2 つあり（未閉じ `〔` の行と、ぶら下げを開く行。後述「行マージ」）、Lowerer は
   それを写して**2 つのソース行を 1 つの `Block::Line` に畳む**。このとき前半のインラインの
@@ -97,238 +120,6 @@ Inline には実在しない span が混じる**ので、位置として使う�
   （`UnclosedAccentBreak` がその境目に入っているので、含む行はマージ済みと分かる）。
 
 ---
-
-## RawAST 仕様
-
-### 器
-
-```rust
-struct RawDoc  { lines: Vec<RawLine> }
-struct RawLine {
-    source: String,     // もとのソース行
-    nodes:  Vec<Node>,  // 生ノード列（前方参照は未解決）。各Nodeが char 位置範囲を持つ
-    line_no: usize,     // 本文 0 起点の行番号
-}
-```
-
-### 字句トークン（`Token`）
-
-パーサ入力。RawAST の素材で、AST ではないが位置情報の起点なので併記する。
-
-| Token | 意味 |
-|-------|------|
-| `Text(String)` | 通常テキスト |
-| `Ruby { children }` | 暗黙ルビ `《…》`（親文字は直前 Text） |
-| `PrefixedRuby { base_children, ruby_children }` | 明示ルビ `｜親《ルビ》` |
-| `Command { content }` | 注記 `［＃…］` |
-| `Gaiji { description, had_igeta }` | 外字 `※［＃…］`（`＃` は任意） |
-| `Accent { children }` | アクセント分解 `〔…〕` |
-| `RubyPrefix` | `｜` の一時マーカー。畳み込みパスで `PrefixedRuby` になるか `Text("｜")` に戻るので、**`tokenize()` の出力には現れない**（[spec-tokenizer.md](spec-tokenizer.md)） |
-
-### 生ノード（`Node`）
-
-RawLine を構成する平坦ノード。**入れ子はマーカーで表し**、前方参照は未解決で残す。
-
-| Node | 種別 | 意味・備考 |
-|------|------|------------|
-| `Text(String)` | 葉 | プレーンテキスト |
-| `Ruby { children, ruby, direction, keep_gaiji_notes_in_base }` | 葉 | ルビ（親文字＋ルビ＋方向） |
-| `Style { children, style_type }` | 葉 | 傍点・傍線・太字など（`StyleType`） |
-| `Midashi { children, level, style }` | 葉 | インライン見出し（同行・窓） |
-| `Gaiji { description, unicode, jis_code, had_igeta }` | 葉 | 外字 |
-| `Accent { code, name, unicode }` | 葉 | アクセント分解文字 |
-| `Img { filename, alt, is_photo, width, height }` | 葉 | 画像（挿絵/写真） |
-| `Tcy { children }` | 葉 | 縦中横 |
-| `Keigakomi / Yokogumi / Caption { children }` | 葉 | 罫囲み/横組み/キャプション（インライン） |
-| `FontSize { children, size_type, level }` | 葉 | 大きな/小さな文字 |
-| `Kaeriten(String)` / `Okurigana(String)` | 葉 | 返り点／訓点送り仮名 |
-| `Note(String)` | 葉 | 編集者注（Aozora AST では中身を解決して `Note { content, raw }` にする） |
-| `DakutenKatakana { num }` | 葉 | 濁点片仮名参照 |
-| `LineJisage { width }` | マーカー | 行単位字下げ `［＃N字下げ］` |
-| `BlockStart { block_type, params }` | マーカー | ブロック開始（`ここから…`／範囲開始） |
-| `BlockEnd { block_type, params, explicit_close }` | マーカー | ブロック終了（`explicit_close`＝`ここで…終わり`か） |
-| `AnnotationEnd { prefix, content, suffix }` | マーカー | 左注記範囲の終了（外字を含みうる） |
-| `UnresolvedReference { target, spec, raw }` | 未解決 | 前方参照。解決器が `spec` を対象に適用 |
-
-補助:
-
-- `RubyDirection` = `Right` | `Left`
-- `BlockType`（マーカーの種別）= `Jisage, Chitsuki, Jizume, Keigakomi, Midashi, Yokogumi,
-  Futoji, Shatai, FontDai, FontSho, Tcy, Caption, Warigaki, Warichu, Burasage, Style,
-  AnnotationRange, LeftAnnotationRange`（全 18 種）
-- `BlockParams { width, wrap_width, level, midashi_style, font_size, style_type, is_block,
-  has_open_paren, has_close_paren, annotation }`（開始/終了タグ生成に必要な素材。全 10 項目）
-
-`NodeKind` には `UnclosedAccentBreak` もある。未閉じ `〔` が行末まで達したときトークナイザが
-`TokenKind::UnclosedAccentBreak` を出し、そのまま Node・Inline へ写る。**記法ではない**——
-青空文庫記法に「ここで改行」に当たる書き方は無いので、効果（素の `<br />`）ではなく原因を
-名前にしてある。実態の多くは行をまたぐ亀甲括弧 `〔…〕`（アクセント記法と同じ括弧なので
-そう見える）で、誤記とは限らない。
-
-### 位置（`span`）の不変条件
-
-行のノード列は、その行を**隙間なく覆う**（`span` が 0 から行末まで連なる。詳細は
-docs/spec-rawast-json.md「位置」）。これがあるので各ノードに原文の写しを持たせずに
-済む——要るときは `RawLine.source` を `span` で切ればよい。
-
-破れやすいのはアクセントで、`〔…〕` はブロックとして木に残らず中身だけが並ぶため、
-素朴に実装すると区切りの 2 文字がどのノードにも属さない。`parser::widen_to_delimiters`
-が先頭ノードの始点と末尾ノードの終点をブロックの端まで広げて引き受けている。
-
-### 前方参照の指定（`RefSpec`）
-
-`UnresolvedReference.spec`。対象テキストにどう作用するかを表す。
-
-| RefSpec | 意味 |
-|---------|------|
-| `Style(StyleType)` | 対象に傍点・傍線などを付す |
-| `Midashi { level, style }` | 対象を見出しにする |
-| `FontSize { size_type, level }` | 対象を大/小文字にする |
-| `Inline(InlineKind)` | 縦中横・罫囲み・横組み・キャプション・返り点・送り仮名など |
-| `AnnotationRuby { … }` | 注記をルビとして表示 |
-| `SideNote { annotation }` | 傍記（各文字の脇に注記） |
-| `EmbeddedGaiji { jis_code, annotation_ruby }` | 句点コード外字。置換形（`annotation_ruby:None`）／注記形（`Some`） |
-
-`RefSpec::resolve(&self, children: Vec<Node>, span: Span)` が対象の子ノードに指定を適用し
-最終ノードを生む（`span` は消費した範囲を覆う）。解決器が
-対象を前方に見つけられなければ `raw`（元の注記文字列）をそのまま `Note` にする（エディタ
-解析 `analysis` はこの未解決を warning 診断にする）。
-
-### RawAST の特徴（不変条件）
-
-1. **ソース忠実**：1 ソース行 = 1 `RawLine`。`source` を保持し、各生ノードは char 単位 span（`nodes[i].span`）を持つ。
-2. **平坦**：入れ子は `BlockStart`/`BlockEnd`/`LineJisage` マーカーで表し、木化しない。
-3. **未解決**：`《》` 等の前方参照は `UnresolvedReference` のまま。
-4. **可逆志向**：位置と原文を残すので、エディタ支援（ハイライト・診断・アウトライン）の基盤。
-
----
-
-## Aozora AST 仕様
-
-### ブロック（`Block`）
-
-文書は `Vec<Block>`。3 形態。
-
-```rust
-enum Block {
-    /// 内容の 1 行（インライン列＋行末改行制御）
-    Line     { inline: Vec<Inline>, brk: Break, line: usize },
-    /// 入れ子ブロック（複数行を包む。字下げ・見出し・罫囲み等）
-    Nested   { kind: BlockKind, children: Vec<Block>,
-               close: CloseKind, open: OpenKind, line: usize },
-    /// 行単位のブロック包み（同じ行に本文がある字下げ／地付き）。開き直後の改行も
-    /// 内側 <br /> も出ない 1 行 div。`kinds` が列なのは `［＃N字下げ］` を 1 行に
-    /// 複数書けるため（**外側から内側の順**）。
-    LineWrap { kinds: Vec<BlockKind>, inline: Vec<Inline>,
-               line: usize },
-}
-```
-
-### ブロック種別（`BlockKind`）
-
-```rust
-enum BlockKind {
-    Jisage   { width: Option<u32> },                 // N 字下げ（空幅は None＝Quirk）
-    Chitsuki { width: u32 },                          // 地付き／字上げ（右寄せ）
-    Jizume   { width: u32 },                          // 字詰め
-    Burasage(BurasageGeometry),                       // ぶら下げ（折り返し字下げ）
-    Midashi  { level: MidashiLevel, style: MidashiStyle },    // 見出し（後続行を包む）
-    Keigakomi,                     // 罫囲み（ブロック形）
-    Yokogumi,                      // 横組み（ブロック形）
-    Caption,                       // キャプション（ブロック形）
-    FontSize { size_type: FontSizeType, level: u32 }, // 大きな/小さな文字（ブロック形）
-    Futoji,                                           // 太字（ブロック形）
-    Shatai,                                           // 斜体（ブロック形）
-}
-```
-
-### インライン（`Inline`）
-
-```rust
-struct Inline { kind: InlineKind, span: Span, range_form: bool }
-
-enum InlineKind {
-    Text(String),
-    Ruby { base: Vec<Inline>, ruby: Vec<Inline>, direction, keep_gaiji_notes_in_base },
-    Style { children, style_type },
-    Midashi { children, level, style },               // 同行・窓見出し
-    AnnotationEnd { prefix, content, suffix },         // 左注記範囲終了
-    Gaiji { description, unicode, jis_code, had_igeta },
-    Accent { code, name, unicode },
-    Img { filename, alt, is_photo, width, height },
-    Tcy { children }, Keigakomi { children },
-    Yokogumi { children }, Caption { children },
-    Warichu { open: bool, suppress_paren: bool },      // 割り注（開閉マーカー）
-    Warigaki { children },                             // 割書
-    FontSize { children, size_type, level },
-    Kaeriten(String),                                  // 返り点（中身は素の文字）
-    Okurigana { content: Vec<Inline>, raw: String },    // 訓点送り仮名（中身は解決済み）
-    Note { content: Vec<Inline>, raw: String },         // 編集者注（中身は解決済み）
-    DakutenKatakana { num },
-    ChitsukiInline { width, children },                // 行途中で開く地付き（行末で閉じる）
-    BlockInline { kind: BlockKind, children },          // 同一行で開閉するブロック形コマンド
-    UnclosedAccentBreak,                                // 未閉じ 〔 が行末に達した跡（記法ではない。後述の行マージ）
-}
-```
-
-全Inlineは自前の行内char spanを持つ。Nodeから直接写るInlineはNodeのspanを引き継ぎ、
-開始・終了コマンドを畳む範囲Inlineは消費したマーカーと内容を覆うunion spanを持つ。
-spanは位置メタデータであり、構造比較・HTML／プレーンテキスト描画には影響しない。
-
-補助 enum:
-
-- `MidashiLevel` = `O`(大) | `Naka`(中) | `Ko`(小)
-- `MidashiStyle` = `Normal` | `Dogyo`(同行) | `Mado`(窓)
-- `FontSizeType` = `Dai`(大) | `Sho`(小)
-- `RubyDirection` = `Right` | `Left`
-- `StyleType` … 傍点・傍線（実線/二重/破線/波/鎖）・太字・斜体・上付き/下付き 等の全 32 種
-
-### 互換メタデータ: `Break` と `CloseKind`
-
-参照実装 aozora2html は「1 ソース行につき 1 つの `\r\n`」を出し、行末 `<br />` の有無を
-状態（`@terprip`）で決める。Aozora AST はこの**改行の出方だけ**をメタデータで保持し、
-描画器を状態レスにする。
-
-```rust
-enum Break     { Br, None, NoNewline }   // 行末の改行の出し方（Line.brk）
-enum OpenKind  { Newline, NoBreak }      // 開始タグの後に改行を出すか（Nested.open）
-enum CloseKind { NoBreak, Newline, BareBreak,
-                 BurasageWrapped(BurasageGeometry) }  // 閉じの出力形（Nested.close）
-```
-
-| Break | 出力 |
-|-------|------|
-| `Br` | 行末に `<br />`（`@terprip=true` の通常行） |
-| `None` | `<br />` を出さない（`ここで…終わり`・見出し等） |
-| `NoNewline` | `<br />` も行末の `\r\n` も出さない（行の途中でブロックが閉じるとき、閉じタグより前の本文） |
-
-| CloseKind | 出力 | 契機 |
-|-----------|------|------|
-| `NoBreak`   | `</div>` | 兄弟字下げ・行スコープ地付きの implicit_close、先頭終了＋後続本文 |
-| `Newline`   | `</div>\r\n` | `ここで…終わり`（explicit）・ぶら下げ開始の暗黙閉じ・EOF 閉じ |
-| `BareBreak` | `</div><br />\r\n` | bare `…終わり`（`ここで` 無し）で複数行ブロックを閉じた行 |
-| `BurasageWrapped` | `<div class="burasage" …></div></div>\r\n` | ぶら下げの直下で装飾系ブロックが閉じる行（閉じタグが per-line の div に包まれる） |
-
-これらは HTML 互換のための情報。プレーンテキスト描画は無視してよい（backend-neutral）。
-
-### Aozora AST の特徴（不変条件）
-
-1. **解決済み**：前方参照は解決され、`UnresolvedReference` は残らない。
-2. **入れ子**：ブロックは `Nested`/`LineWrap` の木。開始/終了マーカーは消える。
-3. **型付き・マーカーレス**：記法は `BlockKind`/`Inline` の型で表され、生の `［＃…］`
-   文字列は残らない。編集者注の中身も Lowerer が一度だけ解決して `Note { content }`
-   に入れる（`raw` は診断・エディタ支援用に併置するが、描画には使わない）。
-   バックエンドはトークナイザ・パーサに依存しない。
-4. **backend-neutral**：HTML・プレーンテキストどちらも同じ木から状態レスに描画できる。
-5. **行番号を保持**：各ブロックは由来行 `line` を持つ（char 精度は RawAST 側 `nodes[i].span`）。
-
----
-
-### パース時の診断
-
-同一行で閉じられなかったアクセントの位置は、木ではなく別に返す
-（`parse_document_raw_with_diagnostics` → `Vec<ParseDiagnostic>`）。変換出力に影響しない
-検証用の副産物を木に混ぜないための分離で、Lowerer の `LowerDiagnostic` と同じ考え方。
 
 ## RawAST → Aozora AST 変換（Lowerer）
 
@@ -340,7 +131,7 @@ enum CloseKind { NoBreak, Newline, BareBreak,
 - 同じ行に本文があるブロックは `LineWrap`、複数行を包むものは `Nested`。
 - 閉じ切られなかったブロックは文末で閉じる（`CloseKind::Newline`）。
 - 行末 `<br />`（`Break`）と閉じの出力形（`CloseKind`）を**この時点で確定**し、以降の描画は
-  状態を持たない。
+  状態を持たない。これらの互換メタデータの意味は spec-aozora-ast-json.md「互換メタデータ」。
 - `UnresolvedReference` は解決器が対象を前方に探して最終ノードにする（見つからなければ
   `Note`）。解決は **`resolve_references`（親文字→注記範囲→前方参照）→ `resolve_inline_ruby`
   （ルビ親文字の 2 パス目）の順に 2 回**走らせる必要がある。前方参照の照合はルビの親文字を
@@ -366,6 +157,12 @@ Lowerer は行ループに持ち越し（`carry`）を持ち、これらの行�
 
 この畳み込みだけが「1 ソース行 = 1 `Block::Line`」を崩す。位置情報への影響は上述の
 「span が『実在』でない箇所」を参照。
+
+### 変換に影響しない診断
+
+同一行で閉じられなかったアクセントの位置は、木ではなく別に返す
+（`parse_document_raw_with_diagnostics` → `Vec<ParseDiagnostic>`）。変換出力に影響しない
+検証用の副産物を木に混ぜないための分離で、Lowerer の `LowerDiagnostic` と同じ考え方。
 
 ## 2 つの AST の使い分け
 

@@ -2,8 +2,8 @@
 //!
 //! `conformance.rs` は「実装の出力」と「フィクスチャ」を突き合わせるスナップショット
 //! 比較なので、出力が変わったことは分かっても、それが仕様の不変条件を満たすかは見て
-//! いない。ここはその穴を埋める。規定は docs/spec-ast.md（内部仕様）と
-//! docs/spec-rawast-json.md / docs/spec-aozora-ast-json.md（交換形式）。
+//! いない。ここはその穴を埋める。規定は docs/spec-rawast-json.md /
+//! docs/spec-aozora-ast-json.md の「不変条件」（span の意味論は docs/spec-ast.md）。
 
 use aozora_core::ast::{Block, Inline, InlineKind};
 use aozora_core::html::Quirks;

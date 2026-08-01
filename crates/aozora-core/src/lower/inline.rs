@@ -148,7 +148,7 @@ fn inline_from_node_at(node: &Node, depth: usize) -> Option<Inline> {
         },
         // 未解決参照が Aozora AST に来ることはない。Lowerer は行ごとに
         // `resolve_references` を通し、解決できなかったものは `Note(raw)` にする
-        // （docs/spec-ast.md「Aozora AST の特徴」不変条件1）。ここへ来たら
+        // （docs/spec-aozora-ast-json.md「Aozora AST の不変条件」1）。ここへ来たら
         // 解決を飛ばした呼び出しなので、黙って落とさず気付けるようにする。
         NodeKind::UnresolvedReference { raw, .. } => {
             debug_assert!(
