@@ -1,6 +1,6 @@
 # RawAST 交換形式（JSON）
 
-改訂: 2026-07 v0.1
+改訂: 2026-08 v0.1
 
 この文書はたたき台である。
 青空文庫形式のテキストを解析した木を、実装をまたいでやり取りするための形式を提案するもので、決定版ではない。
@@ -28,36 +28,40 @@
 両者に分かれているのは用途の違いであって、主従の関係にはない。
 実装間で照合するときは「同じ入力から同じ RawAST が出るか」「同じ RawAST から同じAozora AST が出るか」を分けて見られるので、差がパースにあるのか解決・畳み込みにあるのかを切り分けられる。
 
+本書で「元の変換系」と呼ぶのは、青空文庫の公開 HTML を作ってきた変換器（aozora2html）である。既存の公開 HTML と一致する出力を作るための規則はこれに由来する。
+
 ### RawAST の不変条件
 
 1. ソース忠実
-  - 1 ソース行 = 1 `RawLine`
-  - `source` を保持し、各ノードは char 単位の `span` を持つ。
-  - **行のノード列は行を隙間なく覆う**（後述「位置」）。
+   - 1 ソース行 = 1 `RawLine`
+   - `source` を保持し、各ノードは char 単位の `span` を持つ。
+   - 行のノード列は行を隙間なく覆う（3 章「タイル」）。
 2. 平坦
-  - 入れ子は `BlockStart` / `BlockEnd` / `LineJisage` のマーカーで表し、木にしない。
+   - 入れ子は `BlockStart` / `BlockEnd` / `LineJisage` のマーカーで表し、木にしない。
 3. 未解決
-  - 前方参照（`［＃「対象」に傍点］` など）は `UnresolvedReference` のまま。
-  - 編集者注 `［＃…］` の中身も文字列のまま。
+   - 前方参照（`［＃「対象」に傍点］` など）は `UnresolvedReference` のまま。
+   - 編集者注 `［＃…］` の中身も文字列のまま。
 4. 可逆
-  - 位置と原文を残す
-  - 行を連結すれば元のテキストに戻せる。
+   - 位置と原文を残す
+   - 行を連結すれば元のテキストに戻せる。
 
 ## 2. 共通の規約
 
-Aozora AST 交換形式と同一（[spec-aozora-ast-json.md](spec-aozora-ast-json.md) の同名の節と同じ内容）。
+もう一方の交換形式と同一（両文書に同じ内容を載せる）。
 
 ### 構成子の表し方
 
 - 構成子（直和の枝）は `{"kind": "名前", "value": ...}`
   - `value` は構成子の内容。
 - 内容を持たない構成子は `value` を省く。
-- `Node` は、この 2 つのキーを親のオブジェクトに平坦化して持つ。
-  - `{"kind": "Text", "value": "…", "span": {…}}` の形になる。
+- 木のノード（RawAST の `Node`、Aozora AST の `Inline`）は、この 2 つのキーを親の
+  オブジェクトに平坦化して持つ。
+  - `{"kind": "Text", "value": "…", "span": {…}}` の形になる（`Inline` はさらに
+    `range_form` が並ぶ）。
 
 ### フィールドと値
 
-- フィールド名は snake_case。
+- フィールド名は snake_case。キーの順序に意味は無い。
 - 省略可の値が無いときは `null` を書く（フィールド自体は省かない）。
 - 列は空でも `[]` を書く。
 - `Nat` は 0 以上の整数、`Text` は文字列、`Bool` は真偽値。
@@ -71,17 +75,29 @@ Aozora AST 交換形式と同一（[spec-aozora-ast-json.md](spec-aozora-ast-jso
   | `FontSizeType` | `"Dai"`（大きな文字）, `"Sho"`（小さな文字） |
   | `RubyDirection` | `"Right"`（右ルビ）, `"Left"`（左ルビ） |
 
-- `StyleType`（装飾の種類）は次のいずれか。
+- `StyleType`（装飾の種類）は記法語と次のように対応する。記法語の頭に「左に」が
+  付くと右列の構成子になる。
 
-  ```
-  傍点系            SesameDot WhiteSesameDot BlackCircle WhiteCircle BlackTriangle
-                    WhiteTriangle Bullseye Fisheye Saltire
-  傍点系（左・上）  上の 9 つに After を付けた形（SesameDotAfter など）
-  傍線系            UnderlineSolid UnderlineDouble UnderlineDotted UnderlineDashed
-                    UnderlineWave
-  傍線系（左・上）  OverlineSolid OverlineDouble OverlineDotted OverlineDashed OverlineWave
-  その他            Bold Italic Subscript Superscript
-  ```
+  | 記法語 | 構成子 | 「左に◯◯」の構成子 |
+  |---|---|---|
+  | 傍点 | `SesameDot` | `SesameDotAfter` |
+  | 白ゴマ傍点 | `WhiteSesameDot` | `WhiteSesameDotAfter` |
+  | 丸傍点 | `BlackCircle` | `BlackCircleAfter` |
+  | 白丸傍点 | `WhiteCircle` | `WhiteCircleAfter` |
+  | 黒三角傍点 | `BlackTriangle` | `BlackTriangleAfter` |
+  | 白三角傍点 | `WhiteTriangle` | `WhiteTriangleAfter` |
+  | 二重丸傍点 | `Bullseye` | `BullseyeAfter` |
+  | 蛇の目傍点 | `Fisheye` | `FisheyeAfter` |
+  | ばつ傍点 | `Saltire` | `SaltireAfter` |
+  | 傍線 | `UnderlineSolid` | `OverlineSolid` |
+  | 二重傍線 | `UnderlineDouble` | `OverlineDouble` |
+  | 鎖線 | `UnderlineDotted` | `OverlineDotted` |
+  | 破線 | `UnderlineDashed` | `OverlineDashed` |
+  | 波線 | `UnderlineWave` | `OverlineWave` |
+  | 太字 | `Bold` | — |
+  | 斜体 | `Italic` | — |
+  | 下付き小文字 | `Subscript` | — |
+  | 上付き小文字 | `Superscript` | — |
 
 ### 位置
 
@@ -89,22 +105,6 @@ Aozora AST 交換形式と同一（[spec-aozora-ast-json.md](spec-aozora-ast-jso
 - 単位は char。バイトでも UTF-16 コードユニットでも書記素クラスタでもなく、
   Unicode スカラー値を 1 と数える（`𥥔` U+25954 は BMP 外だが 1 char）。
 - 0 起点。
-- **行のノード列は、その行を隙間なく覆う**（タイル）。トップレベルのノードを順に見ると
-  `span` は `0` から始まり、次のノードの `start` は前のノードの `end` に等しく、最後の
-  `end` は行の char 数になる（幅 0 のノードは間に挟まってよい）。子ノードも親の範囲を
-  同じ規則で覆う。
-  - **この不変条件があるので、各ノードに原文の写しを持たせる必要がない。** ノードに
-    対応する原文が要るなら `source` を `span` で切ればよい。逆に言えば、覆えるのは
-    **位置**であって文字列ではない。区切り（`《》`・`［＃…］`・`〔〕`・`｜`）は
-    どのノードの値にも入っていないので、`source` を持たない木だけから原文を
-    組み立て直すことはできない（それには記法ごとの綴り直しが要る。本書の範囲外）。全ノードに原文を持たせる
-    案もあるが、`source` と二重に持つことになるうえ（実測で全書庫 +370KB）、二つが
-    食い違ったときにどちらが正かを決められない。
-  - 破れやすいのはアクセントである。`〔…〕` はブロックとして木に残らず**中身だけ**が
-    行のノード列に並ぶので、素朴に実装すると区切りの 2 文字がどのノードにも属さない
-    （全書庫 410 万行で隙間 9228 件、いずれもこれ）。区切りは構文としてこのブロックの
-    ものなので、先頭ノードの始点と末尾ノードの終点をブロックの端まで広げて引き受ける。
-    閉じ `〕` が無いまま行末に達した場合も同じで、終点が行末になるだけ。
 
 ### 文字列
 
@@ -145,7 +145,6 @@ Aozora AST 交換形式と同一（[spec-aozora-ast-json.md](spec-aozora-ast-jso
 ### 行
 
 - 青空文庫形式のテキストは CRLF 区切り。単独の LF や CR は本文の文字として扱う。
-- `source` に改行文字は含めない。
 
 ## 3. 文書全体
 
@@ -165,23 +164,46 @@ RawLine = {
 }
 ```
 
-- **対象はファイルの全行**である。題名・著者などのヘッダ、注記凡例、底本情報も
+- 対象はファイルの全行である。題名・著者などのヘッダ、凡例、底本情報も
   行として入る。入力が改行で終わっていれば最後に空行が 1 つ入る。
-- したがって `source` を CRLF で連結すれば**元のテキストがそのまま戻る**
+- したがって `source` を CRLF で連結すれば元のテキストがそのまま戻る
   （1 章の不変条件「可逆」）。ヘッダ・底本・末尾の改行の有無も、この行の列から導ける。
-- どの行がどの節（本文・本文終わり後・底本情報）かは、行の内容で決まる。`底本：` で
-  始まる行から底本情報、`［＃本文終わり］` の次の行から本文終わり後になる。
-  ヘッダは先頭から最初の空行まで、注記凡例は罫線で囲まれた範囲。
+- どの行がどの節（本文・本文終わり後・底本情報）かは、行の内容で決まる。
+  - ヘッダ: 先頭から最初の空行まで。
+  - 凡例（記号についての注記）: 空行の直後に罫線（`-` だけからなる行）が来たら、
+    そこから次の罫線まで。どの節にも入らず、出力にも現れない。
+  - 底本情報: `底本：` で始まる行から。
+  - 本文終わり後: `［＃本文終わり］` の次の行から。
 - `source` を持つのは、位置情報の基準になるのと、診断で原文を示すため。
-- **この形式は互換フラグ（`Quirks`）から独立している。** 参照実装のバグを再現する
-  かどうかは、この木を畳むときと描くときの選択であって、原文を写した木は変わらない
-  （実装の `RawDocument::from_text` はフラグを受け取らない）。
+- この形式は生産者の互換オプションから独立している。 元の変換系のバグを再現する
+  かどうかは、この木を畳むとき・描くときの選択であって、原文を写した木は変わらない。
 - 行が持つのはこの 3 つだけで、特定の記法のための欄は無い。元の変換系はアクセント記法の
   途中で行末に達すると、その行を出力せず内容を次の行へ持ち越して 1 つの出力単位に
-  するが、それは行の旗ではなく**内容の末尾に置かれる `UnclosedAccentBreak` ノード**で表す
+  するが、それは行の旗ではなく内容の末尾に置かれる `UnclosedAccentBreak` ノードで表す
   （元の変換系も、旗ではなく `"<br />\r\n"` という文字列をバッファへ積んでいる）。
   同一行で閉じられなかったアクセントの位置は診断であって木の一部ではないので、
   この形式では運ばない（実装は木とは別に返す）。
+
+### ノード列は行を覆う（タイル）
+
+本形式だけの不変条件（Aozora AST には無い）。
+
+- 行のノード列は、その行を隙間なく覆う。トップレベルのノードを順に見ると
+  `span` は `0` から始まり、次のノードの `start` は前のノードの `end` に等しく、最後の
+  `end` は行の char 数になる（幅 0 のノードは間に挟まってよい）。子ノードも親の範囲を
+  同じ規則で覆う。
+- この不変条件があるので、各ノードに原文の写しを持たせる必要がない。 ノードに
+  対応する原文が要るなら `source` を `span` で切ればよい。逆に言えば、覆えるのは
+  位置であって文字列ではない。区切り（`《》`・`［＃…］`・`〔〕`・`｜`）は
+  どのノードの値にも入っていないので、`source` を持たない木だけから原文を
+  組み立て直すことはできない（それには記法ごとの綴り直しが要る。本書の範囲外）。全ノードに原文を持たせる
+  案もあるが、`source` と二重に持つことになるうえ（実測で全書庫 +370KB）、二つが
+  食い違ったときにどちらが正かを決められない。
+- 破れやすいのはアクセントである。`〔…〕` はブロックとして木に残らず中身だけが
+  行のノード列に並ぶので、素朴に実装すると区切りの 2 文字がどのノードにも属さない
+  （全書庫 410 万行で隙間 9228 件、いずれもこれ）。区切りは構文としてこのブロックの
+  ものなので、先頭ノードの始点と末尾ノードの終点をブロックの端まで広げて引き受ける。
+  閉じ `〕` が無いまま行末に達した場合も同じで、終点が行末になるだけ。
 
 ## 4. Node
 
@@ -205,7 +227,7 @@ Node = { kind: 構成子名, value: 内容?, span: Span }
 | `Note` | `Text` | `［＃…］`（編集者注。中身は未解決の文字列） |
 | `Okurigana` | `Text` | `［＃（…）］`（訓点送り仮名） |
 | `UnclosedAccentBreak` | （値なし） | 未閉じ `〔` が行末に達した跡（記法ではない） |
-| `Kaeriten` | `Text` | `［＃「レ」は返り点］` |
+| `Kaeriten` | `Text` | `［＃レ］` などの返り点（直接形） |
 | `DakutenKatakana` | `{ num: Text }` | 濁点付き片仮名（面区点 1-7-82〜85） |
 | `AnnotationEnd` | `{ prefix: Text, content: Node*, suffix: Text }` | 注記付き範囲の終了 |
 
@@ -214,13 +236,25 @@ Node = { kind: 構成子名, value: 内容?, span: Span }
   JIS X 0213 の面区点 → Unicode 対応表が要り、表の版によって結果が変わりうる。
 - `had_igeta` は記法に `＃` があったかどうか。`※［…］`（`＃` 無し）も外字として扱うが、
   外字一覧に載せる名前が空になるなど後段の扱いが変わるため区別する。
+- `Accent` は `〔…〕` の中のアクセント分解表記（`e'` など）を 1 文字ずつ解決したもの。
+  `code` は面区点（例 `1-09-24`）、`name` は文字名（例 `アキュートアクセント付きe`）、
+  `unicode` は対応する Unicode 文字列（合成列のこともある。対応が無ければ `null`）。
 - `Ruby` の `children` が空なのは、親文字がまだ確定していない段階を表す（`｜` の無いルビは
   直前のテキストから親文字を切り出す処理が要る）。
-- **前方参照を解決すると現れる構成子**: `Midashi` `Tcy` `Keigakomi` `Yokogumi` `Caption`
+- `Ruby` の `keep_gaiji_notes_in_base` は、親文字に画像化できない外字があるとき、その注記
+  `［＃…］` を親文字の中に残すか。`［＃注記付き］…終わり` の範囲ルビ由来なら真。偽なら
+  描画時に注記をルビの外へ出す。
+- `Img` の `is_photo` は図の説明に「写真」を含むか（描画のクラス分けに使う）。
+- `AnnotationEnd` の `prefix` / `suffix` はマーカー原文の前後の文字列（`左に「` と
+  `」の注記付き終わり` など）、`content` はその間の注記内容。
+- 前方参照を解決すると現れる構成子: `Midashi` `Tcy` `Keigakomi` `Yokogumi` `Caption`
   `FontSize` `DakutenKatakana` `AnnotationEnd` は `UnresolvedReference` を解決した結果と
   して生まれる。RawAST は前方参照を未解決のまま持つ形式（1 章の不変条件）なので、
-  **生成した直後の RawAST には現れない**。解決を RawAST の上で行う消費者が作りうる
+  生成した直後の RawAST には現れない。解決を RawAST の上で行う消費者が作りうる
   ものとして表に挙げてある。
+- `Kaeriten` と `Okurigana` は両方の由来を持つ。直接形（`［＃レ］`・`［＃（した）］`）は
+  生成時に現れ、後方参照形（`「レ」は返り点`・`「した」は訓点送り仮名`）の解決からも
+  生まれる。
 
 ### 4.2 マーカー
 
@@ -233,13 +267,20 @@ Aozora AST には残らない。ブロックの畳み込みと前方参照の解
 | `LineJisage` | `{ width: Nat? }` | 行単位の字下げ `［＃N 字下げ］` |
 | `UnresolvedReference` | `{ raw: Text, target: Text, spec: RefSpec }` | 前方参照（未解決） |
 
-- `block_type` は `{"kind": "名前"}` の形。名前は次のいずれか。
+- `BlockType` は値を持たない列挙なので素の文字列で書く（`"Jisage"`）。
+  コマンドに含まれる記法語と次のように対応する。
 
-  ```
-  Jisage | Chitsuki | Jizume | Burasage | Midashi | Keigakomi | Yokogumi | Caption
-  Futoji | Shatai | FontDai | FontSho | Tcy | Warigaki | Warichu | Style
-  AnnotationRange | LeftAnnotationRange
-  ```
+  | 構成子 | 記法語 | | 構成子 | 記法語 |
+  |---|---|---|---|---|
+  | `Jisage` | 字下げ | | `FontDai` | 大きな文字 |
+  | `Chitsuki` | 地付き・地から・字上げ | | `FontSho` | 小さな文字 |
+  | `Jizume` | 字詰め | | `Tcy` | 縦中横 |
+  | `Burasage` | 折り返して（他の語より優先） | | `Warigaki` | 割書 |
+  | `Midashi` | 見出（大・中・小見出し） | | `Warichu` | 割り注 |
+  | `Keigakomi` | 罫囲み | | `Style` | 装飾（2 章の記法語） |
+  | `Yokogumi` | 横組み | | `AnnotationRange` | 注記付き |
+  | `Caption` | キャプション | | `LeftAnnotationRange` | 左に注記付き |
+  | `Futoji` | 太字 | | `Shatai` | 斜体 |
 
 - `explicit_close` は `ここで…終わり`（明示）か `…終わり`（`ここで` 無し）かの区別。
   出力の改行の扱いが変わる。
@@ -283,12 +324,14 @@ Aozora AST には残らない。ブロックの畳み込みと前方参照の解
 
 ```
 RefSpec =
-  | Style          StyleType
-  | Midashi        { level: MidashiLevel, style: MidashiStyle }
-  | FontSize       { size_type: FontSizeType, level: Nat }
-  | Inline         "Tcy" | "Keigakomi" | "Yokogumi" | "Caption" | "Kaeriten" | "Okurigana"
-  | AnnotationRuby { annotation: Text }
-  | SideNote       { annotation: Text }
+  | Style           StyleType
+  | Midashi         { level: MidashiLevel, style: MidashiStyle }
+  | FontSize        { size_type: FontSizeType, level: Nat }
+  | Inline          "Tcy" | "Keigakomi" | "Yokogumi" | "Caption" | "Kaeriten" | "Okurigana"
+  | AnnotationRuby  { annotation: Text }
+  | SideNote        { annotation: Text }
+  | EmbeddedGaiji   { jis_code: Text, annotation_ruby: Node*? }
+  | DakutenKatakana { num: Text }
 ```
 
 ```json
@@ -306,6 +349,14 @@ RefSpec =
 - `target` は前方に探す対象の文字列、`raw` は注記の原文。
 - 対象が見つからなければ、解決の段階で `Note(raw)` になる
   - 記法として解釈できなかったものは編集者注として出す、というのが青空文庫形式の扱い
+- `AnnotationRuby` は `「対象」に「注記」の注記`。対象を親文字、注記をルビにする。
+- `SideNote` は傍記。対象の各文字の脇に注記を 1 文字ずつ並べる。
+- `EmbeddedGaiji` は面区点コード指定の前方参照（`「5」はローマ数字、1-13-25` の置換形と、
+  `「対象」に「※［＃…］…」の注記` の注記形）。`annotation_ruby` は注記形のときの
+  ルビ内容で、`Node` の列が入る（`RefSpec` の中に木の断片が入るのはここだけ）。
+  置換形では `null`。
+- `DakutenKatakana` は面区点 `1-7-8N`（N=2〜5）による濁点付き片仮名への置換。
+  置き換える文字は面区点から一意に決まる。
 
 ## 5. 例
 
@@ -400,23 +451,23 @@ RefSpec =
 - 本文の行は `Text` と `UnresolvedReference` の 2 ノードに分かれている。前方参照は
   未解決のまま（1 章の不変条件）で、解決すると 1 つの `Style` に畳まれる
   （[Aozora AST 交換形式](spec-aozora-ast-json.md)の例が同じ入力の変換後）。
-- ヘッダの行も本文と同じように解析されるが、出力では記法が効かない（ルビと `｜` を
-  剥がした生の文字列になる）。どの行がヘッダかは行の位置で決まる。
+- ヘッダの行も本文と同じように解析されるが、元の変換系の出力では記法が効かない
+  （ルビと `｜` を剥がした生の文字列になる）。どの行がヘッダかは行の位置で決まる。
 
 ## 6. Aozora AST への変換の概要
 
 手順の詳細はこの形式の規定ではない（実装ごとに違う可能性がある）。何が起きるかだけ示す。
 
 1. 前方参照の解決
-  - `UnresolvedReference` の `target` を直前のノード列から探し、`spec` に応じた要素（`Style` / `Midashi` / `Ruby` など）に畳む
-  - 見つからなければ `Note` とする
+   - `UnresolvedReference` の `target` を直前のノード列から探し、`spec` に応じた要素（`Style` / `Midashi` / `Ruby` など）に畳む
+   - 見つからなければ `Note` とする
 2. ブロックの畳み込み
-  - `BlockStart` / `BlockEnd` / `LineJisage` のマーカーを対にして、行をまたぐ入れ子ブロックにする
-  - 対にならないものは行末や文末で閉じる
+   - `BlockStart` / `BlockEnd` / `LineJisage` のマーカーを対にして、行をまたぐ入れ子ブロックにする
+   - 対にならないものは行末や文末で閉じる
 3. 注記の中身の解決
-  - `Note` / `Okurigana` の文字列を解析し直し、中のルビや外字を解決済みのインライン列にする。
+   - `Note` / `Okurigana` の文字列を解析し直し、中のルビや外字を解決済みのインライン列にする。
 4. 行の意味づけ
-  - 各行を内容の行とブロックに包まれた行に分け、出力形のメタデータ（改行の扱いなど）を確定する。
+   - 各行を内容の行とブロックに包まれた行に分け、出力形のメタデータ（改行の扱いなど）を確定する。
 
 この過程で位置情報の一部は失われるか粗くなり、原文の復元もできなくなる。可逆性が要る用途では RawAST を使う。
 
@@ -426,15 +477,13 @@ RefSpec =
   トークナイザの都合が交換形式に漏れるのを避けるためだが、字句規則の検証には要るかもしれない。
 - `BlockParams` の平坦さ。種類ごとに使うフィールドが違うのに 1 つの構造で持っている。
   種類別の構成子に分ける案もあるが、そうすると「解決前の生の形」という性格から離れる。
-- `unclosed_accents`。診断のための情報が構文木に同居している。別に分ける案。
 - `source` の重複。各行が原文を持つので、文書全体としては入力の写しを 2 度持つことになる。
 - `Note` の中身。RawAST では文字列、Aozora AST では解決済み。2 つの形式で同じ名前の
   構成子が違う中身を持つのは分かりにくいかもしれない。
 - `Gaiji` の導出値。`unicode` / `jis_code` は `description` から導かれ、対応表の版に
   依存する。照合時に導出値まで比較するかは決めていない。
 - 節の切り分けを消費者に任せていること。どの行が本文でどの行が底本情報かは行の内容から
-  導けるが、その規則（`底本：` で始まる行、`［＃本文終わり］`、罫線で囲まれた凡例）を
-  各実装が持つことになる。行に節の印を付けて運ぶ案もある。
+  導けるが、その規則（3 章）を各実装が持つことになる。行に節の印を付けて運ぶ案もある。
 
 ---
 
@@ -454,6 +503,9 @@ RefSpec =
 
 - JSON への写像は `serde` の隣接タグ（`#[serde(tag = "kind", content = "value")]`）。
   `Node.kind` は `#[serde(flatten)]` で親に平坦化している。
-- 生成は `parser::parse_document_raw(&lines) -> RawDoc`。
+- 生成は `parser::parse_document_raw(&lines) -> RawDoc`。`RawDocument::from_text` は
+  互換フラグ（`Quirks`）を受け取らない——3 章「互換オプションから独立」の実装上の対応で、
+  `tests/invariants.rs` の `the_raw_ast_is_independent_of_quirks` が検査する。
+  タイル不変条件は同じく `nodes_tile_their_line_without_gaps` が検査する。
 - 記法ごとの例が `crates/aozora-core/data/conformance/*.json` にある（入力・RawAST・
   Aozora AST の 3 点組）。
