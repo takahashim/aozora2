@@ -434,3 +434,7 @@
 - [spec-tokenizer.md](spec-tokenizer.md) … `※［＃…］` を含む記法の字句規則
 - [spec-ast.md](spec-ast.md) … 解決後の外字・アクセントが AST でどう表されるか
 - [architecture.md](architecture.md) … 層の分け方と型の壁
+- [../crates/aozora-core/data/gaiji_chuki.md](../crates/aozora-core/data/gaiji_chuki.md)
+  … 青空文庫・外字注記辞書を機械可読にしたデータ。説明文（`「口＋畢」`）から字を引く
+  ための対応表で、面区点を持たない注記の同定に使う。変換経路には入れない（参照実装が
+  持たない辞書なので、解決し始めるとバイト一致が崩れる）

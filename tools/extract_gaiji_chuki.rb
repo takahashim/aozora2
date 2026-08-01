@@ -7,6 +7,9 @@
 #   青空文庫外字注記辞書編集グループ・改訂第八版訂正版（2011-08-06）
 #   利用条件は青空文庫本体と同じ。
 #
+# データの構成と、取り込みで引っかかったことは
+# crates/aozora-core/data/gaiji_chuki.md。
+#
 #   curl -O https://www.unicode.org/ivd/data/2022-09-13/IVD_Sequences.txt
 #   ruby tools/extract_gaiji_chuki.rb gaiji_chuki.pdf IVD_Sequences.txt crates/aozora-core/data
 #
