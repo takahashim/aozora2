@@ -414,9 +414,19 @@ html = <<~HTML
     document.body.classList.toggle('chart', on);
     chart.textContent = on ? '一覧をとじる' : '例示字形をならべる';
   }
+  // 今どの部首を見ているか。頭に貼り付いている見出しの節＝画面の上端をまたぐ最初の節。
+  function topSection() {
+    for (const s of secs) if (!s.hidden && s.getBoundingClientRect().bottom > 4) return s;
+    return null;
+  }
   chart.addEventListener('click', () => {
+    const here = topSection();
     setChart(!document.body.classList.contains('chart'));
-    window.scrollTo(0, 0);
+    // 組み直しで位置がまるごと変わるので、見ていた部首へ連れ直す。content-visibility で
+    // 画面の外の節は高さが見積もりのままなので、実寸が入った次のフレームで置き直す。
+    if (!here) return window.scrollTo(0, 0);
+    here.scrollIntoView();
+    requestAnimationFrame(() => here.scrollIntoView());
   });
   document.querySelector('main').addEventListener('click', ev => {
     if (!document.body.classList.contains('chart')) return;
