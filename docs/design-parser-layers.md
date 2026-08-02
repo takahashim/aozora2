@@ -16,7 +16,9 @@
 関連ドキュメント:
 
 - [spec-tokenizer.md](spec-tokenizer.md) … ①トークナイザの仕様（互換実装用）
+- [spec-commands.md](spec-commands.md) … ②コマンドの受理・振り分けと、開始終端の対応づけの一覧
 - [spec-reference-resolver.md](spec-reference-resolver.md) … ③前方参照解決の仕様（互換実装用）
+- [spec-lowerer.md](spec-lowerer.md) … ④行→ブロック畳み込みの仕様（互換実装用）
 - [spec-ast.md](spec-ast.md) … ④ 2 つの AST の位置づけ・span の意味論・Lowerer
 - [spec-rawast-json.md](spec-rawast-json.md) / [spec-aozora-ast-json.md](spec-aozora-ast-json.md)
   … 木の形そのもの（構成子・不変条件・交換形式）

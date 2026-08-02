@@ -20,7 +20,9 @@ aozora-core が用いる 2 種類の抽象構文木について、**木の形そ
 | RawAST の器・`Node` の全構成子・マーカー・`BlockParams`・`RefSpec`・不変条件 | [spec-rawast-json.md](spec-rawast-json.md) |
 | Aozora AST の `Block` / `BlockKind` / `Inline` / 互換メタデータ・不変条件 | [spec-aozora-ast-json.md](spec-aozora-ast-json.md) |
 | 字句トークン（`TokenKind`）と走査の手続き | [spec-tokenizer.md](spec-tokenizer.md) |
+| コマンドの受理・振り分け・開始終端の対応づけ | [spec-commands.md](spec-commands.md) |
 | 前方参照の解決順序と規則 | [spec-reference-resolver.md](spec-reference-resolver.md) |
+| 行→ブロック畳み込み（Lowerer）の手続き | [spec-lowerer.md](spec-lowerer.md) |
 | Rust の型との対応 | 上記 2 つの交換形式仕様の付録 A |
 
 本書に残すのは、パイプライン上の位置づけ、**span の意味論**（実在しない span がどこに
