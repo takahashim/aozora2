@@ -273,6 +273,8 @@ html = <<~HTML
     section.r h2 span { font-size:.7rem; color:var(--dim); margin-left:.6rem; font-weight:normal }
     .e { display:grid; grid-template-columns:3.4rem 1fr 3rem; gap:.8rem; align-items:start;
          padding:.45rem 0; border-bottom:1px solid #efece6 }
+    /* 飛び先は部首の見出しのぶん下げる。見出しは top:0 に貼り付くので、真上に着けると隠れる */
+    .e { scroll-margin-top:3.4rem }
     .e:target { background:#fff5d6 }
     .g { font-size:2rem; line-height:1.3; text-align:center; min-height:1.3em;
          border-radius:3px; padding:.1rem 0 }
