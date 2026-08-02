@@ -265,7 +265,9 @@ html = <<~HTML
     nav { font-size:1rem; line-height:1.9 }
     nav a { display:inline-block; width:1.5em; text-align:center; color:#1c1a18; text-decoration:none }
     nav a:hover { background:#1c1a18; color:#f5f3ee }
-    section.r { padding:0 1.5rem }
+    /* 画面の外の節はレイアウトを飛ばす。9264 件を一度に組むと表示切り替えのたびに
+       数百 ms 止まる。auto を付けておくと一度描いた高さを覚えるので、スクロールバーも暴れない */
+    section.r { padding:0 1.5rem; content-visibility:auto; contain-intrinsic-size:auto 600px }
     section.r h2 { position:sticky; top:0; background:var(--bg); margin:1.6rem 0 .4rem; padding:.3rem 0;
                    font-size:1.35rem; border-bottom:1px solid var(--line); z-index:1 }
     section.r h2 span { font-size:.7rem; color:var(--dim); margin-left:.6rem; font-weight:normal }
@@ -293,6 +295,17 @@ html = <<~HTML
     .meta .src { border:1px solid var(--line); padding:0 .25rem; border-radius:2px }
     .k { font-size:.72rem; color:var(--dim); text-align:right; padding-top:.2rem }
     .star { color:#b8860b }
+    /* 字だけの一覧。**DOM はそのままで CSS だけ差し替える。** 9264 件を組み直すと
+       切り替えのたびに数百 ms 止まるし、二重に持つとファイルが倍になる */
+    #chart { width:100%; margin:.6rem 0 0; font:inherit; font-size:.8rem; padding:.35rem;
+             border:1px solid var(--line); background:#fff; border-radius:3px; cursor:pointer }
+    #chart:hover { background:#1c1a18; color:#f5f3ee }
+    body.chart .e { display:inline-block; border:0; padding:0; vertical-align:top; cursor:pointer }
+    body.chart .b, body.chart .k, body.chart footer { display:none }
+    body.chart .g { width:2.4rem; font-size:1.7rem; margin:1px }
+    body.chart .g svg { width:1.8rem; height:1.8rem }
+    body.chart .e:hover .g { outline:2px solid #b8860b }
+    body.chart section.r { padding:0 1.5rem .8rem }
     footer { padding:2rem 1.5rem; color:var(--dim); font-size:.78rem; border-top:1px solid var(--line) }
     .empty { margin:2rem 1.5rem; color:var(--dim); font-size:.85rem; max-width:44rem }
     .empty code { background:#fff; border:1px solid var(--line); padding:0 .2rem }
@@ -321,6 +334,7 @@ html = <<~HTML
     </p>
     <input id="q" type="search" placeholder="説明・面区点・U+・代用字・IDS" autocomplete="off">
     <span id="count"></span>
+    <button id="chart" type="button">例示字形をならべる</button>
     <nav>#{index}</nav>
   </aside>
 
@@ -390,6 +404,32 @@ html = <<~HTML
     } catch (_) { /* file:// */ }
   });
   run();
+
+  // 字だけの一覧。切り替えは body のクラス 1 つで、DOM には触らない。字を押すと
+  // その項目に戻る（hash を立てるので :target の下地も付く）。
+  const chart = document.getElementById('chart');
+  function setChart(on) {
+    document.body.classList.toggle('chart', on);
+    chart.textContent = on ? '一覧をとじる' : '例示字形をならべる';
+  }
+  chart.addEventListener('click', () => {
+    setChart(!document.body.classList.contains('chart'));
+    window.scrollTo(0, 0);
+  });
+  document.querySelector('main').addEventListener('click', ev => {
+    if (!document.body.classList.contains('chart')) return;
+    const e = ev.target.closest('.e');
+    if (!e) return;
+    setChart(false);
+    location.hash = e.id;
+  });
+  // 一覧では説明が見えないので、触れたところだけ後から title を付ける。
+  document.querySelector('main').addEventListener('mouseover', ev => {
+    const e = ev.target.closest('.e');
+    if (!e || e.title) return;
+    const note = e.querySelector('code');
+    if (note) e.title = note.textContent;
+  });
   </script>
   </html>
 HTML
