@@ -706,11 +706,28 @@ fn classify_line(nodes: &[Node]) -> LineKind {
         }
     }
     if let [Node {
-        kind: NodeKind::BlockEnd { explicit_close, .. },
+        kind:
+            NodeKind::BlockEnd {
+                block_type,
+                explicit_close,
+                ..
+            },
         ..
     }] = nodes
     {
-        return LineKind::BlockClose(*explicit_close);
+        // 割り注の終わりはブロックを閉じない。参照 apply_warichu は indent_stack に
+        // 触れず `）</span>` を出力するだけなので、内容行として to_inlines へ流す。
+        // 単独行 `［＃割り注終わり］` を素朴に「終わり」として扱うと、外側の字下げを
+        // 閉じたうえに割り注の出力も落としていた（実測: 参照は字下げを閉じずに
+        // `）</span><br />` を出す）。行途中の同じ形は find_unmatched_block_ends が
+        // block_kind_of で既に除いており、ここはその抜けを塞ぐ。
+        //
+        // 他の非ブロック種（縦中横・装飾・注記付き範囲）の単独終わり行は参照実装が
+        // エラー停止する入力で正解が無いので、従来どおり最も内側を閉じる緩い回復に
+        // 任せる（そちらは block_kind_of で除かない）。
+        if *block_type != BlockType::Warichu {
+            return LineKind::BlockClose(*explicit_close);
+        }
     }
     // 「終わり」を含む行（単独行は上で処理済み）。同じ行で開閉する範囲形は
     // `to_inlines` がインラインに畳むので、対応する開始が同じ行に無いものだけを拾う。
@@ -991,6 +1008,38 @@ mod position_tests {
             }
             other => panic!("Nested を期待: {other:?}"),
         }
+    }
+
+    /// 単独行の `［＃割り注終わり］` はブロックを閉じない。参照 apply_warichu は
+    /// indent_stack に触れず `）</span>` を出すだけなので、外側の字下げは続く。
+    /// 「単独行の BlockEnd はブロック終了」と素朴に扱っていた頃は、字下げを
+    /// 途中で閉じたうえに割り注の出力も落としていた。期待値は参照実装で実測した。
+    #[test]
+    fn standalone_warichu_end_line_does_not_close_the_enclosing_block() {
+        let body = |lines: &[&str]| {
+            let src = format!(
+                "作品名\r\n著者\r\n\r\n{}\r\n\r\n底本：「テスト」\r\n",
+                lines.join("\r\n")
+            );
+            crate::html::convert(&src, &crate::html::RenderOptions::default())
+        };
+        let html = body(&[
+            "［＃ここから２字下げ］",
+            "ほんぶん",
+            "［＃割り注終わり］",
+            "あとの行",
+            "［＃ここで字下げ終わり］",
+        ]);
+        assert!(
+            html.contains("ほんぶん<br />\r\n）</span><br />\r\nあとの行<br />\r\n</div>"),
+            "{html}"
+        );
+        // ブロックの外でも同じく、閉じずに割り注の出力だけを出す。
+        let outside = body(&["ぜん", "［＃割り注終わり］", "あと"]);
+        assert!(
+            outside.contains("ぜん<br />\r\n）</span><br />\r\nあと<br />"),
+            "{outside}"
+        );
     }
 
     /// 1行に「終わり」が複数あれば現れた順に閉じる。行末の改行を出すのは最後の
