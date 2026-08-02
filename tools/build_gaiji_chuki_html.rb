@@ -205,6 +205,8 @@ def entry_html(e, outlines, jis2ucs, mj)
   meta << %(<span class="src">#{source}</span>) if source
   meta << %(<a class="pg" href="##{e['id']}">#{e['id']}</a>)
   meta << %(<a class="pg" href="#{h "https://www.aozora.gr.jp/gaiji_chuki/gaiji_chuki.pdf#page=#{e['page']}"}">PDF p#{e['page']}</a>)
+  # ★ は「本来の部首以外にも足した項目」の印。行を立てるほどの情報ではないので出典の末尾に置く。
+  meta << %(<span class="star" title="本来の部首以外にも足した項目">★</span>) unless e['cross'].empty?
 
   lines = []
   lines << %(<code class="note">#{t GaijiChuki.note(e)}</code>) if GaijiChuki.note(e)
@@ -217,11 +219,10 @@ def entry_html(e, outlines, jis2ucs, mj)
     e['jis'].empty? ? nil : "#{e['jis']} 第#{e['level']}水準",
     e['unicode'].empty? ? nil : "U+#{e['unicode']}"
   ].compact.reject(&:empty?).join(' ')
-  star = e['cross'].empty? ? '' : '<span class="star" title="本来の部首以外にも足した項目">★</span>'
   <<~HTML
     <article class="e" id="#{e['id']}" data-s="#{h search}">
       <div class="g #{standing(e)}">#{glyph}</div>
-      <div class="b">#{star}#{lines.join}</div>
+      <div class="b">#{lines.join}</div>
       <div class="k">#{h e['strokes']}画</div>
     </article>
   HTML
@@ -291,7 +292,7 @@ html = <<~HTML
     .meta b { color:#1c1a18 }
     .meta .src { border:1px solid var(--line); padding:0 .25rem; border-radius:2px }
     .k { font-size:.72rem; color:var(--dim); text-align:right; padding-top:.2rem }
-    .star { color:#b8860b; margin-right:.3rem }
+    .star { color:#b8860b }
     footer { padding:2rem 1.5rem; color:var(--dim); font-size:.78rem; border-top:1px solid var(--line) }
     .empty { margin:2rem 1.5rem; color:var(--dim); font-size:.85rem; max-width:44rem }
     .empty code { background:#fff; border:1px solid var(--line); padding:0 .2rem }
