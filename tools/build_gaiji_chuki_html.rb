@@ -70,6 +70,17 @@ def glyph_svg(parts)
   GaijiGlyphSvg.render(parts, fill: ->(p) { LEGEND.fetch(p[%q{fill}], %q{#1c1a18}) }, escape: method(:h))
 end
 
+# その字が今どういう立場にあるか。字形の欄の地色で見分ける。
+#
+#   coded  面区点か U+ が決まっている。そのまま打てる
+#   sub    符号位置は無いが、包摂適用などで代用してよい字がある
+#   bare   どちらも無い。注記でしか書けない
+def standing(entry)
+  return 'coded' if !entry['jis'].empty? || !entry['unicode'].empty?
+
+  entry['sub'].empty? ? 'bare' : 'sub'
+end
+
 # 字形の欄に何を出すか。確かなものから順に落とす。
 def glyph_cell(e, outlines, jis2ucs)
   if (parts = outlines[e['id']]) && (svg = glyph_svg(parts))
@@ -206,10 +217,10 @@ def entry_html(e, outlines, jis2ucs, mj)
     e['jis'].empty? ? nil : "#{e['jis']} 第#{e['level']}水準",
     e['unicode'].empty? ? nil : "U+#{e['unicode']}"
   ].compact.reject(&:empty?).join(' ')
-  star = e['cross'].empty? ? '' : '<span class="star" title="別部首からの再掲">★</span>'
+  star = e['cross'].empty? ? '' : '<span class="star" title="本来の部首以外にも足した項目">★</span>'
   <<~HTML
     <article class="e" id="#{e['id']}" data-s="#{h search}">
-      <div class="g">#{glyph}</div>
+      <div class="g #{standing(e)}">#{glyph}</div>
       <div class="b">#{star}#{lines.join}</div>
       <div class="k">#{h e['strokes']}画</div>
     </article>
@@ -223,7 +234,10 @@ end.join
 
 index = sections.map { |radical, list| %(<a href="#r-#{h radical}" title="#{list.size} 件">#{h radical}</a>) }.join
 
-coded = entries.count { |e| !e['jis'].empty? || !e['unicode'].empty? }
+standings = entries.group_by { |e| standing(e) }
+coded = standings.fetch('coded', []).size
+sub_count = standings.fetch('sub', []).size
+bare = standings.fetch('bare', []).size
 drawn = entries.count { |e| outlines.key?(e['id']) }
 
 html = <<~HTML
@@ -257,13 +271,20 @@ html = <<~HTML
     .e { display:grid; grid-template-columns:3.4rem 1fr 3rem; gap:.8rem; align-items:start;
          padding:.45rem 0; border-bottom:1px solid #efece6 }
     .e:target { background:#fff5d6 }
-    .g { font-size:2rem; line-height:1.3; text-align:center; min-height:1.3em }
+    .g { font-size:2rem; line-height:1.3; text-align:center; min-height:1.3em;
+         border-radius:3px; padding:.1rem 0 }
+    /* 字の立場を地色で。符号位置が決まっているものが大半なので、そこは無地にする */
+    .g.sub { background:#fdf3e0 }    /* 代用してよい字がある（包摂適用など） */
+    .g.bare { background:#e9eef4 }   /* 符号位置も代用字も無い。注記でしか書けない */
     .g svg { width:2.1rem; height:2.1rem; display:block; margin:0 auto }
     .g svg .mask { fill:var(--bg) }
+    .g.sub svg .mask { fill:#fdf3e0 }
+    .g.bare svg .mask { fill:#e9eef4 }
     .g .none { color:#c9c4bc; font-size:1.2rem }
     .b code { display:block; font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:.82rem;
               line-height:1.6; word-break:break-all }
-    .b .subst { color:#7a5c2e }
+    .b .note { color:#1a4f63 }       /* 外字注記。本文に貼れる形 */
+    .b .subst { color:#7a5c2e }      /* 代用してよい字 */
     .meta { font-size:.72rem; color:var(--dim); font-family:ui-monospace,Menlo,monospace }
     .meta a { color:var(--dim) }
     .meta a.unreg { color:#a9a29a }
@@ -308,6 +329,10 @@ html = <<~HTML
   #{body}
 
   <footer>
+    字形の欄の地色はその字の立場を表す——無地は面区点か U+ が決まっていてそのまま打てる字（#{coded}）、
+    <b style="background:#fdf3e0">薄橙</b>は符号位置は無いが包摂適用などで代用してよい字があるもの（#{sub_count}）、
+    <b style="background:#e9eef4">薄青</b>はどちらも無く注記でしか書けないもの（#{bare}）。
+    <code style="color:#1a4f63">※［＃…］</code>が外字注記、<code style="color:#7a5c2e">→［＃…］</code>が代用してよい字。<br>
     輪郭の色は辞書の凡例に対応する——<b style="color:#1a7f37">緑</b>は JIS X 0213:2004 で例示字形が変わった字、
     <b style="color:#b3261e">赤</b>は包摂される字（底本の字形）、<b style="color:#6b6560">灰</b>は参考掲載。
     原典は原色だが、薄い背景で読めないので濃くしてある。
