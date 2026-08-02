@@ -57,7 +57,7 @@ fn block_kind_emits_closing_tag(kind: &BlockKind) -> bool {
 /// 通常見出し（同行・窓でない）が行のどこかに現れるか。入れ子の中まで見る。
 ///
 /// 参照実装は見出しコマンドに**出会った時点で** `@terprip = false` を立てる
-/// （`aozora2html.rb` の OMIDASHI/NAKAMIDASHI/KOMIDASHI_COMMAND と、後方参照形の
+/// （`aozora2html.rb` の OMIDASHI/NAKAMIDASHI/KOMIDASHI_COMMAND と、前方参照形の
 /// `midashi_type = :normal` の枝）。行末に来たかどうかは関係ない**行単位の旗**なので、
 /// 末尾だけを見る [`line_emits_closing_block_tag`] では次のような行を取りこぼす。
 ///
@@ -133,7 +133,7 @@ mod tests {
             after.contains("</h4>つづき。\r\n"),
             "見出しの後ろに本文が続いても <br /> を出さない: {after:?}"
         );
-        // 後方参照形でも同じ。
+        // 前方参照形でも同じ。
         let backref = body("あいう［＃「あいう」は中見出し］つづき。");
         assert!(backref.contains("</h4>つづき。\r\n"), "{backref:?}");
         // 見出しがルビ親文字の中にあっても効く。

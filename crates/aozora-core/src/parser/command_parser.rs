@@ -17,21 +17,21 @@ use super::reference_parser::{try_parse_left_ruby, try_parse_reference, without_
 /// コマンド解析結果
 #[derive(Debug, Clone, PartialEq)]
 pub enum CommandResult {
-    /// 装飾コマンド（後方参照）
+    /// 装飾コマンド（前方参照）
     Style {
         target: String,
         connector: String,
         style_type: StyleType,
     },
 
-    /// 見出しコマンド（後方参照）
+    /// 見出しコマンド（前方参照）
     Midashi {
         target: String,
         level: MidashiLevel,
         style: MidashiStyle,
     },
 
-    /// フォントサイズコマンド（後方参照）
+    /// フォントサイズコマンド（前方参照）
     FontSize {
         target: String,
         size_type: FontSizeType,
@@ -107,22 +107,22 @@ pub enum CommandResult {
     /// 注記ルビ（「対象」に「注記」の注記）
     AnnotationRuby { target: String, annotation: String },
 
-    /// 縦中横（後方参照）
+    /// 縦中横（前方参照）
     InlineTcy { target: String },
 
-    /// 罫囲み（後方参照）
+    /// 罫囲み（前方参照）
     InlineKeigakomi { target: String },
 
-    /// 横組み（後方参照）
+    /// 横組み（前方参照）
     InlineYokogumi { target: String },
 
-    /// キャプション（後方参照）
+    /// キャプション（前方参照）
     InlineCaption { target: String },
 
-    /// 返り点（後方参照「対象」は返り点）
+    /// 返り点（前方参照「対象」は返り点）
     InlineKaeriten { target: String },
 
-    /// 訓点送り仮名（後方参照「対象」は訓点送り仮名）
+    /// 訓点送り仮名（前方参照「対象」は訓点送り仮名）
     InlineOkurigana { target: String },
 
     /// キャプション開始
@@ -155,9 +155,6 @@ pub enum CommandResult {
         /// 置き換える置換形（`「5」はローマ数字、1-13-25`）では `None`。
         annotation: Option<String>,
     },
-
-    /// 未知のコマンド
-    Unknown(String),
 }
 
 /// コマンド文字列を解析する。
@@ -188,7 +185,7 @@ pub fn parse_command(content: &str) -> CommandResult {
         }
     }
 
-    // 2. 左ルビ・下ルビ（後方参照より先にチェック）。参照 PAT_REST_NOTES と同じ位置で、
+    // 2. 左ルビ・下ルビ（前方参照より先にチェック）。参照 PAT_REST_NOTES と同じ位置で、
     //    前方参照の解決より手前に置く。
     if (content.contains("左に") || content.contains("下に"))
         && (content.contains("のルビ") || content.contains("の注記"))
@@ -235,7 +232,7 @@ pub fn parse_command(content: &str) -> CommandResult {
         }
     }
 
-    // 5. 後方参照パターン: 「対象」に/は/の 装飾
+    // 5. 前方参照パターン: 「対象」に/は/の 装飾
     if let Some(result) = try_parse_reference(content) {
         return result;
     }

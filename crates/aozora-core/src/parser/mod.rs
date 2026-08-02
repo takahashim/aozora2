@@ -589,8 +589,6 @@ fn command_to_node_kind(result: CommandResult, raw: &str, paren: ParenContext) -
             spec: RefSpec::SideNote { annotation },
             raw: raw.to_string(),
         },
-
-        CommandResult::Unknown(text) => NodeKind::Note(text),
     }
 }
 
