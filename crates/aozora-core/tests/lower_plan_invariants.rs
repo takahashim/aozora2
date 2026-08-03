@@ -4,7 +4,7 @@
 //! `cfg!(debug_assertions)` のときだけ呼ばれる（包含・結合の非巡回・診断の順・吸収した
 //! 行）。ここはその検査に十分な入力を通す係で、テストは debug ビルドで走るので
 //! 全件が検査を通る。制約解消型 Lowerer への移行中は同じ入力で旧実装との並走を
-//! 見ていた（`docs/plan-lowerer-migration.md` の C0〜C6）。
+//! 見ていた（移行の記録は docs/spec-lowerer-constraints.md）。
 //!
 //! feature ゲートを付けない。CI の test ジョブは素の `cargo test` を回すので、
 //! `#![cfg(feature = "serde")]` の下に置くと走らない。conformance のフィクスチャは
