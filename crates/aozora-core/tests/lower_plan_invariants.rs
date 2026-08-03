@@ -1,64 +1,39 @@
-//! 既定経路 [`lower_to_blocks_with_diagnostics`] と、移行前の凍結コピー
-//! [`lower_to_blocks_legacy`] の並走検証。
+//! `LowerPlan` の不変条件を、広い入力で走らせて確かめる。
 //!
-//! 制約解消型 Lowerer への移行（`docs/plan-lowerer-migration.md`）のあいだ、行ループを
-//! 段階的に作り替えても **AST と診断が 1 バイトも変わらない**ことをここで縛る。移行が
-//! 終われば凍結コピーごと消える（計画の C6）。
+//! 検査そのものは `lower::plan::check_plan_invariants` にあり、`solve` の末尾から
+//! `cfg!(debug_assertions)` のときだけ呼ばれる（包含・結合の非巡回・診断の順・吸収した
+//! 行）。ここはその検査に十分な入力を通す係で、テストは debug ビルドで走るので
+//! 全件が検査を通る。制約解消型 Lowerer への移行中は同じ入力で旧実装との並走を
+//! 見ていた（`docs/plan-lowerer-migration.md` の C0〜C6）。
 //!
 //! feature ゲートを付けない。CI の test ジョブは素の `cargo test` を回すので、
 //! `#![cfg(feature = "serde")]` の下に置くと走らない。conformance のフィクスチャは
 //! dev-dependency の `serde_json::Value` として読み、feature には依存しない。
-//!
-//! AST の比較を `format!("{:#?}")` の文字列で行うのは意図的である。`Block`/`Inline` の
-//! 手書き `PartialEq` は `line`/`span` を比較しないので、`==` にすると行番号の退行を
-//! 検出できない。**PartialEq 比較に退化させないこと。**
 
 use std::path::{Path, PathBuf};
 
-use aozora_core::lower::{lower_to_blocks_legacy, lower_to_blocks_with_diagnostics};
+use aozora_core::lower::lower_to_blocks_with_diagnostics;
 use aozora_core::parser::parse_document_raw;
 
-/// 入力 1 件を両経路に通し、AST（デバッグ表示）と診断を突き合わせる。
-fn assert_parity(label: &str, text: &str) {
+/// 入力 1 件を畳んで、Plan の不変条件と決定性を確かめる。
+///
+/// 同じ入力を 2 度畳んで `{:#?}` で比べる。`Block`/`Inline` の手書き `PartialEq` は
+/// `line`/`span` を比較しないので、`==` にすると行番号の退行を検出できない。
+/// **PartialEq 比較に退化させないこと。**
+fn assert_plan_is_sound(label: &str, text: &str) {
     let lines: Vec<&str> = text.split("\r\n").collect();
     let raw = parse_document_raw(&lines);
 
-    let (current_ast, current_diags) = lower_to_blocks_with_diagnostics(&raw);
-    let (legacy_ast, legacy_diags) = lower_to_blocks_legacy(&raw);
+    // 畳み込みの中で check_plan_invariants が走る（debug ビルド）。
+    let (ast, diags) = lower_to_blocks_with_diagnostics(&raw);
+    let (again, diags_again) = lower_to_blocks_with_diagnostics(&raw);
 
-    let current = format!("{current_ast:#?}");
-    let legacy = format!("{legacy_ast:#?}");
-    if current != legacy {
-        panic!(
-            "{label}: AST が凍結コピーと食い違う\n{}",
-            first_difference(&legacy, &current)
-        );
-    }
     assert_eq!(
-        legacy_diags, current_diags,
-        "{label}: 診断が凍結コピーと食い違う"
+        format!("{ast:#?}"),
+        format!("{again:#?}"),
+        "{label}: 同じ入力から違う AST が出た"
     );
-}
-
-/// 最初に食い違った行の前後 3 行を並べて返す（依存を足さずに読める失敗表示にする）。
-fn first_difference(legacy: &str, current: &str) -> String {
-    let legacy: Vec<&str> = legacy.lines().collect();
-    let current: Vec<&str> = current.lines().collect();
-    let at = (0..legacy.len().max(current.len()))
-        .find(|i| legacy.get(*i) != current.get(*i))
-        .expect("食い違う行がある");
-    let from = at.saturating_sub(3);
-    let to = (at + 4).min(legacy.len().max(current.len()));
-
-    let mut out = format!("最初の相違は {} 行目（1 起点）\n", at + 1);
-    for (name, side) in [("凍結", &legacy), ("現行", &current)] {
-        out.push_str(&format!("--- {name} ---\n"));
-        for i in from..to {
-            let mark = if i == at { ">" } else { " " };
-            out.push_str(&format!("{mark} {}\n", side.get(i).unwrap_or(&"<行なし>")));
-        }
-    }
-    out
+    assert_eq!(diags, diags_again, "{label}: 同じ入力から違う診断が出た");
 }
 
 fn manifest_dir() -> PathBuf {
@@ -70,7 +45,7 @@ fn manifest_dir() -> PathBuf {
 /// `conformance.rs` と同じく LF 区切りで書かれているので CRLF に直す。serde の
 /// feature に依存しないよう、`Fixture` 型ではなく `Value` の `source` だけを読む。
 #[test]
-fn conformance_sources_lower_identically() {
+fn conformance_sources_lower_soundly() {
     let dir = manifest_dir().join("data/conformance");
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
         .expect("data/conformance が読める")
@@ -84,7 +59,7 @@ fn conformance_sources_lower_identically() {
         let text = std::fs::read_to_string(&path).expect("読める");
         let value: serde_json::Value = serde_json::from_str(&text).expect("形式が壊れている");
         let source = value["source"].as_str().expect("source がある");
-        assert_parity(&path.display().to_string(), &source.replace('\n', "\r\n"));
+        assert_plan_is_sound(&path.display().to_string(), &source.replace('\n', "\r\n"));
     }
 }
 
@@ -94,7 +69,7 @@ fn conformance_sources_lower_identically() {
 /// カバレッジが高い。**無ければ警告して skip する**——crates.io に aozora-core だけが
 /// パッケージされた状態の `cargo test` を壊さないため。
 #[test]
-fn document_fixtures_lower_identically() {
+fn document_fixtures_lower_soundly() {
     let dir = manifest_dir().join("../aozora2/tests/fixtures");
     let names = [
         "chukiichiran_zenrei.txt",
@@ -110,7 +85,7 @@ fn document_fixtures_lower_identically() {
         }
         let bytes = std::fs::read(&path).expect("読める");
         let text = aozora_core::encoding::decode_to_utf8(&bytes);
-        assert_parity(name, &text);
+        assert_plan_is_sound(name, &text);
         ran += 1;
     }
     eprintln!("実文書フィクスチャ {ran}/{} 件を検証した", names.len());
@@ -132,16 +107,16 @@ const COMPOSITE: &str = "東京《とうきょう》へ\r\n\
      12［＃「12」は縦中横］［＃割り注］注［＃割り注終わり］";
 
 #[test]
-fn composite_source_lowers_identically() {
-    assert_parity("composite", COMPOSITE);
+fn composite_source_lowers_soundly() {
+    assert_plan_is_sound("composite", COMPOSITE);
 }
 
 /// 入力 4: 手書きのエッジ表。
 ///
-/// `lower/mod.rs` の position_tests が使う入力と、移行計画で挙げた実測済みのエッジ
+/// `lower/mod.rs` の position_tests が使う入力と、実測済みのエッジ
 /// （`docs/spec-lowerer-constraints.md` の制約が食い違いやすいと名指しした形）を並べる。
-/// リポジトリ内の入力は小規模なので、C1〜C5 の差はコーパスでしか出ない種類もある。
-/// ここは早期検出用で、最終的な保証は全書庫並走（`crates/aozora2/examples/lower_parity.rs`）が持つ。
+/// リポジトリ内の入力は小規模なので、ここは早期検出用である（移行中の最終的な保証は
+/// 全書庫を流す使い捨ての example が持っていた）。
 const EDGES: &[(&str, &str)] = &[
     ("行番号", "一行目\r\n［＃ここから２字下げ］\r\n中身\r\n［＃ここで字下げ終わり］"),
     ("閉じの後に本文", "［＃ここから２字下げ］\r\n本文［＃ここで字下げ終わり］つづき"),
@@ -194,8 +169,8 @@ const EDGES: &[(&str, &str)] = &[
 ];
 
 #[test]
-fn hand_written_edges_lower_identically() {
+fn hand_written_edges_lower_soundly() {
     for (label, source) in EDGES {
-        assert_parity(label, source);
+        assert_plan_is_sound(label, source);
     }
 }

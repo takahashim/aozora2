@@ -16,14 +16,8 @@
 pub mod break_policy;
 mod facts;
 pub mod inline;
-mod legacy;
 mod plan;
 mod solve;
-
-/// 移行前の行ループ（`lower/legacy.rs` の凍結コピー）。並走検証専用で、移行完了とともに
-/// 削除する。`docs/plan-lowerer-migration.md`。
-#[doc(hidden)]
-pub use legacy::lower_to_blocks_legacy;
 
 use plan::materialize;
 use solve::solve;
