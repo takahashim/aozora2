@@ -26,14 +26,34 @@ use crate::ast::{AozoraAst, BlockKind, BurasageGeometry};
 use crate::node::BlockType;
 use crate::parser::RawDoc;
 
-/// Lower 時に検出できる構造上の診断（現状は EOF で閉じられなかったブロック）。
-/// エディタ支援用の付加情報で、変換出力には影響しない。
+/// Lower 時に検出できる構造上の診断。エディタ支援用の付加情報で、変換出力には影響しない。
+///
+/// いずれも**参照実装が変換を中止する入力**に対応する（メッセージつきで
+/// `処理を停止します` と出るもの。実測）。木は総関数として作り続け、厳格さは
+/// 境界（CLI）がこの診断を見て決める。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LowerDiagnostic {
-    /// ブロックを開いた本文行（0 起点）。
+    /// 対象の本文行（0 起点）。
     pub line: usize,
-    /// 閉じられなかったブロックの種類。
-    pub kind: BlockKind,
+    /// 何が起きたか。
+    pub kind: LowerDiagnosticKind,
+}
+
+/// [`LowerDiagnostic`] の種類。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LowerDiagnosticKind {
+    /// EOF まで閉じられなかったブロック。`line` は**開いた行**。
+    /// 参照は「〈種類〉中に本文が終了しました」で停止する（実測）。
+    UnclosedBlock(BlockKind),
+    /// 閉じる相手が無い終端。`line` は**終端のある行**。
+    /// 参照 `check_close_match` は書かれた種類と最内層を比べ、違えば
+    /// 「〈種類〉を閉じようとしましたが、〈種類〉中ではありません」で停止する（実測）。
+    UnmatchedEnd {
+        /// 記法に書かれた種類。
+        written: BlockType,
+        /// そのとき最も内側で開いていたブロック（何も開いていなければ `None`）。
+        innermost: Option<BlockKind>,
+    },
 }
 
 /// RawDoc（未解決・平坦マーカー）を Aozora AST（[`AozoraAst`]＝トップレベル [`Block`] 列）に畳む。

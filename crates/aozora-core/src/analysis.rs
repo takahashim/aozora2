@@ -15,7 +15,7 @@
 use crate::ast::{Block, BlockKind};
 use crate::document::{classify_lines, LineSection};
 use crate::encoding::{is_directly_writable, normalize_char_for_shift_jis};
-use crate::lower::lower_to_blocks_with_diagnostics;
+use crate::lower::{lower_to_blocks_with_diagnostics, LowerDiagnosticKind};
 use crate::node::{BlockType, MidashiLevel, Node, NodeKind, RefSpec};
 use crate::parser::reference_resolver::resolve_references_collecting_failures;
 use crate::parser::{parse_document_raw_with_diagnostics, ParseDiagnosticKind, RawLine};
@@ -303,18 +303,42 @@ pub fn analyze(input: &str) -> Analysis {
             .get(d.line)
             .map(|l| l.source.chars().count())
             .unwrap_or(0);
+        // どちらも参照実装が「処理を停止します」で変換を中止する入力なので Error。
+        // 木は総関数として作り続け（エディタのプレビューが消えないため）、厳格さは
+        // CLI がこの severity を見て決める。
+        let (code, message) = match &d.kind {
+            LowerDiagnosticKind::UnclosedBlock(kind) => (
+                "unclosed-block",
+                format!(
+                    "{}が閉じられていません（対応する「終わり」がありません）",
+                    block_kind_label(kind)
+                ),
+            ),
+            LowerDiagnosticKind::UnmatchedEnd { written, innermost } => (
+                "unmatched-end",
+                match innermost {
+                    Some(open) => format!(
+                        "{}を閉じようとしましたが、{}中です",
+                        block_type_label(written),
+                        block_kind_label(open)
+                    ),
+                    None => format!(
+                        "{}を閉じようとしましたが、{}中ではありません",
+                        block_type_label(written),
+                        block_type_label(written)
+                    ),
+                },
+            ),
+        };
         analysis.diagnostics.push(Diagnostic {
             range: Range {
                 line: d.line,
                 start: 0,
                 end,
             },
-            severity: Severity::Warning,
-            code: "unclosed-block",
-            message: format!(
-                "{}が閉じられていません（対応する「終わり」がありません）",
-                block_kind_label(&d.kind)
-            ),
+            severity: Severity::Error,
+            code,
+            message,
         });
     }
 
@@ -364,6 +388,31 @@ fn block_kind_label(kind: &BlockKind) -> &'static str {
         BlockKind::FontSize { .. } => "文字サイズ変更",
         BlockKind::Futoji => "太字",
         BlockKind::Shatai => "斜体",
+    }
+}
+
+/// 記法に書かれた種類の表示名。参照のメッセージ（`INDENT_TYPE` の値）に合わせる。
+/// 複数行ブロックになれない種類は、閉じる相手が無いので終端の診断にだけ現れる。
+fn block_type_label(block_type: &BlockType) -> &'static str {
+    match block_type {
+        BlockType::Jisage => "字下げ",
+        BlockType::Chitsuki => "地付き",
+        BlockType::Jizume => "字詰め",
+        BlockType::Burasage => "ぶら下げ",
+        BlockType::Midashi => "見出し",
+        BlockType::Keigakomi => "罫囲み",
+        BlockType::Yokogumi => "横組み",
+        BlockType::Caption => "キャプション",
+        BlockType::FontDai => "大きな文字",
+        BlockType::FontSho => "小さな文字",
+        BlockType::Futoji => "太字",
+        BlockType::Shatai => "斜体",
+        BlockType::Tcy => "縦中横",
+        BlockType::Warichu => "割り注",
+        BlockType::Warigaki => "割書",
+        BlockType::Style => "装飾",
+        BlockType::AnnotationRange => "注記付き",
+        BlockType::LeftAnnotationRange => "左に注記付き",
     }
 }
 
@@ -722,6 +771,42 @@ mod tests {
             "{}",
             unclosed[0].message
         );
+    }
+
+    /// 最内層と種類が食い違う終端は閉じずに `unmatched-end`（Error）を出す。
+    /// 参照 `check_close_match` が「〈種類〉を閉じようとしましたが、〈種類〉中では
+    /// ありません」で停止する入力に当たる（実測）。ブロックは閉じないので、EOF まで
+    /// 残って `unclosed-block` も併せて出る。
+    #[test]
+    fn mismatched_end_becomes_an_error_diagnostic() {
+        let a = analyze_body("［＃ここから太字］\n本文\n［＃ここで字下げ終わり］");
+        let unmatched: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "unmatched-end")
+            .collect();
+        assert_eq!(unmatched.len(), 1, "{:?}", a.diagnostics);
+        assert_eq!(unmatched[0].severity, Severity::Error);
+        assert_eq!(unmatched[0].range.line, BODY0 + 2, "終端のある行を指す");
+        assert!(
+            unmatched[0].message.contains("字下げ") && unmatched[0].message.contains("太字"),
+            "{}",
+            unmatched[0].message
+        );
+        // 閉じられなかった太字は EOF まで残る。
+        assert!(a.diagnostics.iter().any(|d| d.code == "unclosed-block"));
+    }
+
+    /// 閉じ残しは参照が「〈種類〉中に本文が終了しました」で停止する入力なので Error。
+    #[test]
+    fn unclosed_block_is_an_error() {
+        let a = analyze_body("［＃ここから２字下げ］\n本文だけ続く");
+        let d = a
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "unclosed-block")
+            .expect("診断が出る");
+        assert_eq!(d.severity, Severity::Error);
     }
 
     #[test]

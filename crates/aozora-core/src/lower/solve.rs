@@ -7,10 +7,10 @@
 //! 状態を持たない写像だけを行う。
 
 use super::break_policy::content_break;
-use super::facts::{collect_line_jisage, line_facts, LineRole};
+use super::facts::{collect_line_jisage, line_facts, CloseFact, LineRole};
 use super::inline::to_inlines;
 use super::plan::{check_plan_invariants, LowerPlan, PlanBlock, PlanLine};
-use super::LowerDiagnostic;
+use super::{LowerDiagnostic, LowerDiagnosticKind};
 
 use crate::ast::{BlockKind, Break, CloseKind, Inline, OpenKind};
 use crate::node::{BlockType, Node, NodeKind};
@@ -104,18 +104,29 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
                 let brk = content_break(&inline, false);
                 stack.push_line(inline, brk, line_no);
             }
-            LineRole::BlockClose(explicit) => {
-                // 対応する開きが無ければ何も出さない（旧経路も未マッチ終了は無出力）。
-                // ここは Closes([(0, explicit)]) と同じ処理だが、開きが無いときだけ
-                // 扱いが違う（あちらは空の内容行を積む）。開き無しの「終わり」は参照実装が
-                // エラーで停止する入力なのでオラクルで是非を決められない。捨てる側を
-                // 残しているのは、エディタのプレビューに空行が紛れない方が良いため。
-                stack.close_block(Closure::End {
-                    explicit,
-                    followed_by_content: false,
-                });
+            LineRole::BlockClose(close) => {
+                // 制約 3: 最内層と種類が一致するときだけ閉じる。一致しなければ何も出さず
+                // 診断に出す（参照 check_close_match は停止する）。閉じない側で空の内容行を
+                // 積まないのは、エディタのプレビューに空行が紛れない方が良いため。
+                match stack.innermost() {
+                    Some(innermost) if end_matches(&close.written, innermost) => {
+                        stack.close_block(Closure::End {
+                            explicit: close.explicit,
+                            followed_by_content: false,
+                        });
+                    }
+                    innermost => diags.push(LowerDiagnostic {
+                        line: line_no,
+                        kind: LowerDiagnosticKind::UnmatchedEnd {
+                            written: close.written,
+                            innermost: innermost.cloned(),
+                        },
+                    }),
+                }
             }
-            LineRole::Closes(closes) => apply_closes(&mut stack, &nodes, &closes, line_no),
+            LineRole::Closes(closes) => {
+                apply_closes(&mut stack, &nodes, &closes, line_no, &mut diags)
+            }
             LineRole::LineWrap(kinds) => {
                 // ［＃N字下げ］text／行スコープ地付き: 行全体を div で1行に包む。
                 // 先頭の行スコープマーカー1個（LineJisage、または is_block=false の
@@ -157,7 +168,7 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
         // （出力は従来どおり末尾クローズ。診断は追加返却のみで Block 出力は不変）。
         diags.push(LowerDiagnostic {
             line: block.line,
-            kind: block.kind.clone(),
+            kind: LowerDiagnosticKind::UnclosedBlock(block.kind.clone()),
         });
         let close = close_kind(&Closure::Eof, &block.kind, stack.innermost());
         stack.push(block.into_nested(close));
@@ -294,6 +305,87 @@ fn push_close_segment(stack: &mut PlanStack, nodes: &[Node], brk: Break, line_no
     }
 }
 
+/// 記法に書かれた種類が、開いているブロックを閉じられるか（**制約 3 の最内層照合**）。
+///
+/// 参照 `check_close_match` は `detect_command_mode` が返す `INDENT_TYPE` のキーと
+/// `@indent_stack.last` を比べ、違えば「〈種類〉を閉じようとしましたが、〈種類〉中では
+/// ありません」で停止する（実測）。照合するのは**最内層だけ**である。「一致する最も
+/// 内側のブロック」を探しにいく形にすると内側の異種を飛び越して外側を閉じることになり、
+/// 制約 3 の「区間は交差せず、入れ子か互いに素」が破れる。
+///
+/// 2 つの細部も参照から取った（実測）:
+/// - ぶら下げ中は `hanging_indent?` が `:jisage` を返すので、**ぶら下げは字下げの終端で
+///   閉じる**（`［＃ここで字下げ終わり］`）。
+/// - 大きな文字と小さな文字は別のキー（`dai`/`sho`）なので、段階の大小違いは一致しない。
+///
+/// 複数行ブロックになれない種類（縦中横・割り注・割書・装飾・注記付き範囲）は、一致する
+/// 開きが存在しえないので常に false になる。規則 3 と規則 4 の非対称は、別途ガードを
+/// 書かなくてもこの帰結として消える。
+///
+/// **`written` 側に `_` の catch-all を置かないこと。** [`BlockType`] に variant を
+/// 足したとき、ここが黙って「閉じない」を選ぶのを防ぐ。
+fn end_matches(written: &BlockType, open: &BlockKind) -> bool {
+    use crate::node::FontSizeType;
+    match written {
+        BlockType::Jisage => {
+            matches!(open, BlockKind::Jisage { .. } | BlockKind::Burasage(_))
+        }
+        BlockType::Burasage => matches!(open, BlockKind::Burasage(_)),
+        BlockType::Chitsuki => matches!(open, BlockKind::Chitsuki { .. }),
+        BlockType::Jizume => matches!(open, BlockKind::Jizume { .. }),
+        BlockType::Keigakomi => matches!(open, BlockKind::Keigakomi),
+        BlockType::Midashi => matches!(open, BlockKind::Midashi { .. }),
+        BlockType::Yokogumi => matches!(open, BlockKind::Yokogumi),
+        BlockType::Caption => matches!(open, BlockKind::Caption),
+        BlockType::Futoji => matches!(open, BlockKind::Futoji),
+        BlockType::Shatai => matches!(open, BlockKind::Shatai),
+        BlockType::FontDai => matches!(
+            open,
+            BlockKind::FontSize {
+                size_type: FontSizeType::Dai,
+                ..
+            }
+        ),
+        BlockType::FontSho => matches!(
+            open,
+            BlockKind::FontSize {
+                size_type: FontSizeType::Sho,
+                ..
+            }
+        ),
+        // 複数行ブロックになれない種類。
+        BlockType::Tcy
+        | BlockType::Warichu
+        | BlockType::Warigaki
+        | BlockType::Style
+        | BlockType::AnnotationRange
+        | BlockType::LeftAnnotationRange => false,
+    }
+}
+
+/// 終端の並びを、制約 3 の最内層照合で「閉じるもの」と「閉じないもの」に分ける。
+///
+/// 採用は前から順に決まる（採用するたび最内層が 1 つ外へ動く）ので、開いている種類を
+/// 内側から辿って先に決めてしまう。開きを使い切った後の終端は、種類によらず閉じない。
+fn split_closes(
+    open_kinds: &[BlockKind],
+    closes: &[CloseFact],
+) -> (Vec<CloseFact>, Vec<CloseFact>) {
+    let mut depth = open_kinds.len();
+    let mut adopted = Vec::new();
+    let mut rejected = Vec::new();
+    for close in closes {
+        match depth.checked_sub(1).map(|i| &open_kinds[i]) {
+            Some(innermost) if end_matches(&close.written, innermost) => {
+                depth -= 1;
+                adopted.push(*close);
+            }
+            _ => rejected.push(*close),
+        }
+    }
+    (adopted, rejected)
+}
+
 /// 余った終わりのマーカーは `to_inlines` が落とす。
 /// 「終わり」を含む行（単独行でないもの）を畳む。
 ///
@@ -302,21 +394,34 @@ fn push_close_segment(stack: &mut PlanStack, nodes: &[Node], brk: Break, line_no
 /// その時点で開いているブロックの内側に出る。行末の改行を出すのは最後の閉じだけで、
 /// 後続本文があるならその行が出す。
 ///
-/// 開いている数より「終わり」が多い行（参照実装はエラーで停止する）は余りを無視する。
-fn apply_closes(stack: &mut PlanStack, nodes: &[Node], closes: &[(usize, bool)], line_no: usize) {
-    // 閉じられる開きが1つも無ければ閉じタグは出ないので、行をまとめて内容行にする。
-    let closable = closes.len().min(stack.depth());
-    if closable == 0 {
+/// 最内層と種類が一致しない終端（参照実装はエラーで停止する）は閉じずに捨て、診断に出す。
+fn apply_closes(
+    stack: &mut PlanStack,
+    nodes: &[Node],
+    closes: &[CloseFact],
+    line_no: usize,
+    diags: &mut Vec<LowerDiagnostic>,
+) {
+    let (closes, rejected) = split_closes(&stack.open_kinds(), closes);
+    for close in &rejected {
+        diags.push(LowerDiagnostic {
+            line: line_no,
+            kind: LowerDiagnosticKind::UnmatchedEnd {
+                written: close.written,
+                innermost: stack.innermost().cloned(),
+            },
+        });
+    }
+    // 閉じられる終端が1つも無ければ閉じタグは出ないので、行をまとめて内容行にする。
+    if closes.is_empty() {
         push_content_line(stack, nodes, line_no);
         return;
     }
-    // 以降は「実際に閉じられる並び」だけを見る。
-    let closes = &closes[..closable];
-    let last_close = closes.last().expect("closable > 0").0;
+    let last_close = closes.last().expect("closes は非空").idx;
     let has_tail = last_close + 1 < nodes.len();
     let mut seg_start = 0usize;
 
-    for (n, (idx, explicit)) in closes.iter().enumerate() {
+    for (n, CloseFact { idx, explicit, .. }) in closes.iter().enumerate() {
         // 閉じタグより前の本文。行末の改行は閉じタグ以降が出す。
         let segment = (seg_start < *idx).then_some(&nodes[seg_start..*idx]);
         // 参照は閉じタグを buffer に積む（＝本文の続き）ので、本文は閉じるブロックの
@@ -347,7 +452,9 @@ fn apply_closes(stack: &mut PlanStack, nodes: &[Node], closes: &[(usize, bool)],
 
     // 最後の閉じの後ろに残った本文を同じ行に出す。
     if has_tail {
-        let explicit = closes.iter().any(|(_, e)| *e);
+        // `Break` の判定に入るのは**閉鎖に採用された終端だけ**。採用されなかった終端は
+        // 明示終端でも数えない（実測）。
+        let explicit = closes.iter().any(|c| c.explicit);
         let tail = &nodes[last_close + 1..];
         let brk = content_break(&to_inlines(tail), explicit);
         push_close_segment(stack, tail, brk, line_no);
@@ -635,14 +742,15 @@ impl PlanStack {
         }
     }
 
-    /// 開いているブロックの数。
-    fn depth(&self) -> usize {
-        self.open.len()
-    }
-
     /// 今いちばん内側で開いているブロックの種類。
     fn innermost(&self) -> Option<&BlockKind> {
         self.open.last().map(|b| &b.kind)
+    }
+
+    /// 開いているブロックの種類を外側から順に。制約 3 の最内層照合を、実際に閉じる前に
+    /// 先読みするために使う（[`split_closes`]）。
+    fn open_kinds(&self) -> Vec<BlockKind> {
+        self.open.iter().map(|b| b.kind.clone()).collect()
     }
 
     /// いちばん内側の開いているブロックへ、無ければトップレベルへ積む。
@@ -714,6 +822,51 @@ mod tests {
         let mut out = Vec::new();
         walk(&plan.roots, &mut out);
         out
+    }
+
+    /// 制約 3 の最内層照合: 終端は最内層と種類が一致するときだけ閉じる。
+    ///
+    /// 期待値は参照実装の `check_close_match` から取った（実測 2026-08-03）。参照は
+    /// 書かれた種類と `@indent_stack.last` を比べ、違えば「〈種類〉を閉じようとしましたが、
+    /// 〈種類〉中ではありません」で停止する。細部 2 つも参照から:
+    /// ぶら下げは `hanging_indent?` が `:jisage` を返すので字下げの終端で閉じ、
+    /// 大きな文字と小さな文字は別のキー（`dai`/`sho`）なので段階違いは一致しない。
+    #[test]
+    fn end_closes_only_when_the_innermost_kind_matches() {
+        let cases = [
+            // 一致するので閉じる（従来どおり）。
+            (
+                "［＃ここから太字］\r\n本文\r\n［＃ここで太字終わり］\r\nあと",
+                "本文<br />\r\n</div>",
+            ),
+            // bare 終端も種類が一致すれば閉じる（参照も停止しない形）。
+            (
+                "［＃ここから２字下げ］\r\n本文\r\n［＃字下げ終わり］\r\nあと",
+                "本文<br />\r\n</div><br />",
+            ),
+            // ぶら下げは字下げの終端で閉じる（参照 hanging_indent?）。
+            (
+                "［＃ここから改行天付き、折り返して３字下げ］\r\n本文\r\n［＃ここで字下げ終わり］\r\nあと",
+                "本文</div>\r\nあと",
+            ),
+            // 種類が食い違うので閉じない。太字は EOF まで残る。
+            (
+                "［＃ここから太字］\r\n本文\r\n［＃ここで字下げ終わり］\r\nあと",
+                "本文<br />\r\nあと<br />\r\n</div>",
+            ),
+            // 大小の段階違いも一致しない（別キー）。
+            (
+                "［＃ここから１段階大きな文字］\r\n本文\r\n［＃ここで小さな文字終わり］\r\nあと",
+                "本文<br />\r\nあと<br />\r\n</div>",
+            ),
+        ];
+        for (body, expected) in cases {
+            let html = crate::html::convert(
+                &format!("題\r\n著\r\n\r\n{body}\r\n底本：テスト\r\n"),
+                &crate::html::RenderOptions::default(),
+            );
+            assert!(html.contains(expected), "{body:?} → {html}");
+        }
     }
 
     /// 制約 1 の規則 5: 行途中の開始は、**開始マーカーの前に何があっても**開く。

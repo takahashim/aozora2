@@ -20,18 +20,29 @@ pub(super) enum LineRole {
     /// 規則 2: 単独の開始（`ここから…` 1 個だけからなる行）。規則 6 の例外
     /// （`［＃N字下げ］` 1 個だけからなる行）もここへ来る。
     BlockOpen(BlockKind),
-    /// 規則 3: 単独の終端（割り注を除く）。bool は explicit_close（`ここで…終わり`=true、
-    /// bare `…終わり`=false）。`block_kind_of` で写せない種類もここでは終端として扱う。
-    BlockClose(bool),
-    /// 規則 4: 未対応の終端を含む行。要素は (BlockEnd の位置, explicit_close) で、
-    /// 現れる順に並ぶ。この行の開始は開かない。
-    Closes(Vec<(usize, bool)>),
+    /// 規則 3: 単独の終端（割り注を除く）。`block_kind_of` で写せない種類もここでは
+    /// 終端として扱う（閉じられるかは制約 3 の最内層照合が決める）。
+    BlockClose(CloseFact),
+    /// 規則 4: 未対応の終端を含む行。現れる順に並ぶ。この行の開始は開かない。
+    Closes(Vec<CloseFact>),
     /// 規則 5: 行途中の開始。usize は BlockStart の位置。
     BlockOpenWithTail(usize, BlockKind),
     /// 規則 6: 行スコープ包み（外側→内側の順）。
     LineWrap(Vec<BlockKind>),
     /// 規則 7: 内容行。
     Content,
+}
+
+/// 終端マーカー 1 つ分の事実。**記法に書かれた種類**（`written`）を保存する。
+/// 実際に閉じる相手は制約 3 の最内層照合が決めるので、両者は食い違いうる。
+#[derive(Debug, Clone, Copy)]
+pub(super) struct CloseFact {
+    /// 行内のノード位置。
+    pub idx: usize,
+    /// 記法に書かれた種類。
+    pub written: BlockType,
+    /// `ここで…終わり`=true、bare `…終わり`=false。
+    pub explicit: bool,
 }
 
 /// 行から読み取れる、行をまたがない事実。
@@ -97,7 +108,11 @@ fn role_of(nodes: &[Node]) -> LineRole {
         // エラー停止する入力で正解が無いので、従来どおり最も内側を閉じる緩い回復に
         // 任せる（そちらは block_kind_of で除かない）。
         if *block_type != BlockType::Warichu {
-            return LineRole::BlockClose(*explicit_close);
+            return LineRole::BlockClose(CloseFact {
+                idx: 0,
+                written: *block_type,
+                explicit: *explicit_close,
+            });
         }
     }
     // 規則 4: 未対応の終端を含む行（単独行は規則 3 で処理済み）。同じ行で開閉する
@@ -206,7 +221,7 @@ fn burasage_open(nodes: &[Node]) -> Option<(usize, BlockKind)> {
 /// 同じ行で開閉する範囲（`［＃ここから太字］…［＃ここで太字終わり］`）の終端は
 /// `to_inlines` がインラインに畳むのでここでは拾わない。拾うのは
 /// 前の行から続いているブロックを閉じるものだけ。
-fn find_unmatched_block_ends(nodes: &[Node]) -> Vec<(usize, bool)> {
+fn find_unmatched_block_ends(nodes: &[Node]) -> Vec<CloseFact> {
     let mut open: Vec<&BlockType> = Vec::new();
     let mut out = Vec::new();
     for (idx, node) in nodes.iter().enumerate() {
@@ -229,9 +244,11 @@ fn find_unmatched_block_ends(nodes: &[Node]) -> Vec<(usize, bool)> {
                 }
                 // 複数行ブロックになれない種類（割り注・縦中横など。開始側が注記
                 // として描画され BlockStart ノードを作らない）は閉じの対象にしない。
-                None if block_kind_of(block_type, params).is_some() => {
-                    out.push((idx, *explicit_close))
-                }
+                None if block_kind_of(block_type, params).is_some() => out.push(CloseFact {
+                    idx,
+                    written: *block_type,
+                    explicit: *explicit_close,
+                }),
                 None => {}
             },
             _ => {}
