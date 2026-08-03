@@ -28,7 +28,8 @@ RawAST（行ごとの平坦なマーカー列）を Aozora AST（block ⊃ line 
 - **入力を拒否しない**。閉じ忘れ・過剰な閉じ・種類不一致もすべて何らかの木にする。
 
 入力は `RawDoc`（行の列）、出力はトップレベルの `Vec<Block>` と
-`Vec<LowerDiagnostic>`（EOF で閉じられなかったブロック。出力には影響しない）。
+`Vec<LowerDiagnostic>`（閉じ忘れ・閉じる相手のない終端・行中のブロック開始。
+出力には影響しない）。
 各行は畳む前に③を通す（`resolve_references` → `resolve_inline_ruby`。行ごとに独立）。
 
 ## モジュールと段階
@@ -58,12 +59,12 @@ RawDoc ──③──> 解決済みノード列
 |---|---|
 | 1. 役割の割り当て（規則 1〜7） | `facts::role_of`。判定順が規則の順。規則 1＝`BurasageOpen`、2＝`BlockOpen`、3＝`BlockClose`、4＝`Closes`、5＝`BlockOpenWithTail`、6＝`LineWrap`（例外は `BlockOpen`）、7＝`Content` |
 | 2. 同一行の範囲 | `inline::to_inlines` と `find_matching_end`（同種で対応） |
-| 3. 複数行ブロックの対応と包含 | `PlanStack`（積む・開く・閉じる）と `apply_closes`（1 行に複数の終端） |
+| 3. 複数行ブロックの対応と包含 | `PlanStack`（積む・開く・閉じる）、`end_matches`（最内層と書かれた種類の照合）、`apply_closes`／`split_closes`（1 行に複数の終端） |
 | 4. 暗黙閉じ | `VirtualEnd::before_opening` の表と `open_block_after_virtual_ends`。通すのは規則 1・2・6 の例外だけ |
 | 5. 行スコープ包み | `facts` の規則 6 と、`strip_line_scope_marker` / `take_line_scope_wrap` |
 | 6. 行結合 | `Joins`（`defer`／`attach`／`settle`）と `suppressed_lines` |
 | 7. `CloseKind` と `Break` | `close_kind`（優先順 1〜5 をそのまま match に写した）と `break_policy::content_break` |
-| 8. EOF と診断 | `solve` 末尾の `pop_open` ループ。`Closure::Eof` で閉じ、`LowerDiagnostic` を内側から順に積む |
+| 8. EOF と診断 | `solve` 末尾の `pop_open` ループ。`Closure::Eof` で閉じ、`LowerDiagnostic` を内側から順に積む。種類は `unclosed-block`／`unmatched-end`（Error）と `midline-block-open`（Warning） |
 
 `LowerPlan` の不変条件（包含・結合の非巡回・診断の順・吸収した行）は
 `plan::check_plan_invariants` が見る。`solve` の末尾から `cfg!(debug_assertions)` の
@@ -134,8 +135,9 @@ RawDoc ──③──> 解決済みノード列
 
 - **1 パスで解き、判断はすべて `LowerPlan` に集まる**。`materialize` は状態も分岐も
   持たない写像である。
-- **対応づけは種類不問の LIFO**（終端は最も内側を閉じる）＋**開くときの暗黙閉じ**。
-  同一行で揃う対はインライン畳み込みが先に消費する（こちらは**同種**で対応づける）。
+- **対応づけは最内層照合の LIFO**（終端は最内層の種類が書かれた種類と一致するときだけ
+  閉じ、合わなければ何も閉じずに診断へ出す）＋**開くときの暗黙閉じ**。
+  同一行で揃う対はインライン畳み込みが先に消費する（こちらも**同種**で対応づける）。
 - **互換メタデータ（`Break`/`OpenKind`/`CloseKind`）はここで確定**し、
   バックエンドは状態を持たない。
 - **入力を拒否しない**。過剰な終端は無視、閉じ忘れは EOF で閉じ、診断で可視化する。
