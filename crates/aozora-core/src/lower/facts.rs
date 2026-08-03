@@ -123,15 +123,10 @@ fn role_of(nodes: &[Node]) -> LineRole {
         let no_end_on_line = !nodes[idx + 1..]
             .iter()
             .any(|n| matches!(n.kind, NodeKind::BlockEnd { .. }));
-        // 「開始より前がすべてテキスト」は**現行の互換バグ**である。参照は前に何が
-        // あってもブロックを開く（ルビ・外字・傍点・行内地付きの 5 形で実測）。
-        // 現行再現プロファイルではそのまま写し、移行後に独立した変更で外す
-        // （docs/spec-lowerer-constraints.md「既知の非互換と将来の統一」＝
-        // docs/plan-lowerer-migration.md の PR-B）。
-        let head_is_text = nodes[..idx]
-            .iter()
-            .all(|n| matches!(n.kind, NodeKind::Text(_)));
-        if has_tail && no_end_on_line && head_is_text {
+        // 開始マーカーの**前に何があるかは問わない**。参照はテキスト・ルビ・外字・
+        // 傍点・行内地付きのいずれが前にあってもブロックを開く（5 形とも実測。
+        // solve.rs の mid_line_open_ignores_what_precedes_the_marker）。
+        if has_tail && no_end_on_line {
             if let Some(kind) = block_kind_of(block_type, params) {
                 return LineRole::BlockOpenWithTail(idx, kind);
             }

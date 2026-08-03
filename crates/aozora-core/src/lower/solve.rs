@@ -716,6 +716,49 @@ mod tests {
         out
     }
 
+    /// 制約 1 の規則 5: 行途中の開始は、**開始マーカーの前に何があっても**開く。
+    ///
+    /// 参照実装で 5 形とも実測した（2026-08-03。いずれも参照は正常終了する＝正解のある
+    /// 差である）。かつては「前がすべてテキスト」のときだけ開いており、ルビ・外字・傍点・
+    /// 行内地付きが前にあると開始が黙って消えて書式が丸ごと落ちていた。
+    ///
+    /// 最後の 1 形だけは入れ子が参照と違う。参照は行内地付きの div を開いたまま中へ
+    /// 斜体を開く（`…<div class="chitsuki_0">本文<div class="shatai">つづき</div>`）が、
+    /// こちらは行内地付きを行末までのインラインとして畳んでから開く。開くようになった
+    /// ぶんは前進で、入れ子の違いは別の課題として残す。
+    #[test]
+    fn mid_line_open_ignores_what_precedes_the_marker() {
+        let cases = [
+            (
+                "本文［＃ここから斜体］つづき",
+                "本文<div class=\"shatai\">つづき",
+            ),
+            (
+                "東京《とうきょう》［＃ここから斜体］つづき",
+                "</ruby><div class=\"shatai\">つづき",
+            ),
+            (
+                "※［＃「けものへん＋苗」、第3水準1-87-63］［＃ここから斜体］つづき",
+                "class=\"gaiji\" /><div class=\"shatai\">つづき",
+            ),
+            (
+                "本文［＃「本文」に傍点］［＃ここから斜体］つづき",
+                "<em class=\"sesame_dot\">本文</em><div class=\"shatai\">つづき",
+            ),
+            (
+                "前［＃地付き］本文［＃ここから斜体］つづき",
+                "本文</div><div class=\"shatai\">つづき",
+            ),
+        ];
+        for (source, expected) in cases {
+            let html = crate::html::convert(
+                &format!("題\r\n著\r\n\r\n{source}\r\n底本：テスト\r\n"),
+                &crate::html::RenderOptions::default(),
+            );
+            assert!(html.contains(expected), "{source} → {html}");
+        }
+    }
+
     /// 制約 3: 閉鎖に採用されなかった終端（`IgnoredEnd`）は `Break` の判定に入らない。
     /// ただし行の終端が一つも採用されなかったときは、行全体が内容行になり、行内の
     /// すべての明示終端が判定に入る。設計文書に載る実測 2 例をそのまま固定する。
