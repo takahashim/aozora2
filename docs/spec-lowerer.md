@@ -1,110 +1,77 @@
-# 仕様: Lowerer（行→ブロック畳み込み）
+# Lowerer 実装ノート（行→ブロック畳み込み）
 
-> **この文書は権威を持たない書き捨ての参考資料である。** 現状の実装を読み解くための
-> 案内であり、規範ではない。実装（コードとテスト）と食い違ったらこの文書が古い。
-> 更新の義務は負わない——古くなったら捨て、必要ならコードから書き直す。
+> **この文書は権威を持たない書き捨ての参考資料である。** 規範は
+> [spec-lowerer-constraints.md](spec-lowerer-constraints.md)（制約仕様）で、ここは
+> それをコードのどこがどう解いているかの地図である。実装と食い違ったらこの文書が古い。
 > 一次資料はコーパスとソースコード（docs/architecture.md §1）。
 
-作成 2026-08-02。RawAST（行ごとの平坦なマーカー列）を Aozora AST
-（block ⊃ line ⊃ inline の木）へ畳む手続きの記述。互換実装用。
-コード実体は `crates/aozora-core/src/lower/mod.rs`（行ループ・ブロックスタック）/
-`lower/inline.rs`（行内のインライン畳み込み）/ `lower/break_policy.rs`（行末改行）。
-関連: [spec-commands.md](spec-commands.md)（②振り分け・対応づけの要約）、
-[spec-reference-resolver.md](spec-reference-resolver.md)（③。各行の前処理として走る）、
+作成 2026-08-02。2026-08-03 改稿——手続き（巨大な行ループ）の記述だったものを、
+制約仕様への対応付けと、制約仕様に書いていない実装の細部だけに縮めた。
+
+RawAST（行ごとの平坦なマーカー列）を Aozora AST（block ⊃ line ⊃ inline の木）へ
+畳む。関連: [spec-commands.md](spec-commands.md)（②振り分け）、
+[spec-reference-resolver.md](spec-reference-resolver.md)（③。各行の前処理）、
 [spec-ast.md](spec-ast.md)（span の意味論・行マージの位置情報）、
-[spec-aozora-ast-json.md](spec-aozora-ast-json.md)（`Block`/`Inline`/互換メタデータの形）、
-[spec-lowerer-constraints.md](spec-lowerer-constraints.md)（この手続きを制約として
-書き直す設計案。既知の非互換と将来の統一もそちらに書いてある）。
+[spec-aozora-ast-json.md](spec-aozora-ast-json.md)（`Block`/`Inline` の形）。
 
 ---
 
-## 概要
+## 役割
 
-- **役割**: 行内マーカー（`BlockStart`/`BlockEnd`/`LineJisage`）の行またぎ対応づけを行い、
-  入れ子の `Block` 木にする。同時に、行末改行（`Break`）・開始/閉じタグの出力形
-  （`OpenKind`/`CloseKind`）という互換メタデータをこの時点で確定させ、
-  以降の描画を状態なしの木歩きにする。
-- **参照実装との対応**: aozora2html の `@indent_stack`（開いているブロック）、
-  `close_conflicting_blocks`（暗黙閉じ）、`@terprip`（行末 `<br />` の抑制）、
+- 行内マーカー（`BlockStart`/`BlockEnd`/`LineJisage`）の行またぎ対応づけを行い、
+  入れ子の `Block` 木にする。
+- 行末改行（`Break`）・開始/閉じタグの出力形（`OpenKind`/`CloseKind`）という
+  互換メタデータをここで確定させ、以降の描画を状態なしの木歩きにする。
+- 参照実装 aozora2html の `@indent_stack`（開いているブロック）・
+  `close_conflicting_blocks`（暗黙閉じ）・`@terprip`（行末 `<br />` の抑制）・
   `@noprint`（出力を飛ばして次行へ持ち越す）の逐次モデルを、一度の畳み込みで再現する。
 - **入力を拒否しない**。閉じ忘れ・過剰な閉じ・種類不一致もすべて何らかの木にする。
 
-## 入力と出力
+入力は `RawDoc`（行の列）、出力はトップレベルの `Vec<Block>` と
+`Vec<LowerDiagnostic>`（EOF で閉じられなかったブロック。出力には影響しない）。
+各行は畳む前に③を通す（`resolve_references` → `resolve_inline_ruby`。行ごとに独立）。
 
-- **入力**: `RawDoc`（行の列。各行は `source`・ノード列・行番号）。
-- **出力**: トップレベルの `Vec<Block>`。追加で `Vec<LowerDiagnostic>`
-  （EOF で閉じられなかったブロック。出力には影響しない）。
-- **前処理**: 各行のノード列に③を通してから畳む
-  （`resolve_references` → `resolve_inline_ruby` の順。行ごとに独立）。
+## モジュールと段階
 
-## 状態
+```text
+RawDoc ──③──> 解決済みノード列
+           facts::line_facts ──> LineFacts（役割）      制約 1
+           solve::solve      ──> LowerPlan              制約 3・4・6・7・8
+           plan::materialize ──> Aozora AST
+```
 
-行ループが持つ状態は 3 つ。
+| ファイル | 役割 | 制約 |
+|---|---|---|
+| `lower/facts.rs` | 行の事実。`LineRole` と `line_facts`。行内で閉じる純関数だけ | 1 |
+| `lower/inline.rs` | 行内の畳み込み `to_inlines`（同一行範囲の対応） | 2 |
+| `lower/solve.rs` | `LowerPlan` を組む解決器。`PlanStack`・`VirtualEnd`・`Joins`・`close_kind` | 3・4・6・7・8 |
+| `lower/break_policy.rs` | 行末改行 `content_break` | 7 の `Break` |
+| `lower/plan.rs` | `LowerPlan` の型・`materialize`・`check_plan_invariants` | — |
+| `lower/mod.rs` | 公開 API と `block_kind_of` | — |
 
-- **`BlockStack`** … 開いているブロックのスタック（各要素は種類・子リスト・開いた
-  行番号・`OpenKind`）と、どのブロックにも属さないトップレベル列。
-  「積む」は最も内側の開いているブロックの子へ、開きが無ければトップレベルへ。
-- **`carry: Vec<Inline>`** … 出力を飛ばした行から次の行へ持ち越す内容
-  （参照実装のバッファ持ち越し。下記「行マージ」）。
-- **`swallowed: Set<usize>`** … 前の行に吸収済みで出力しない行の添字。
+`solve` の中の `PlanStack` は制約 3（対応と包含）を線形時間で解く実装であって仕様では
+ない。「最も内側の生存ブロック」がスタックの最上位に当たる。
 
-## 行ループ（1 行ごと。判定順そのものが仕様）
+## 制約と実装の対応
 
-各行について、上から順に:
+| 制約 | 実装 |
+|---|---|
+| 1. 役割の割り当て（規則 1〜7） | `facts::role_of`。判定順が規則の順。規則 1＝`BurasageOpen`、2＝`BlockOpen`、3＝`BlockClose`、4＝`Closes`、5＝`BlockOpenWithTail`、6＝`LineWrap`（例外は `BlockOpen`）、7＝`Content` |
+| 2. 同一行の範囲 | `inline::to_inlines` と `find_matching_end`（同種で対応） |
+| 3. 複数行ブロックの対応と包含 | `PlanStack`（積む・開く・閉じる）と `apply_closes`（1 行に複数の終端） |
+| 4. 暗黙閉じ | `VirtualEnd::before_opening` の表と `open_block_after_virtual_ends`。通すのは規則 1・2・6 の例外だけ |
+| 5. 行スコープ包み | `facts` の規則 6 と、`strip_line_scope_marker` / `take_line_scope_wrap` |
+| 6. 行結合 | `Joins`（`defer`／`attach`／`settle`）と `suppressed_lines` |
+| 7. `CloseKind` と `Break` | `close_kind`（優先順 1〜5 をそのまま match に写した）と `break_policy::content_break` |
+| 8. EOF と診断 | `solve` 末尾の `pop_open` ループ。`Closure::Eof` で閉じ、`LowerDiagnostic` を内側から順に積む |
 
-1. **吸収済みならスキップ**（`swallowed` に入っている行）。
-2. **③を通す**: `resolve_references` → `resolve_inline_ruby`。
-3. **行を分類する**（`classify_line`。次節）。
-4. **ぶら下げを開く行**（行内に `BlockEnd` が無く、is_block のぶら下げ `BlockStart` が
-   ある）は特別扱い: 暗黙閉じ（後述）→ ぶら下げを `OpenKind::NoBreak` で開く →
-   マーカーの**前後**の内容を `carry` へ積み、**この行は出力しない**（次の行と
-   1 つの出力単位になる。参照 `apply_burasage` の `@noprint`）。次の行へ。
-5. **未閉じ `〔` で終わる内容行**（末尾ノードが `UnclosedAccentBreak` で、分類が
-   内容行）も出力せず、行の内容を `carry` へ積んで次の行へ
-   （参照 `AccentParser#general_output` が `"<br />\r\n"` を積んで改行ごと食べる）。
-6. **持ち越しの処理**: この行が内容行なら `carry` を取り出して行頭に繋ぐ。
-   内容行以外なら、`carry` を**独立した 1 行**として先に積む（行末改行は
-   `content_break` で決める）。
-7. **分類に従って畳む**（後述の各項）。
+`LowerPlan` の不変条件（包含・結合の非巡回・診断の順・吸収した行）は
+`plan::check_plan_invariants` が見る。`solve` の末尾から `cfg!(debug_assertions)` の
+ときだけ呼ぶので、デバッグビルドで走る検証はすべてこの検査を通る。
 
-全行を終えたら、開いたまま残ったブロックを**内側から順に** `CloseKind::Newline` で
-閉じ、それぞれを `LowerDiagnostic`（開いた行番号と種類）として診断に記録する。
+## 制約仕様に書いていない実装の細部
 
-## 行の分類（`classify_line`）
-
-③を通した後のノード列から、上から順に判定する。
-
-1. **単独の `BlockStart`（is_block=true）** → ブロック開始（`BlockOpen`）。
-2. **単独の `BlockEnd`（割り注を除く）** → ブロック終了（`BlockClose`。`explicit_close` を保持）。
-   割り注の終わりだけは除く（参照 `apply_warichu` は開いているブロックに触れず
-   `）</span>` を出すだけなので、内容行として流す。実測）。他の非ブロック種
-   （縦中横・装飾・注記付き範囲）の単独終わり行は参照実装がエラー停止するため
-   正解が無く、種類を問わず最も内側を閉じる緩い回復に任せている。
-3. **同じ行に対応する開始が無い `BlockEnd` を含む** → 行途中クローズ（`Closes`）。
-   現れる順に (位置, explicit) をすべて集める。「対応する開始」の数え方:
-   - 行内の `BlockStart` を種類つきでスタックに積み、`BlockEnd` は**同種**の直近の
-     開始と消し合う（消えたものは同一行の範囲形＝インライン畳み込みの担当）。
-   - 行途中の地付き（is_block=false の Chitsuki `BlockStart`）は**開きに数えない**
-     （行末で閉じるので、同じ行の `ここで地付き終わり` は前の行から続く複数行の
-     地付きを閉じる。実測）。
-   - 複数行ブロックになれない種類（`block_kind_of` が写せない割り注・縦中横など）の
-     `BlockEnd` は**閉じ対象にしない**（割り注の開始は `BlockStart` を作らないので、
-     素朴に拾うと外側の字下げを誤って閉じる。実文書 000284/2227）。
-4. **行内に `BlockEnd` が無い `BlockStart`（is_block=true）** → 行途中オープン
-   （`BlockOpenWithTail`）。条件: マーカーの後ろに要素があり、前がすべて `Text` で、
-   種類が `block_kind_of` で写せること。
-   このうち**「前がすべて `Text`」は既知の互換バグ**なので、互換実装は写さないこと。
-   参照はマーカーの前にルビ・外字・装飾があってもブロックを開くが、現行はここで
-   当たらず内容行に落ちて開始を捨てる（実測。
-   [spec-lowerer-constraints.md](spec-lowerer-constraints.md)「既知の非互換と将来の統一」）。
-5. **`LineJisage`（`［＃N字下げ］`）** … 単独ならブロック開始（`ここから字下げ` と
-   同一）。本文つきなら行包み（`LineWrap`）。1 行に複数あれば**後に書いたものほど
-   外側**（参照 `apply_jisage` の unshift。実測）。ルビ親文字の中に入り込んだ
-   `LineJisage`（`｜［＃２字下げ］あいう《るび》`）も数える。
-6. **行頭の行スコープ地付き**（先頭が is_block=false の Chitsuki）→ 行包み。
-7. それ以外 → **内容行**（`Content`）。
-
-## `block_kind_of`: ブロックになれる種類
+### `block_kind_of`: ブロックになれる種類
 
 `BlockType` ＋パラメータ → `BlockKind` の写像。写せる種類だけが複数行ブロックになる。
 
@@ -113,76 +80,11 @@
 | 字下げ・地付き・字詰め・罫囲み・横組み・キャプション・大/小文字・太字・斜体・ぶら下げ・見出し | 縦中横・割り注・割書・装飾（Style）・注記付き範囲（左も） |
 
 写せない種類の開始・終了が行に残った場合はブロックを開閉せず、
-インライン畳み込み（後述）が処理するか、黙って落ちる。
+インライン畳み込みが処理するか、黙って落ちる。
 
-## 各分類の畳み方
+### 行末改行の決定（`content_break` → `Break`）
 
-### ブロック開始（`BlockOpen`）
-
-暗黙閉じ（次項）を適用してから、`OpenKind::Newline` で開く。
-
-### 暗黙閉じ（参照 `close_conflicting_blocks`）
-
-開く種類ごとに「スタック最上位から何を・どう・いくつ閉じるか」が決まる。
-該当しない種類（横組み・罫囲み等）は暗黙閉じを持たず、素直に入れ子になる。
-
-| 開く種類 | 閉じる相手 | 繰り返し | 閉じ方 |
-|---|---|---|---|
-| 字下げ | 字下げ・ぶら下げ | 1 つだけ | `NoBreak` |
-| 地付き | 地付き・ぶら下げ | 続く限り | `NoBreak` |
-| ぶら下げ | 字下げ・ぶら下げ | 続く限り | `Newline` |
-
-### 行途中オープン（`BlockOpenWithTail`）
-
-- マーカーより前の本文は開くブロックの**外**に、`Break::NoNewline` で積む
-  （改行はマーカー以降が出す）。
-- ブロックを `OpenKind::NoBreak` で開く（開始タグ直後に改行を出さない）。
-- マーカーより後の本文を、開いたブロックの中に `content_break` の改行で積む。
-- 暗黙閉じは**行わない**（暗黙閉じを持つ種類を行の途中で開く入力は参照実装が
-  エラー停止するため、オラクルに現れず正解を決められない）。
-
-### ブロック終了（`BlockClose`）・行途中クローズ（`Closes`）
-
-- 終了は**種類を照合せず**、最も内側の開いているブロックを閉じる
-  （割り注の終わりだけは分類の段階でここへ来ない。上記）。
-  ただしこの規則が効くのは型が一致する正常な文書だけである。書かれた種類と開いている
-  ブロックが食い違う入力（`［＃ここから太字］` を `［＃ここで字下げ終わり］` で閉じる等）は
-  参照実装が停止するため正解が無い（実測）。将来は書かれた種類との照合へ統一する案がある
-  （[spec-lowerer-constraints.md](spec-lowerer-constraints.md)「既知の非互換と将来の統一」）。
-- 単独行の終了で開きが 1 つも無ければ、何も出さない。
-- 行途中クローズ（`Closes`）の手続き:
-  1. 実際に閉じられる数 = min(終了の数, 開いている数)。0 なら行全体を内容行にする。
-  2. 各終了について順に: 終了より前の本文断片を積み、ブロックを閉じる。本文断片は
-     閉じるブロックの**内側**に入る。ただし**ぶら下げを閉じるときだけ**先に閉じ、
-     断片は外に出す（閉じで per-line の包みが効かなくなるため）。
-     断片には行スコープ包み（`［＃N字下げ］`・行頭地付き）が効く（下記）。
-  3. 行末の改行を出すのは**最後の**閉じだけ。後続本文があるなら最後の閉じも
-     `NoBreak` になり、改行は後続本文が出す。
-  4. 最後の終了より後ろの本文は同じ行として積む（行末改行は `content_break`。
-     いずれかの終了が explicit なら `<br />` を抑制）。
-  5. 開いている数を超えた余りの終了は無視する。
-
-### 行包み（`LineWrap`）
-
-行全体を 1 行だけのブロック（div 相当）で包む。
-
-- 包む種類: `LineJisage` の列（後に書いたものほど外側）、または行頭の行スコープ地付き。
-- マーカーを取り除いた残りをインライン化して包む。`LineJisage` は行内のどこに
-  あっても（ルビ親文字の中でも）すべて取り除く。マーカーで列を分割はしない
-  （マーカーをまたぐ範囲コマンドの対応づけを壊さないため）。
-- 同じ行に `ここで…終わり` があっても包みは効く（`Closes` の断片にも
-  行包み判定を適用する。参照 `apply_jisage` は閉じの有無に関わらず unshift。実測）。
-- 行末が未閉じ `〔`（`UnclosedAccentBreak`）で、**次の行が空行**なら、その空行を
-  吸収する（`swallowed` へ）。中身のある行を包みに畳む入力はオラクルに現れない。
-
-### 内容行（`Content`）
-
-持ち越し（`carry`）を行頭に繋ぎ、行末改行を `content_break`（次節）で決めて 1 行積む。
-行内に explicit な `BlockEnd`（`ここで…終わり`）が残っていれば `<br />` を抑制する。
-
-## 行末改行の決定（`content_break` → `Break`）
-
-行のインライン列（持ち越しを繋いだ後の全体）から決める。参照実装 `@terprip` の再現。
+行のインライン列（結合したあとの全体）から決める。参照実装 `@terprip` の再現。
 
 `Break::None`（`<br />` を出さない）になる条件（いずれか）:
 
@@ -197,34 +99,9 @@
 それ以外は `Break::Br`（行末に `<br />`）。`Break::NoNewline` は行途中で
 ブロックが閉じるときの前半本文専用（改行は閉じタグ側が出す）。
 
-## 閉じタグの出力形（`CloseKind`）
+### 行内のインライン畳み込み（`to_inlines`）
 
-ブロックを閉じるとき、ポップ後のスタックを見て決める。
-
-1. 閉じる種類が装飾系（横組み・罫囲み・キャプション・文字サイズ・太字・斜体・
-   字詰め・見出し）で、外側がぶら下げ → `BurasageWrapped(外側の幅)`
-   （閉じタグが per-line の burasage div に包まれる。実測）。
-2. explicit（`ここで…終わり`）→ `Newline`（`</div>\r\n`）。
-3. bare（`…終わり`）→ `BareBreak`（`</div><br />\r\n`。参照は `@terprip` を維持）。
-4. 暗黙閉じ・「最後でない」行途中クローズ・後続本文つき → `NoBreak`（表・手続きの
-   とおり上書きされる）。EOF 閉じは `Newline`。
-
-## 行マージ（出力を飛ばす 2 経路）
-
-参照実装で出力が飛ぶ（`@noprint`・改行を食う）行は、次の行と 1 つの
-`Block::Line` に併合される。
-
-- **ぶら下げを開く行**: 開始マーカーの前後の本文を `carry` へ。
-- **未閉じ `〔` の内容行**: 行の内容（末尾の `UnclosedAccentBreak` 込み）を `carry` へ。
-
-`carry` を繋げる先は次の**内容行**だけ。先に別の行種（ブロック開始など）に当たったら、
-持ち越しを独立の 1 行として出してから、その行を通常どおり処理する（参照はここでも
-繋げるが、その組み合わせはコーパスに現れず正しい姿を決められない）。
-位置情報への影響（span が前の行を指す）は spec-ast.md「span が『実在』でない箇所」。
-
-## 行内のインライン畳み込み（`to_inlines`）
-
-分類の各所で、ノード列の断片をインライン列へ写す。先頭から走査し:
+ノード列の断片をインライン列へ写す。先頭から走査し:
 
 1. `BlockStart` から始まる範囲は、次の順で 1 つのインラインに畳めるか試す:
    1. **同一行のインライン範囲**（is_block=false）: `find_matching_end` で**同種**の
@@ -238,25 +115,27 @@
       無ければ**行末まで**を `ChitsukiInline` に包む。
 2. 畳めなければ 1 ノードずつ写す。割り注の `BlockStart`/`BlockEnd` だけは対応づけ
    なしの開閉マーカー（`InlineKind::Warichu {open}`）としてそのまま写す。
-   それ以外のブロック構造マーカー（`BlockStart`/`BlockEnd`/`LineJisage`）は
-   インラインにならず、ここまでの畳み込みで消費されなかったものは**落ちる**。
+   それ以外のブロック構造マーカーは、ここまでで消費されなかったものは**落ちる**。
 3. 注記（`Note`）・送り仮名の中身は、生の注記文字列を本文と同じ
    tokenize→parse→ルビ解決で再パースして持つ（前方参照は走らせない）。
    注記が注記を含む再帰は深さ 4（`MAX_NOTE_DEPTH`）で打ち切り、素のテキストにする。
 4. `UnresolvedReference` はここへ来ない（③が解決するか `Note` にしている。
    来たら呼び出し側が③を飛ばしたバグ）。
 
-## EOF と診断
+`to_inlines` は行ループを通らない経路（`html::convert_line`＝`block_renderer` の
+`render_line_inline`、`strip::convert_line`）からも直に使われる。
 
-- 開いたまま残ったブロックは内側から `CloseKind::Newline` で閉じる（出力は参照と同じ）。
-- 閉じ忘れの可能性は `LowerDiagnostic { line: 開いた行, kind }` として別線で返す
-  （診断 `unclosed-block`）。変換出力には一切影響しない。
+### 行マージが位置情報に与える影響
+
+出力を飛ばした行の断片は次の行の `Block::Line` に入るので、span がその行より前を
+指すことがある。[spec-ast.md](spec-ast.md)「span が『実在』でない箇所」を見よ。
 
 ## 性質まとめ
 
-- **行ループ 1 パス・状態は 3 つ**（スタック・持ち越し・吸収済み集合）。
-- **対応づけは種類不問の LIFO**（終了は最も内側を閉じる）＋**開くときの暗黙閉じ**。
+- **1 パスで解き、判断はすべて `LowerPlan` に集まる**。`materialize` は状態も分岐も
+  持たない写像である。
+- **対応づけは種類不問の LIFO**（終端は最も内側を閉じる）＋**開くときの暗黙閉じ**。
   同一行で揃う対はインライン畳み込みが先に消費する（こちらは**同種**で対応づける）。
 - **互換メタデータ（`Break`/`OpenKind`/`CloseKind`）はここで確定**し、
   バックエンドは状態を持たない。
-- **入力を拒否しない**。過剰な閉じは無視、閉じ忘れは EOF で閉じ、診断で可視化する。
+- **入力を拒否しない**。過剰な終端は無視、閉じ忘れは EOF で閉じ、診断で可視化する。
