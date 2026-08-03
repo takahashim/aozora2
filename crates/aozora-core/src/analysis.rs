@@ -303,18 +303,28 @@ pub fn analyze(input: &str) -> Analysis {
             .get(d.line)
             .map(|l| l.source.chars().count())
             .unwrap_or(0);
-        // どちらも参照実装が「処理を停止します」で変換を中止する入力なので Error。
-        // 木は総関数として作り続け（エディタのプレビューが消えないため）、厳格さは
-        // CLI がこの severity を見て決める。
-        let (code, message) = match &d.kind {
+        // 参照実装が「処理を停止します」で変換を中止する入力は Error、参照が受理する形は
+        // Warning。木は総関数として作り続け（エディタのプレビューが消えないため）、
+        // 厳格さは CLI がこの severity を見て決める。
+        let (severity, code, message) = match &d.kind {
             LowerDiagnosticKind::UnclosedBlock(kind) => (
+                Severity::Error,
                 "unclosed-block",
                 format!(
                     "{}が閉じられていません（対応する「終わり」がありません）",
                     block_kind_label(kind)
                 ),
             ),
+            LowerDiagnosticKind::MidlineBlockOpen(kind) => (
+                Severity::Warning,
+                "midline-block-open",
+                format!(
+                    "行の途中で{}を開いています（注記一覧にない書き方で、変換すると行が分かれます）",
+                    block_kind_label(kind)
+                ),
+            ),
             LowerDiagnosticKind::UnmatchedEnd { written, innermost } => (
+                Severity::Error,
                 "unmatched-end",
                 match innermost {
                     Some(open) => format!(
@@ -336,7 +346,7 @@ pub fn analyze(input: &str) -> Analysis {
                 start: 0,
                 end,
             },
-            severity: Severity::Error,
+            severity,
             code,
             message,
         });
@@ -795,6 +805,44 @@ mod tests {
         );
         // 閉じられなかった太字は EOF まで残る。
         assert!(a.diagnostics.iter().any(|d| d.code == "unclosed-block"));
+    }
+
+    /// 行の途中で複数行ブロックを開く形は Warning。注記一覧に例が無く（`ここから…` は
+    /// 全例・記入例とも 46 箇所すべて行頭。実測）、`<div>` なので必ず行が割れる。
+    /// 参照は字下げ以外を受理するので Error にはしない。
+    ///
+    /// 開始タグの直後から本文が始まる形（前が空か空白だけ）は実文書にあるので対象外。
+    #[test]
+    fn midline_block_open_warns_only_when_something_precedes_it() {
+        let warns = |body: &str| {
+            analyze_body(body)
+                .diagnostics
+                .iter()
+                .filter(|d| d.code == "midline-block-open")
+                .count()
+        };
+        // マーカーの前に本文がある。
+        let a = analyze_body("本文［＃ここから斜体］つづき\n次行\n［＃ここで斜体終わり］");
+        let w: Vec<_> = a
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "midline-block-open")
+            .collect();
+        assert_eq!(w.len(), 1, "{:?}", a.diagnostics);
+        assert_eq!(w[0].severity, Severity::Warning);
+        assert!(w[0].message.contains("斜体"), "{}", w[0].message);
+
+        // 前が空 or 全角空白だけ（実文書 001841/57318・001065/18361 の形）は出さない。
+        assert_eq!(
+            warns("［＃ここからキャプション］図３\n次行\n［＃ここでキャプション終わり］"),
+            0
+        );
+        assert_eq!(
+            warns("　［＃ここから斜体］Fourscore\n次行\n［＃ここで斜体終わり］"),
+            0
+        );
+        // 行頭で本文が続かない通常形も出さない。
+        assert_eq!(warns("［＃ここから斜体］\n本文\n［＃ここで斜体終わり］"), 0);
     }
 
     /// 閉じ残しは参照が「〈種類〉中に本文が終了しました」で停止する入力なので Error。

@@ -91,6 +91,13 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
                 open_block_after_virtual_ends(&mut stack, kind, line_no, OpenKind::Newline);
             }
             LineRole::BlockOpenWithTail(idx, kind) => {
+                // マーカーの前に空白でない内容があれば診断に出す（木は変えない）。
+                if head_has_content(&nodes[..idx]) {
+                    diags.push(LowerDiagnostic {
+                        line: line_no,
+                        kind: LowerDiagnosticKind::MidlineBlockOpen(kind.clone()),
+                    });
+                }
                 // 開始タグより前の本文は開くブロックの外に出る。改行は開始タグ以降が
                 // 出すので Break::NoNewline。開始タグ直後にも改行は出ない（OpenKind）。
                 //
@@ -303,6 +310,20 @@ fn push_close_segment(stack: &mut PlanStack, nodes: &[Node], brk: Break, line_no
             line: line_no,
         });
     }
+}
+
+/// 行途中の開始マーカーの**前**に、空白でない内容があるか。
+///
+/// 注記一覧に行中の `ここから…` の例は無い（全例・記入例とも 46 箇所すべて行頭。実測）。
+/// 一方、開始タグの直後から本文が始まる形（前が空か空白だけ）は実文書にある
+/// （001065/18361 の `　［＃ここから斜体］Fourscore…`、001841/57318 の
+/// `［＃ここからキャプション］図３　ペラグラ患者。`）。前者だけを診断に出すための判定で、
+/// 全角空白は `char::is_whitespace` が真を返す（U+3000 は White_Space）。
+fn head_has_content(nodes: &[Node]) -> bool {
+    nodes.iter().any(|node| match &node.kind {
+        NodeKind::Text(text) => !text.chars().all(char::is_whitespace),
+        _ => true,
+    })
 }
 
 /// 記法に書かれた種類が、開いているブロックを閉じられるか（**制約 3 の最内層照合**）。
@@ -875,10 +896,12 @@ mod tests {
     /// 差である）。かつては「前がすべてテキスト」のときだけ開いており、ルビ・外字・傍点・
     /// 行内地付きが前にあると開始が黙って消えて書式が丸ごと落ちていた。
     ///
-    /// 最後の 1 形だけは入れ子が参照と違う。参照は行内地付きの div を開いたまま中へ
-    /// 斜体を開く（`…<div class="chitsuki_0">本文<div class="shatai">つづき</div>`）が、
-    /// こちらは行内地付きを行末までのインラインとして畳んでから開く。開くようになった
-    /// ぶんは前進で、入れ子の違いは別の課題として残す。
+    /// 最後の 1 形だけは範囲が参照と違い、**追随しない**。参照は地付きを 2 行に伸ばして
+    /// 斜体を 1 行で切るが、記法の定義（`［＃地付き］` は行スコープ、`ここから…終わり` は
+    /// 行をまたぐ）に沿うのはこちらである。参照自身も一貫しておらず、この形で
+    /// `［＃ここで地付き終わり］` は「地付き中ではありません」で拒否する（実測）。
+    /// 詳細と判断は docs/spec-lowerer-constraints.md「行中の `ここから…` に追随しない範囲」。
+    /// この形には診断 `midline-block-open`（Warning）を出す。
     #[test]
     fn mid_line_open_ignores_what_precedes_the_marker() {
         let cases = [
