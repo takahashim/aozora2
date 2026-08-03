@@ -50,10 +50,7 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
             // （`［＃ここから改行天付き、折り返して１字下げ］開始行` ＋ 次行 → 1 つの div。
             // 実文書 001885/58012・001240/46361）。
             LineRole::BurasageOpen { marker, ref kind } => {
-                if let Some(policy) = ImplicitClose::when_opening(kind) {
-                    policy.apply(&mut stack);
-                }
-                stack.open_block(kind.clone(), line_no, OpenKind::NoBreak);
+                open_block_after_virtual_ends(&mut stack, kind.clone(), line_no, OpenKind::NoBreak);
                 carry.extend(to_inlines(&nodes[..marker]));
                 carry.extend(to_inlines(&nodes[marker + 1..]));
                 continue;
@@ -86,20 +83,17 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
         match facts.role {
             // 上の match で continue 済み。
             LineRole::BurasageOpen { .. } => unreachable!("ぶら下げ開始行は持ち越しへ抜ける"),
+            // 規則 2（単独の開始）と規則 6 の例外（`［＃N字下げ］` 1 個だけからなる行）。
+            // どちらも制約 4 の仮想終端を伴い、`OpenKind::Newline` で開く。
             LineRole::BlockOpen(kind) => {
-                if let Some(policy) = ImplicitClose::when_opening(&kind) {
-                    policy.apply(&mut stack);
-                }
-                stack.open_block(kind, line_no, OpenKind::Newline);
+                open_block_after_virtual_ends(&mut stack, kind, line_no, OpenKind::Newline);
             }
             LineRole::BlockOpenWithTail(idx, kind) => {
                 // 開始タグより前の本文は開くブロックの外に出る。改行は開始タグ以降が
                 // 出すので Break::NoNewline。開始タグ直後にも改行は出ない（OpenKind）。
                 //
-                // BlockOpen と違い implicit_close は行わない。暗黙閉じを伴う種類
-                // （Jisage/Chitsuki/Burasage）を行の途中で開く入力は参照実装が
-                // エラーで停止するため（実測）オラクルには現れず、正しい振る舞いを
-                // 決められない。ここでは単に開いておく。
+                // 規則 2 と違い制約 4 の仮想終端を挿入しない（open_block_after_virtual_ends
+                // を通さない）。理由はそちらの doc コメントを見よ。
                 if idx > 0 {
                     stack.push_line(to_inlines(&nodes[..idx]), Break::NoNewline, line_no);
                 }
@@ -387,56 +381,85 @@ fn is_chitsuki_or_burasage(k: &BlockKind) -> bool {
     matches!(k, BlockKind::Chitsuki { .. } | BlockKind::Burasage { .. })
 }
 
-/// ブロックを開くときに暗黙で閉じる相手（参照実装 `close_conflicting_blocks`）。
+/// 暗黙閉じ（制約 4）が開始の直前に置く**仮想終端**。参照実装 `close_conflicting_blocks`。
 ///
-/// 開く種類ごとに「どれを閉じるか・どう閉じるか・1つだけか」が決まる。
-/// 暗黙閉じを持たない種類では [`ImplicitClose::when_opening`] が None を返す。
-struct ImplicitClose {
-    /// 閉じる相手か（スタック最上位に対して判定する）。
-    matches: fn(&BlockKind) -> bool,
-    /// 暗黙閉じの閉じタグの出力形。
+/// 開く種類ごとに「どれを閉じるか・どう閉じるか・1 個か連続か」が決まる。表は
+/// [`VirtualEnd::before_opening`] にあり、当たらない種類は None を返す。
+///
+/// 仮想終端は通常の終端と同じ閉じ機構（[`PlanStack::close_block`]）を通る。違いは
+/// `CloseKind` がこの表で**先に**確定していることで、制約 7 の優先順（後段の導出）には
+/// 掛からない。暗黙閉じを一律 `NoBreak` にしてはいけない（実測）。
+struct VirtualEnd {
+    /// 閉じる相手か（最も内側の生存ブロックに対して判定する）。
+    targets: fn(&BlockKind) -> bool,
+    /// 閉じタグの出力形（制約 4 の表で確定済み）。
     close: CloseKind,
-    /// 1つ閉じたら止めるか（false なら該当する限り閉じ続ける）。
-    once: bool,
+    /// 該当する限り閉じ続けるか（false なら 1 個で止める）。
+    consecutive: bool,
 }
 
-impl ImplicitClose {
+impl VirtualEnd {
+    /// 制約 4 の表。
+    ///
+    /// | 新しい開始 | 強制終端の対象 | 個数 | CloseKind |
+    /// |---|---|---|---|
+    /// | 字下げ | 最も内側の字下げまたはぶら下げ | 1 | `NoBreak` |
+    /// | 地付き | 連続する最内側の地付きまたはぶら下げ | 全て | `NoBreak` |
+    /// | ぶら下げ | 連続する最内側の字下げまたはぶら下げ | 全て | `Newline` |
+    ///
     /// 閉じタグ直後の改行: 開始タグを即座に出すブロック（Jisage/Chitsuki 等）は
     /// `</div><新開始…>` と同じ出力行に続くので改行なし。Burasage は開始行に
     /// 可視タグを出さない per-line モデルなので、暗黙閉じの `</div>` がその
     /// 開始行の唯一の出力＝行末 `\r\n` が付く。
-    fn when_opening(kind: &BlockKind) -> Option<Self> {
+    fn before_opening(kind: &BlockKind) -> Option<Self> {
         match kind {
-            // Jisage 開始: 最上位が Jisage/Burasage なら1つだけ閉じる。
             BlockKind::Jisage { .. } => Some(Self {
-                matches: is_jisage_or_burasage,
+                targets: is_jisage_or_burasage,
                 close: CloseKind::NoBreak,
-                once: true,
+                consecutive: false,
             }),
-            // Chitsuki 開始: 最上位から Chitsuki/Burasage が続く限り閉じる。
             BlockKind::Chitsuki { .. } => Some(Self {
-                matches: is_chitsuki_or_burasage,
+                targets: is_chitsuki_or_burasage,
                 close: CloseKind::NoBreak,
-                once: false,
+                consecutive: true,
             }),
-            // Burasage 開始: 最上位から Jisage/Burasage が続く限り閉じる。
             BlockKind::Burasage { .. } => Some(Self {
-                matches: is_jisage_or_burasage,
+                targets: is_jisage_or_burasage,
                 close: CloseKind::Newline,
-                once: false,
+                consecutive: true,
             }),
             _ => None,
         }
     }
 
-    fn apply(&self, stack: &mut PlanStack) {
-        while stack.innermost().is_some_and(self.matches) {
+    /// 仮想終端を通常の閉じ機構へ流す。
+    fn close_targets(&self, stack: &mut PlanStack) {
+        while stack.innermost().is_some_and(self.targets) {
             stack.close_block(|_, _| self.close);
-            if self.once {
+            if !self.consecutive {
                 break;
             }
         }
     }
+}
+
+/// 複数行ブロックを開く（制約 3）。開始の直前に制約 4 の仮想終端を挿入してから開く。
+///
+/// 通すのは制約 1 の規則 1（ぶら下げ開始行）・規則 2（単独の開始）・規則 6 の例外
+/// （`［＃N字下げ］` 1 個だけからなる行）だけである。規則 5（行途中の開始）は
+/// [`PlanStack::open_block`] を直に呼ぶ——行の途中で暗黙閉じを伴う種類を開く入力は
+/// 参照実装がエラーで停止するため（実測）オラクルには現れず、正しい振る舞いを
+/// 決められない。そこでは単に入れ子にする。
+fn open_block_after_virtual_ends(
+    stack: &mut PlanStack,
+    kind: BlockKind,
+    line_no: usize,
+    open: OpenKind,
+) {
+    if let Some(end) = VirtualEnd::before_opening(&kind) {
+        end.close_targets(stack);
+    }
+    stack.open_block(kind, line_no, open);
 }
 
 /// 行末で閉じるブロックの閉じタグの出力形。
