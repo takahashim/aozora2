@@ -388,10 +388,13 @@ fn end_matches(written: &BlockType, open: &BlockKind) -> bool {
 ///
 /// 採用は前から順に決まる（採用するたび最内層が 1 つ外へ動く）ので、開いている種類を
 /// 内側から辿って先に決めてしまう。開きを使い切った後の終端は、種類によらず閉じない。
+///
+/// 棄却したものには**その時点の**最内層を添える。同じ行で先に閉じた終端があれば最内層は
+/// 動いているので、行に入る前の最内層を診断に載せると嘘になる。
 fn split_closes(
     open_kinds: &[BlockKind],
     closes: &[CloseFact],
-) -> (Vec<CloseFact>, Vec<CloseFact>) {
+) -> (Vec<CloseFact>, Vec<(CloseFact, Option<BlockKind>)>) {
     let mut depth = open_kinds.len();
     let mut adopted = Vec::new();
     let mut rejected = Vec::new();
@@ -401,7 +404,7 @@ fn split_closes(
                 depth -= 1;
                 adopted.push(*close);
             }
-            _ => rejected.push(*close),
+            innermost => rejected.push((*close, innermost.cloned())),
         }
     }
     (adopted, rejected)
@@ -424,12 +427,12 @@ fn apply_closes(
     diags: &mut Vec<LowerDiagnostic>,
 ) {
     let (closes, rejected) = split_closes(&stack.open_kinds(), closes);
-    for close in &rejected {
+    for (close, innermost) in rejected {
         diags.push(LowerDiagnostic {
             line: line_no,
             kind: LowerDiagnosticKind::UnmatchedEnd {
                 written: close.written,
-                innermost: stack.innermost().cloned(),
+                innermost,
             },
         });
     }
@@ -888,6 +891,85 @@ mod tests {
             );
             assert!(html.contains(expected), "{body:?} → {html}");
         }
+    }
+
+    /// 閉じる相手が無い終端が 2 つ以上ある文書でも、診断の並びが壊れない。
+    ///
+    /// 走査中の診断（`unmatched-end`）は位置順に積まれ、EOF 閉じ（`unclosed-block`）は
+    /// 内側から順に末尾へ続く。かつては全体を「行番号は非増加」と検査していたので、
+    /// この形で `check_plan_invariants` が落ちた（書庫にも 3 文書ある。000038/327 など）。
+    /// ユニットテストは debug ビルドなので、この検査はここで実際に走る。
+    #[test]
+    fn diagnostics_from_several_unmatched_ends_stay_ordered() {
+        let plan = plan_of(
+            "［＃ここから太字］\r\n本文\r\n［＃ここで字下げ終わり］\r\nつづき\r\n［＃ここで字下げ終わり］",
+        );
+        let lines: Vec<usize> = plan.diagnostics.iter().map(|d| d.line).collect();
+        assert_eq!(lines, vec![2, 4, 0], "走査中は位置順、EOF 閉じが末尾");
+        assert!(matches!(
+            plan.diagnostics[0].kind,
+            LowerDiagnosticKind::UnmatchedEnd { .. }
+        ));
+        assert!(matches!(
+            plan.diagnostics[2].kind,
+            LowerDiagnosticKind::UnclosedBlock(BlockKind::Futoji)
+        ));
+    }
+
+    /// 棄却した終端の診断が載せる「最内層」は、**その終端の時点**のものである。
+    ///
+    /// 同じ行で先に閉じた終端があれば最内層は動いている。行に入る前の最内層を載せると
+    /// 「太字中です」のように、その行で既に閉じた種類を指してしまう。
+    #[test]
+    fn rejected_end_reports_the_innermost_at_that_point() {
+        let plan = plan_of(
+            "［＃ここから２字下げ］\r\n［＃ここから太字］\r\n本文［＃ここで太字終わり］［＃ここで横組み終わり］\r\n［＃ここで字下げ終わり］",
+        );
+        let unmatched: Vec<_> = plan
+            .diagnostics
+            .iter()
+            .filter_map(|d| match &d.kind {
+                LowerDiagnosticKind::UnmatchedEnd { written, innermost } => {
+                    Some((*written, innermost.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            unmatched,
+            vec![(
+                BlockType::Yokogumi,
+                Some(BlockKind::Jisage { width: Some(2) })
+            )],
+            "太字はこの行の先行する終端で閉じているので、最内層は字下げ"
+        );
+    }
+
+    /// 裸の `［＃太字終わり］` は `ここから太字` を閉じない（2026-08-03 の決定）。
+    ///
+    /// 開始は `Futoji`、裸の終端は `Style` に落ちるので最内層照合が一致しない
+    /// （終端側が `StyleType` を先に見る。spec-commands.md の分岐 10）。**参照はこの形で
+    /// `NoMethodError` でクラッシュする**（設計された拒否ではない。実測）ので正解が無く、
+    /// 書庫にも組み合わせが無い（裸の `［＃太字終わり］`/`［＃斜体終わり］` は 4691 箇所
+    /// あるが、すべて同一行で開閉する範囲形で `to_inlines` が畳む）。閉じずに診断へ出す
+    /// 側で確定した。理由は docs/spec-lowerer-constraints.md「規則 3 の統一」。
+    #[test]
+    fn bare_style_end_does_not_close_a_block_of_the_same_word() {
+        let plan = plan_of("［＃ここから太字］\r\n本文\r\n［＃太字終わり］\r\nあと");
+        let kinds: Vec<_> = plan.diagnostics.iter().map(|d| &d.kind).collect();
+        assert!(
+            matches!(
+                kinds.as_slice(),
+                [
+                    LowerDiagnosticKind::UnmatchedEnd {
+                        written: BlockType::Style,
+                        ..
+                    },
+                    LowerDiagnosticKind::UnclosedBlock(BlockKind::Futoji),
+                ]
+            ),
+            "実際: {kinds:?}"
+        );
     }
 
     /// 制約 1 の規則 5: 行途中の開始は、**開始マーカーの前に何があっても**開く。

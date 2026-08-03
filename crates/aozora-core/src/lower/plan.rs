@@ -6,7 +6,7 @@
 //! [`materialize`] はそれを**状態を持たずに**歩いて木へ写すだけになる。判断は
 //! すべて `solve` 側にあり、この関数には条件分岐を持ち込まない。
 
-use super::LowerDiagnostic;
+use super::{LowerDiagnostic, LowerDiagnosticKind};
 use crate::ast::{AozoraAst, Block, BlockKind, Break, CloseKind, Inline, OpenKind};
 
 /// 解決結果。
@@ -15,7 +15,8 @@ pub(super) struct LowerPlan {
     pub roots: Vec<PlanBlock>,
     /// 出力を持たない行（制約 6 の `suppressed_by`）。昇順。
     pub suppressed_lines: Vec<usize>,
-    /// EOF で閉じられなかったブロックの診断（内側から順）。
+    /// 構造上の診断。走査中に出たものが位置順に並び、EOF 閉じ（`unclosed-block`）が
+    /// 内側から順に末尾へ続く（[`check_diagnostic_order`]）。
     pub diagnostics: Vec<LowerDiagnostic>,
 }
 
@@ -76,7 +77,9 @@ pub(super) fn materialize(plan: LowerPlan) -> (AozoraAst, Vec<LowerDiagnostic>) 
 /// 1. 包含（制約 3）: ブロックの開始行は、その中に現れるどの行番号よりも後ろにならない。
 ///    区間が入れ子か互いに素であることは森の形が保証するので、ここでは位置との整合を見る。
 /// 2. 結合の非巡回（制約 6）: 結合元は昇順で、いずれも結合先の行より前。
-/// 3. 診断の順（制約 8）: EOF 閉じは内側から順なので、行番号は非増加。
+/// 3. 診断の順（制約 8）: 走査中に出るもの（`unmatched-end`・`midline-block-open`）は
+///    位置順なので行番号が非減少、EOF 閉じ（`unclosed-block`）は内側から順に**末尾へ**
+///    まとめて積まれるので非増加。
 /// 4. 吸収した行（制約 6）: 昇順・重複なしで、出力行としては現れない。
 pub(super) fn check_plan_invariants(plan: &LowerPlan) {
     let mut emitted = Vec::new();
@@ -84,11 +87,7 @@ pub(super) fn check_plan_invariants(plan: &LowerPlan) {
         check_block(block, &mut emitted);
     }
 
-    assert!(
-        plan.diagnostics.windows(2).all(|w| w[0].line >= w[1].line),
-        "診断は内側から順（行番号は非増加）のはず: {:?}",
-        plan.diagnostics.iter().map(|d| d.line).collect::<Vec<_>>()
-    );
+    check_diagnostic_order(&plan.diagnostics);
     assert!(
         plan.suppressed_lines.windows(2).all(|w| w[0] < w[1]),
         "吸収した行は昇順・重複なしのはず: {:?}",
@@ -100,6 +99,34 @@ pub(super) fn check_plan_invariants(plan: &LowerPlan) {
             "吸収した行 {line} が出力に現れている"
         );
     }
+}
+
+/// 診断の並びを検査する（制約 8）。
+///
+/// 2 つの区間からなる。前半は走査中に出たもので、位置順に積まれるので**行番号は非減少**。
+/// 後半は EOF 閉じ（[`LowerDiagnosticKind::UnclosedBlock`]）で、内側から順に積まれるので
+/// **非増加**になる。全体を 1 本の並びとして非増加を課してはいけない——閉じる相手が無い
+/// 終端が 2 つある文書（書庫にも実在する）で必ず破れる。
+///
+/// 境界は「末尾に続く `UnclosedBlock` の連なり」で取る。`UnclosedBlock` は EOF でしか
+/// 作られないので、これで前半と後半が分かれる。
+fn check_diagnostic_order(diagnostics: &[LowerDiagnostic]) {
+    let eof_start = diagnostics
+        .iter()
+        .rposition(|d| !matches!(d.kind, LowerDiagnosticKind::UnclosedBlock(_)))
+        .map_or(0, |i| i + 1);
+    let (scanned, eof) = diagnostics.split_at(eof_start);
+
+    assert!(
+        scanned.windows(2).all(|w| w[0].line <= w[1].line),
+        "走査中の診断は位置順（行番号は非減少）のはず: {:?}",
+        scanned.iter().map(|d| d.line).collect::<Vec<_>>()
+    );
+    assert!(
+        eof.windows(2).all(|w| w[0].line >= w[1].line),
+        "EOF 閉じの診断は内側から順（行番号は非増加）のはず: {:?}",
+        eof.iter().map(|d| d.line).collect::<Vec<_>>()
+    );
 }
 
 /// ブロックを歩いて行番号を集めつつ、包含と結合を検査する。
