@@ -12,7 +12,9 @@
 関連: [spec-commands.md](spec-commands.md)（②振り分け・対応づけの要約）、
 [spec-reference-resolver.md](spec-reference-resolver.md)（③。各行の前処理として走る）、
 [spec-ast.md](spec-ast.md)（span の意味論・行マージの位置情報）、
-[spec-aozora-ast-json.md](spec-aozora-ast-json.md)（`Block`/`Inline`/互換メタデータの形）。
+[spec-aozora-ast-json.md](spec-aozora-ast-json.md)（`Block`/`Inline`/互換メタデータの形）、
+[spec-lowerer-constraints.md](spec-lowerer-constraints.md)（この手続きを制約として
+書き直す設計案。既知の非互換と将来の統一もそちらに書いてある）。
 
 ---
 
@@ -91,6 +93,10 @@
 4. **行内に `BlockEnd` が無い `BlockStart`（is_block=true）** → 行途中オープン
    （`BlockOpenWithTail`）。条件: マーカーの後ろに要素があり、前がすべて `Text` で、
    種類が `block_kind_of` で写せること。
+   このうち**「前がすべて `Text`」は既知の互換バグ**なので、互換実装は写さないこと。
+   参照はマーカーの前にルビ・外字・装飾があってもブロックを開くが、現行はここで
+   当たらず内容行に落ちて開始を捨てる（実測。
+   [spec-lowerer-constraints.md](spec-lowerer-constraints.md)「既知の非互換と将来の統一」）。
 5. **`LineJisage`（`［＃N字下げ］`）** … 単独ならブロック開始（`ここから字下げ` と
    同一）。本文つきなら行包み（`LineWrap`）。1 行に複数あれば**後に書いたものほど
    外側**（参照 `apply_jisage` の unshift。実測）。ルビ親文字の中に入り込んだ
@@ -139,6 +145,10 @@
 
 - 終了は**種類を照合せず**、最も内側の開いているブロックを閉じる
   （割り注の終わりだけは分類の段階でここへ来ない。上記）。
+  ただしこの規則が効くのは型が一致する正常な文書だけである。書かれた種類と開いている
+  ブロックが食い違う入力（`［＃ここから太字］` を `［＃ここで字下げ終わり］` で閉じる等）は
+  参照実装が停止するため正解が無い（実測）。将来は書かれた種類との照合へ統一する案がある
+  （[spec-lowerer-constraints.md](spec-lowerer-constraints.md)「既知の非互換と将来の統一」）。
 - 単独行の終了で開きが 1 つも無ければ、何も出さない。
 - 行途中クローズ（`Closes`）の手続き:
   1. 実際に閉じられる数 = min(終了の数, 開いている数)。0 なら行全体を内容行にする。
