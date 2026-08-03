@@ -9,7 +9,7 @@
 use super::break_policy::content_break;
 use super::facts::{collect_line_jisage, line_facts, LineRole};
 use super::inline::to_inlines;
-use super::plan::{LowerPlan, PlanBlock, PlanLine};
+use super::plan::{check_plan_invariants, LowerPlan, PlanBlock, PlanLine};
 use super::LowerDiagnostic;
 
 use crate::ast::{BlockKind, Break, CloseKind, Inline, OpenKind};
@@ -22,13 +22,16 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
     let mut diags: Vec<LowerDiagnostic> = Vec::new();
 
     // 行スコープ包みの未閉じ `〔` が吸収した行（制約 6 の `suppressed_by`）。
-    // この添字の行は出力しない。
-    let mut suppressed_lines = std::collections::HashSet::new();
+    // 走査を飛ばすのは `raw.lines` の**添字**で、Plan に載せるのは**行番号**である。
+    // 節ごとに畳む経路（`interchange::RawDocument::to_aozora`）では文書全体で採番した
+    // 行番号を持つ行が節の途中から始まるので、両者は一致しない。
+    let mut suppressed = std::collections::HashSet::new();
+    let mut suppressed_lines: Vec<usize> = Vec::new();
     // 結合待ちの断片（制約 6）。
     let mut joins = Joins::default();
 
     for (idx, raw_line) in raw.lines.iter().enumerate() {
-        if suppressed_lines.contains(&idx) {
+        if suppressed.contains(&idx) {
             continue;
         }
         let line_no = raw_line.line_no;
@@ -54,8 +57,8 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
                 open_block_after_virtual_ends(&mut stack, kind.clone(), line_no, OpenKind::NoBreak);
                 // 開始マーカーの前後を別々に to_inlines へ渡す。連結してから 1 回で
                 // 呼ぶと、同一行範囲（制約 2）の対応づけが変わりうる。
-                joins.defer(to_inlines(&nodes[..marker]));
-                joins.defer(to_inlines(&nodes[marker + 1..]));
+                joins.defer(line_no, to_inlines(&nodes[..marker]));
+                joins.defer(line_no, to_inlines(&nodes[marker + 1..]));
                 continue;
             }
             // 未閉じ `〔` の行も出力せず、行末に素の `<br />` を足して持ち越す
@@ -63,7 +66,7 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
             // 行スコープ包み（`［＃地から１字上げ］〔…］`）だけは包みごと持ち越す器が要るので
             // 従来どおり下の `LineWrap` 側で扱う。
             LineRole::Content if facts.hard_break => {
-                joins.defer(to_inlines(&nodes));
+                joins.defer(line_no, to_inlines(&nodes));
                 continue;
             }
             _ => {}
@@ -76,7 +79,7 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
             joins.attach()
         } else {
             joins.settle(&mut stack, line_no);
-            Vec::new()
+            Carried::default()
         };
 
         match facts.role {
@@ -107,7 +110,10 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
                 // 扱いが違う（あちらは空の内容行を積む）。開き無しの「終わり」は参照実装が
                 // エラーで停止する入力なのでオラクルで是非を決められない。捨てる側を
                 // 残しているのは、エディタのプレビューに空行が紛れない方が良いため。
-                stack.close_block(|kind, s| block_close_kind(explicit, kind, s));
+                stack.close_block(Closure::End {
+                    explicit,
+                    followed_by_content: false,
+                });
             }
             LineRole::Closes(closes) => apply_closes(&mut stack, &nodes, &closes, line_no),
             LineRole::LineWrap(kinds) => {
@@ -127,13 +133,13 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
                 // 閉じ `</div>` より前に `<br />` が出る（60380/60385）。次の行が
                 // 空行ならそれも吸収する（中身のある行を畳む必要がある入力は
                 // オラクルに現れないので、正しい姿を決められない）。
-                if facts.hard_break
-                    && raw
-                        .lines
-                        .get(idx + 1)
-                        .is_some_and(|next| next.nodes.is_empty())
+                if let Some(next) = raw
+                    .lines
+                    .get(idx + 1)
+                    .filter(|next| facts.hard_break && next.nodes.is_empty())
                 {
-                    suppressed_lines.insert(idx + 1);
+                    suppressed.insert(idx + 1);
+                    suppressed_lines.push(next.line_no);
                 }
                 stack.push(PlanBlock::LineWrap {
                     kinds,
@@ -145,8 +151,7 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
         }
     }
 
-    // 閉じられていないブロックはそのまま閉じる（旧経路の末尾 pop 相当）。
-    // 末尾クローズは行を持たないので `</div>\r\n`（Newline）とする。
+    // EOF まで生存した開始には仮想終端を置いて閉じる（制約 8）。診断は内側から順。
     while let Some(block) = stack.pop_open() {
         // EOF まで対応する「終わり」が現れなかった＝閉じ忘れの可能性。診断に記録する
         // （出力は従来どおり末尾クローズ。診断は追加返却のみで Block 出力は不変）。
@@ -154,13 +159,19 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
             line: block.line,
             kind: block.kind.clone(),
         });
-        stack.push(block.into_nested(CloseKind::Newline));
+        let close = close_kind(&Closure::Eof, &block.kind, stack.innermost());
+        stack.push(block.into_nested(close));
     }
 
-    LowerPlan {
+    let plan = LowerPlan {
         roots: stack.roots,
+        suppressed_lines,
         diagnostics: diags,
+    };
+    if cfg!(debug_assertions) {
+        check_plan_invariants(&plan);
     }
+    plan
 }
 
 /// 行結合（制約 6）。出力を飛ばした行の内容断片を、結合先が現れるまで持つ。
@@ -174,11 +185,26 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
 struct Joins {
     /// 育っている連結成分（結合順に連結済み）。
     chain: Vec<Inline>,
+    /// 連結成分に断片を出した行（昇順・重複なし）。
+    source_lines: Vec<usize>,
+}
+
+/// 連結成分をひとつ受け取った結果（結合先の行が使う）。
+#[derive(Default)]
+struct Carried {
+    fragments: Vec<Inline>,
+    source_lines: Vec<usize>,
 }
 
 impl Joins {
     /// 断片を後続へ結合する（この行は出力しない）。
-    fn defer(&mut self, fragments: Vec<Inline>) {
+    ///
+    /// 同じ行から複数回呼ばれることがある（ぶら下げ開始行はマーカーの前後を別々に
+    /// 渡す）ので、由来の行は重複させずに 1 度だけ記録する。
+    fn defer(&mut self, line_no: usize, fragments: Vec<Inline>) {
+        if self.source_lines.last() != Some(&line_no) {
+            self.source_lines.push(line_no);
+        }
         self.chain.extend(fragments);
     }
 
@@ -186,8 +212,11 @@ impl Joins {
     ///
     /// 行末 `<br />` の判定は**繋げたあとの行全体**で行う（参照も 1 つのバッファとして
     /// `general_output` に渡す）ので、ここでは判定せずに断片だけを返す。
-    fn attach(&mut self) -> Vec<Inline> {
-        std::mem::take(&mut self.chain)
+    fn attach(&mut self) -> Carried {
+        Carried {
+            fragments: std::mem::take(&mut self.chain),
+            source_lines: std::mem::take(&mut self.source_lines),
+        }
     }
 
     /// 結合先が来ないまま終わった断片を、独立した行として確定する。
@@ -202,9 +231,14 @@ impl Joins {
         if self.chain.is_empty() {
             return;
         }
-        let fragments = std::mem::take(&mut self.chain);
-        let brk = content_break(&fragments, false);
-        stack.push_line(fragments, brk, line_no);
+        let carried = self.attach();
+        let brk = content_break(&carried.fragments, false);
+        stack.push(PlanBlock::Content(PlanLine {
+            fragments: carried.fragments,
+            brk,
+            line: line_no,
+            source_lines: carried.source_lines,
+        }));
     }
 }
 
@@ -290,17 +324,15 @@ fn apply_closes(stack: &mut PlanStack, nodes: &[Node], closes: &[(usize, bool)],
         // per-line の包みが効かなくなるので、その行の本文はブロックの外に出す。
         let closing_burasage = matches!(stack.innermost(), Some(BlockKind::Burasage(_)));
         let is_last = n + 1 == closes.len();
-        // 行末の改行を出すのは最後の閉じだけ。後続本文があるなら `</div>` のみ。
-        let close_kind = |kind: &BlockKind, s: &PlanStack| {
-            if !is_last || has_tail {
-                CloseKind::NoBreak
-            } else {
-                block_close_kind(*explicit, kind, s)
-            }
+        // 行末の改行を出すのは最後の閉じだけ。後続本文があるなら `</div>` のみ
+        // （制約 7 の優先順 2）。
+        let closure = Closure::End {
+            explicit: *explicit,
+            followed_by_content: !is_last || has_tail,
         };
 
         if closing_burasage {
-            stack.close_block(close_kind);
+            stack.close_block(closure);
             if let Some(seg) = segment {
                 push_close_segment(stack, seg, Break::NoNewline, line_no);
             }
@@ -308,7 +340,7 @@ fn apply_closes(stack: &mut PlanStack, nodes: &[Node], closes: &[(usize, bool)],
             if let Some(seg) = segment {
                 push_close_segment(stack, seg, Break::NoNewline, line_no);
             }
-            stack.close_block(close_kind);
+            stack.close_block(closure);
         }
         seg_start = *idx + 1;
     }
@@ -325,7 +357,7 @@ fn apply_closes(stack: &mut PlanStack, nodes: &[Node], closes: &[(usize, bool)],
 /// 内容行として1行を積む。`［＃ここで…終わり］`（explicit_close=true）を含む行は
 /// @terprip=false で行末 `<br />` を抑制する（同行開閉の横組み等・複数行ブロックの閉じ行）。
 fn push_content_line(stack: &mut PlanStack, nodes: &[Node], line_no: usize) {
-    push_content_line_with(stack, Vec::new(), nodes, line_no)
+    push_content_line_with(stack, Carried::default(), nodes, line_no)
 }
 
 /// [`push_content_line`] の、前の行から持ち越した内容を先頭に足す版。
@@ -333,12 +365,7 @@ fn push_content_line(stack: &mut PlanStack, nodes: &[Node], line_no: usize) {
 /// 持ち越しの由来は [`solve`] の行マージ（参照実装で
 /// 出力を飛ばした行のバッファ）。行末 `<br />` の判定は**繋げたあとの行全体**で行う
 /// （参照も 1 つのバッファとして `general_output` に渡すため）。
-fn push_content_line_with(
-    stack: &mut PlanStack,
-    carried: Vec<Inline>,
-    nodes: &[Node],
-    line_no: usize,
-) {
+fn push_content_line_with(stack: &mut PlanStack, carried: Carried, nodes: &[Node], line_no: usize) {
     let has_explicit_close = nodes.iter().any(|n| {
         matches!(
             &n.kind,
@@ -348,10 +375,15 @@ fn push_content_line_with(
             }
         )
     });
-    let mut inline = carried;
-    inline.extend(to_inlines(nodes));
-    let brk = content_break(&inline, has_explicit_close);
-    stack.push_line(inline, brk, line_no);
+    let mut fragments = carried.fragments;
+    fragments.extend(to_inlines(nodes));
+    let brk = content_break(&fragments, has_explicit_close);
+    stack.push(PlanBlock::Content(PlanLine {
+        fragments,
+        brk,
+        line: line_no,
+        source_lines: carried.source_lines,
+    }));
 }
 
 /// 行単位字下げのマーカーをすべて取り除く（ルビ親文字の中も）。
@@ -479,7 +511,7 @@ impl VirtualEnd {
     /// 仮想終端を通常の閉じ機構へ流す。
     fn close_targets(&self, stack: &mut PlanStack) {
         while stack.innermost().is_some_and(self.targets) {
-            stack.close_block(|_, _| self.close);
+            stack.close_block(Closure::Implicit(self.close));
             if !self.consecutive {
                 break;
             }
@@ -506,24 +538,60 @@ fn open_block_after_virtual_ends(
     stack.open_block(kind, line_no, open);
 }
 
-/// 行末で閉じるブロックの閉じタグの出力形。
+/// ブロックが何で閉じられたか（制約 7 の優先順を決める入力）。
+enum Closure {
+    /// 制約 4 の仮想終端。`CloseKind` は表で確定済み。
+    Implicit(CloseKind),
+    /// 本文中の終端。
+    End {
+        /// `ここで…終わり` なら true、裸の `…終わり` なら false。
+        explicit: bool,
+        /// 同じ行でこの閉じの後に、別の閉じか本文が続くか。
+        followed_by_content: bool,
+    },
+    /// EOF の仮想終端（制約 8）。
+    Eof,
+}
+
+/// 閉じタグの出力形（制約 7）。**優先順のとおりに上から**判定する。
+///
+/// `outer_after_pop` は閉じたあとに残る最も内側のブロック。ぶら下げの直下かどうかの
+/// 判定に要るのでこれを取る（スタックそのものには依存しない）。
 ///
 /// `ここで…終わり`（explicit）は `</div>\r\n`。bare `…終わり` は @terprip 維持で
 /// `</div><br />\r\n`（memory bare-block-end）。
-///
-/// ぶら下げの直下で装飾系ブロックが閉じる行は、参照が閉じタグを String 扱いして
-/// per-line の burasage div で包む。包む幅は外側のぶら下げが持つので、ここで畳んで
-/// 木に載せる（描画器は状態を持たない）。
-fn block_close_kind(explicit: bool, kind: &BlockKind, stack: &PlanStack) -> CloseKind {
-    if is_burasage_wrapped_close(kind) {
-        if let Some(BlockKind::Burasage(geometry)) = stack.innermost() {
-            return CloseKind::BurasageWrapped(*geometry);
+fn close_kind(
+    closure: &Closure,
+    kind: &BlockKind,
+    outer_after_pop: Option<&BlockKind>,
+) -> CloseKind {
+    match closure {
+        // 1. 暗黙閉じは制約 4 の表で決まる（一律 NoBreak にしてはいけない。実測）。
+        Closure::Implicit(close) => *close,
+        // 2. 同一行で最後ではない閉じ、または後続内容を持つ閉じ。
+        Closure::End {
+            followed_by_content: true,
+            ..
+        } => CloseKind::NoBreak,
+        // 3. EOF で閉じるなら Newline（末尾クローズは行を持たない）。
+        Closure::Eof => CloseKind::Newline,
+        Closure::End { explicit, .. } => {
+            // 4. ぶら下げの直下で閉じるとき、閉じタグが per-line の burasage div に
+            //    包まれる種類なら BurasageWrapped。参照が閉じタグを String 扱いして
+            //    バッファへ積むため。包む幅は外側のぶら下げが持つので、ここで畳んで
+            //    木に載せる（描画器は状態を持たない）。
+            if is_burasage_wrapped_close(kind) {
+                if let Some(BlockKind::Burasage(geometry)) = outer_after_pop {
+                    return CloseKind::BurasageWrapped(*geometry);
+                }
+            }
+            // 5. 残りは明示終端なら Newline、裸の終端なら BareBreak。
+            if *explicit {
+                CloseKind::Newline
+            } else {
+                CloseKind::BareBreak
+            }
         }
-    }
-    if explicit {
-        CloseKind::Newline
-    } else {
-        CloseKind::BareBreak
     }
 }
 
@@ -585,12 +653,13 @@ impl PlanStack {
         }
     }
 
-    /// 内容の1行を積む。
+    /// 内容の1行を積む（結合されてきた断片は無い）。
     fn push_line(&mut self, inline: Vec<Inline>, brk: Break, line: usize) {
         self.push(PlanBlock::Content(PlanLine {
             fragments: inline,
             brk,
             line,
+            source_lines: Vec::new(),
         }));
     }
 
@@ -604,18 +673,71 @@ impl PlanStack {
         });
     }
 
-    /// いちばん内側のブロックを閉じて木に載せる。閉じ方は**ポップ後の**スタックから
-    /// 決める（ぶら下げ直下かの判定に外側が要る）。開いていなければ何もしない。
-    fn close_block(&mut self, close: impl FnOnce(&BlockKind, &Self) -> CloseKind) {
+    /// いちばん内側のブロックを閉じて木に載せる。`CloseKind` は制約 7 の導出に任せ、
+    /// **ポップ後の**最内側を渡す（ぶら下げ直下かの判定に外側が要る）。
+    /// 開いていなければ何もしない。
+    fn close_block(&mut self, closure: Closure) {
         let Some(block) = self.open.pop() else {
             return;
         };
-        let close = close(&block.kind, self);
+        let close = close_kind(&closure, &block.kind, self.innermost());
         self.push(block.into_nested(close));
     }
 
     /// 閉じられないまま残ったブロックを内側から順に取り出す（EOF 処理用）。
     fn pop_open(&mut self) -> Option<OpenPlanBlock> {
         self.open.pop()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::parse_document_raw;
+
+    fn plan_of(source: &str) -> LowerPlan {
+        let lines: Vec<&str> = source.split("\r\n").collect();
+        solve(&parse_document_raw(&lines))
+    }
+
+    /// Plan の内容行を出現順に集める。
+    fn content_breaks(plan: &LowerPlan) -> Vec<Break> {
+        fn walk(blocks: &[PlanBlock], out: &mut Vec<Break>) {
+            for block in blocks {
+                match block {
+                    PlanBlock::Content(line) => out.push(line.brk),
+                    PlanBlock::Nested { children, .. } => walk(children, out),
+                    PlanBlock::LineWrap { .. } => {}
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&plan.roots, &mut out);
+        out
+    }
+
+    /// 制約 3: 閉鎖に採用されなかった終端（`IgnoredEnd`）は `Break` の判定に入らない。
+    /// ただし行の終端が一つも採用されなかったときは、行全体が内容行になり、行内の
+    /// すべての明示終端が判定に入る。設計文書に載る実測 2 例をそのまま固定する。
+    #[test]
+    fn ignored_ends_do_not_count_for_break() {
+        // 開いている字下げが 1 つ。裸の終端だけが採用され、残った明示終端は効かない
+        // ので、`Ｃ` の後に `<br />` が出る（Break::Br）。
+        let plan =
+            plan_of("［＃ここから２字下げ］\r\nＡ［＃字下げ終わり］Ｂ［＃ここで字下げ終わり］Ｃ");
+        assert_eq!(
+            content_breaks(&plan).last(),
+            Some(&Break::Br),
+            "採用されなかった明示終端が Break を抑制してしまっている"
+        );
+
+        // 開いているブロックが無い。行全体が内容行になり、明示終端が効いて
+        // `<br />` が出ない（Break::None）。
+        let plan = plan_of("本文［＃ここで字下げ終わり］あと");
+        assert_eq!(
+            content_breaks(&plan).last(),
+            Some(&Break::None),
+            "閉じられる開きが無い行では明示終端が Break に効くはず"
+        );
     }
 }
