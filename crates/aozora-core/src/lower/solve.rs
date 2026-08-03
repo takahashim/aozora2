@@ -21,13 +21,14 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
     let mut stack = PlanStack::new();
     let mut diags: Vec<LowerDiagnostic> = Vec::new();
 
-    // 未閉じ `〔` で次の行を吸収した（＝この添字の行は出力しない）ことを覚える。
-    let mut swallowed = std::collections::HashSet::new();
-    // 出力を飛ばした行から次の行へ持ち越す内容（参照実装のバッファ持ち越し）。
-    let mut carry: Vec<Inline> = Vec::new();
+    // 行スコープ包みの未閉じ `〔` が吸収した行（制約 6 の `suppressed_by`）。
+    // この添字の行は出力しない。
+    let mut suppressed_lines = std::collections::HashSet::new();
+    // 結合待ちの断片（制約 6）。
+    let mut joins = Joins::default();
 
     for (idx, raw_line) in raw.lines.iter().enumerate() {
-        if swallowed.contains(&idx) {
+        if suppressed_lines.contains(&idx) {
             continue;
         }
         let line_no = raw_line.line_no;
@@ -38,8 +39,8 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
 
         let facts = line_facts(&nodes);
 
-        // 出力を飛ばして次の行へ持ち越す 2 つの形。どちらも持ち越しを**確定させない**
-        // （未結合断片はこれらの行が続いても累積する。制約 6）ので、下の確定より前に見る。
+        // 出力を飛ばして後続へ結合する 2 つの形。どちらも未結合断片を**確定させない**
+        // （これらの行が続いても累積する。制約 6）ので、下の確定より前に見る。
         match facts.role {
             // 規則 1: ぶら下げを開く行は出力せず、内容を次の行へ持ち越す。
             //
@@ -51,8 +52,10 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
             // 実文書 001885/58012・001240/46361）。
             LineRole::BurasageOpen { marker, ref kind } => {
                 open_block_after_virtual_ends(&mut stack, kind.clone(), line_no, OpenKind::NoBreak);
-                carry.extend(to_inlines(&nodes[..marker]));
-                carry.extend(to_inlines(&nodes[marker + 1..]));
+                // 開始マーカーの前後を別々に to_inlines へ渡す。連結してから 1 回で
+                // 呼ぶと、同一行範囲（制約 2）の対応づけが変わりうる。
+                joins.defer(to_inlines(&nodes[..marker]));
+                joins.defer(to_inlines(&nodes[marker + 1..]));
                 continue;
             }
             // 未閉じ `〔` の行も出力せず、行末に素の `<br />` を足して持ち越す
@@ -60,23 +63,19 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
             // 行スコープ包み（`［＃地から１字上げ］〔…］`）だけは包みごと持ち越す器が要るので
             // 従来どおり下の `LineWrap` 側で扱う。
             LineRole::Content if facts.hard_break => {
-                carry.extend(to_inlines(&nodes));
+                joins.defer(to_inlines(&nodes));
                 continue;
             }
             _ => {}
         }
 
-        // 持ち越しを繋げられるのは内容行だけ。それ以外の行に当たったら、持ち越しを
-        // 独立した行として出す（＝マージ前の従来どおりの出力に戻す）。参照はここでも
+        // 断片の結合先になれるのは内容行だけ。それ以外の行に当たったら、未結合断片を
+        // 独立した行として確定する（＝マージ前の従来どおりの出力に戻す）。参照はここでも
         // 繋げるが、その組み合わせはコーパスに現れず正しい姿を決められない。
         let carried = if matches!(facts.role, LineRole::Content) {
-            std::mem::take(&mut carry)
+            joins.attach()
         } else {
-            if !carry.is_empty() {
-                let pending = std::mem::take(&mut carry);
-                let brk = content_break(&pending, false);
-                stack.push_line(pending, brk, line_no);
-            }
+            joins.settle(&mut stack, line_no);
             Vec::new()
         };
 
@@ -134,7 +133,7 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
                         .get(idx + 1)
                         .is_some_and(|next| next.nodes.is_empty())
                 {
-                    swallowed.insert(idx + 1);
+                    suppressed_lines.insert(idx + 1);
                 }
                 stack.push(PlanBlock::LineWrap {
                     kinds,
@@ -161,6 +160,51 @@ pub(super) fn solve(raw: &RawDoc) -> LowerPlan {
     LowerPlan {
         roots: stack.roots,
         diagnostics: diags,
+    }
+}
+
+/// 行結合（制約 6）。出力を飛ばした行の内容断片を、結合先が現れるまで持つ。
+///
+/// 参照実装は出力を飛ばした行のバッファを次の行へ持ち越す。設計上これは可変の
+/// 持ち越しではなく断片から断片への `joins_before` 関係で、その連結成分がひとつの
+/// [`PlanBlock::Content`] になる。走査が位置順の単一パスなので、同時に育つ連結成分は
+/// 高々ひとつ——ここではそれを [`Joins::chain`] として持つ。断片に id を振ってグラフに
+/// しても得られる答えは同じで、読む手間だけが増える。
+#[derive(Default)]
+struct Joins {
+    /// 育っている連結成分（結合順に連結済み）。
+    chain: Vec<Inline>,
+}
+
+impl Joins {
+    /// 断片を後続へ結合する（この行は出力しない）。
+    fn defer(&mut self, fragments: Vec<Inline>) {
+        self.chain.extend(fragments);
+    }
+
+    /// 結合先の内容行が来た。連結成分を渡して空にする。
+    ///
+    /// 行末 `<br />` の判定は**繋げたあとの行全体**で行う（参照も 1 つのバッファとして
+    /// `general_output` に渡す）ので、ここでは判定せずに断片だけを返す。
+    fn attach(&mut self) -> Vec<Inline> {
+        std::mem::take(&mut self.chain)
+    }
+
+    /// 結合先が来ないまま終わった断片を、独立した行として確定する。
+    ///
+    /// 確定するのは、次に来た行が内容行でも結合元でもないときだけである（ぶら下げ
+    /// 開始行や `HardBreak` 行が続くあいだは累積する。実測: ぶら下げ開始行が 3 行
+    /// 続けば 3 行が 1 つの断片列になる）。
+    ///
+    /// 行番号は**確定を起こした行**のものにする（結合元の行番号ではない。現行の quirk）。
+    /// 確定した断片は明示終端を含まないものとして扱う（制約 7）。
+    fn settle(&mut self, stack: &mut PlanStack, line_no: usize) {
+        if self.chain.is_empty() {
+            return;
+        }
+        let fragments = std::mem::take(&mut self.chain);
+        let brk = content_break(&fragments, false);
+        stack.push_line(fragments, brk, line_no);
     }
 }
 
