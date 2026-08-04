@@ -1,6 +1,6 @@
 [package]
 name = "aozora_farm"
-version = "0.1.0"
+version = "0.2.0"
 description = "Aozora Bunko format previewer and editor"
 authors = ["takahashim"]
 edition.workspace = true
