@@ -123,7 +123,6 @@ const toPos = (doc: Text, line: number, ch: number) => doc.line(line + 1).from +
     見出しジャンプで代替。サイドバー化は 2 ペイン flex レイアウトの変更を伴うため、実機で
     見ながら調整するのが安全。
 - **将来**: `aozora-lsp` バイナリ（tower-lsp）で同ロジックを標準 LSP として外部エディタへ。
-- **将来**: `aozora-lsp` バイナリ（tower-lsp）で同ロジックを標準 LSP として外部エディタへ。
 
 ## 6. 設計上の決定・注意
 
