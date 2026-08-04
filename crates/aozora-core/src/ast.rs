@@ -417,17 +417,17 @@ pub struct Inline {
     pub kind: InlineKind,
     /// 位置範囲（原則はソース行内の絶対 char 位置。注記の中身だけ相対＝型の doc 参照）。
     pub span: Span,
-    /// 範囲形（`［＃中見出し］…［＃中見出し終わり］`）由来か。後方参照形
+    /// 範囲形（`［＃中見出し］…［＃中見出し終わり］`）由来か。前方参照形
     /// （`［＃「…」は中見出し］`）なら false。
     ///
     /// 互換メタデータ。参照実装は範囲形の中身をバッファに**素の String** として
-    /// 残すが、後方参照形は String をタグへ取り込んで消す。この差はぶら下げの
+    /// 残すが、前方参照形は String をタグへ取り込んで消す。この差はぶら下げの
     /// per-line 包み（`TextBuffer#blank_type`）の判定に効く。
     pub range_form: bool,
 }
 
 impl Inline {
-    /// 種別とソース位置からインラインを作成する（後方参照形＝`range_form: false`）。
+    /// 種別とソース位置からインラインを作成する（前方参照形＝`range_form: false`）。
     pub fn new(kind: InlineKind, span: Span) -> Self {
         Self {
             kind,

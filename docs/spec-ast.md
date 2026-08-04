@@ -20,7 +20,9 @@ aozora-core が用いる 2 種類の抽象構文木について、**木の形そ
 | RawAST の器・`Node` の全構成子・マーカー・`BlockParams`・`RefSpec`・不変条件 | [spec-rawast-json.md](spec-rawast-json.md) |
 | Aozora AST の `Block` / `BlockKind` / `Inline` / 互換メタデータ・不変条件 | [spec-aozora-ast-json.md](spec-aozora-ast-json.md) |
 | 字句トークン（`TokenKind`）と走査の手続き | [spec-tokenizer.md](spec-tokenizer.md) |
+| コマンドの受理・振り分け・開始終端の対応づけ | [spec-commands.md](spec-commands.md) |
 | 前方参照の解決順序と規則 | [spec-reference-resolver.md](spec-reference-resolver.md) |
+| 行→ブロック畳み込み（Lowerer）の手続き | [spec-lowerer.md](spec-lowerer.md) |
 | Rust の型との対応 | 上記 2 つの交換形式仕様の付録 A |
 
 本書に残すのは、パイプライン上の位置づけ、**span の意味論**（実在しない span がどこに
@@ -152,8 +154,9 @@ Inline には実在しない span が混じる**ので、位置として使う�
   （`TokenKind`/`NodeKind`/`InlineKind` に同名の変種があり、素通しで写る）。
   Lowerer はその末尾ノードを見て次の行とマージする。
 
-Lowerer は行ループに持ち越し（`carry`）を持ち、これらの行の内容を次の行の先頭へ繰り越す。
-持ち越しを繋げるのは内容行だけで、他の行種に当たったら持ち越しを独立した行として出す。
+Lowerer は結合待ちの断片（`solve` の `Joins`）を持ち、これらの行の内容を次の行の先頭へ
+繰り越す（制約 6）。結合先になれるのは内容行だけで、他の行種に当たったら未結合断片を
+独立した行として確定する。
 
 この畳み込みだけが「1 ソース行 = 1 `Block::Line`」を崩す。位置情報への影響は上述の
 「span が『実在』でない箇所」を参照。

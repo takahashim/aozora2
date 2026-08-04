@@ -38,8 +38,10 @@
 
 - `resolve_references(&mut Vec<Node>)` … 工程1〜3を順に実行。
 - `resolve_inline_ruby(&mut Vec<Node>)` … 工程4。
-- `resolve_references_collecting_failures(&mut Vec<Node>) -> Vec<String>` …
-  工程1〜3と**ノード変換結果は完全に同一**で、`Note` に落とした参照の `raw` を追加返却する。
+- `resolve_references_collecting_failures(&mut Vec<Node>) -> Vec<Span>` …
+  工程1〜3と**ノード変換結果は完全に同一**で、`Note` に落とした参照の**位置**（span）を
+  追加返却する。文字列ではなく span なのは、同じ注記が 1 行に 2 回書かれたとき
+  （片方だけ失敗する場合）に両者を区別するため。
   収集対象は**トップレベルの失敗のみ**（子ノード内の失敗は集めない）。
 
 **呼び出し規約**: `resolve_references` の直後に `resolve_inline_ruby` を呼ぶ。
@@ -140,13 +142,17 @@
 
 ### 手続き
 
-- `i+1..` を前から走査し、**同種の `BlockEnd` を最初に見つかったもの**とする。`params.annotation` を取る。
+- `i+1..` を前から走査し、対応する同種の `BlockEnd` を探す。**同種の開始が挟まったら
+  深さを数える**（注記付き範囲は入れ子にでき、入れ子ルビになる。深さを見ずに最初の
+  終了で確定すると、外側の開始が内側の終了とペアになり本文が範囲から落ちる）。
+  見つけた `BlockEnd` の `params.annotation` を取る。
 - **畳まない条件**（いずれも何もせず次のノードへ）:
   - 対応する `BlockEnd` が無い。
   - `BlockEnd` はあるが `params.annotation` が `None`。
-- `nodes[i+1..end_idx]` を `children` とする。
-- 注記文字列を `parse_annotation_text` で再トークナイズする。**`Text` と `Gaiji` のみ**ノード化し、
-  他のトークンは捨てる。span は終了マーカーの span を継承。
+- `nodes[i+1..end_idx]` を `children` とし、**内側の注記付き範囲を先に再帰的に畳む**。
+- 注記文字列を `parse_annotation_text` で再パースする。本文と同じ
+  tokenize→parse→ルビ解決を通す（注記内のルビ・外字も残る。前方参照は走らせない）。
+  span は終了マーカーの span を継承。
 - **`AnnotationRange`**: `Ruby { children, ruby: 注記, direction: Right, keep_gaiji_notes_in_base: true }`
   1 ノードに置換。span は 開始 ∪ 終了。
 - **`LeftAnnotationRange`**: `Note("左に注記付き")` + children +

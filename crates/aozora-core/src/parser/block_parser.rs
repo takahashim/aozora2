@@ -53,11 +53,13 @@ pub fn parse_block_start(content: &str) -> CommandResult {
         params.width = Some(width);
     }
 
-    // 段階を抽出
-    if content.contains("段階") {
-        if let Some(size) = extract_number(content) {
-            params.font_size = Some(size);
-        }
+    // 段階を抽出。参照 `PAT_CHARSIZE = /(.*)段階(..)な文字/` は「段階」の前を
+    // convert_japanese_number で均してから読むので、行内形と同じ FontSizeType から取る。
+    // 全体の数字を拾う extract_number では漢数字を拾えず、`ここから二段階大きな文字` が
+    // 既定の 1 段階に落ちていた（実測: 参照は dai2、こちらは dai1 だった。
+    // 行内形 `［＃二段階大きな文字］` は初めから FontSizeType 経由なので合っていた）。
+    if let Some((_, level)) = FontSizeType::from_command(content) {
+        params.font_size = Some(level);
     }
 
     // ブロックタイプを判定
@@ -332,6 +334,30 @@ mod tests {
                 },
             }
         );
+    }
+
+    /// ブロック形の段階指定は行内形と同じ経路で読む。参照 PAT_CHARSIZE は「段階」の
+    /// 前を convert_japanese_number してから取るので、漢数字も数字化される。
+    /// 全体から数字を拾っていた頃は `ここから二段階大きな文字` の漢数字を拾えず、
+    /// 既定の 1 段階（dai1）に落ちていた（参照は dai2。実測）。
+    #[test]
+    fn test_block_start_font_size_reads_kanji_level() {
+        for (command, expected) in [
+            ("ここから二段階大きな文字", 2),
+            ("ここから２段階大きな文字", 2),
+            ("ここから3段階小さな文字", 3),
+            // 段階を書かなければ 1 段階（params では未設定＝描画側の既定に委ねる）。
+            ("ここから大きな文字", 1),
+        ] {
+            let CommandResult::BlockStart { params, .. } = parse_block_start(command) else {
+                panic!("{command} がブロック開始にならない");
+            };
+            assert_eq!(
+                params.font_size.unwrap_or(1),
+                expected,
+                "{command} の段階が想定と違う"
+            );
+        }
     }
 
     #[test]
