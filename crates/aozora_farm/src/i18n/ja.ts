@@ -33,6 +33,10 @@ export const ja = {
   "error.sjis-unencodable": "Shift_JIS にできない文字があるため保存しませんでした: {chars}",
   "error.sjis-unencodable-more": "Shift_JIS にできない文字があるため保存しませんでした: {chars}、ほか{rest}件",
   "error.sjis-char": "{line}行{column}文字目の「{char}」",
+  "charset.x0201": "JIS X 0201（半角）— 全角に直してください",
+  "charset.x0213": "JIS 第3・第4水準 — 外字注記で書けます",
+  "charset.other": "JIS にない文字 — 外字注記が必要です",
+
   "error.copy": "コピーに失敗しました: {error}",
   "error.read-file": "ファイルの読み込みに失敗しました: {error}",
   "error.convert": "エラー: {error}",

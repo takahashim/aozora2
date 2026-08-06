@@ -9,6 +9,7 @@ import { aozoraKeymap } from './keymap'
 import { aozoraToolbar } from './toolbar'
 import { aozoraPalette } from './palette'
 import { aozoraLsp, setLiveAnalysis, analyzeNow } from './lsp'
+import { charsetHighlight } from './charset'
 
 export { setLiveAnalysis, analyzeNow }
 import { aozoraCompletion } from './completion'
@@ -73,6 +74,7 @@ const baseExtensions: Extension[] = [
   aozoraEditorTheme,
   aozoraCompletion,
   ...aozoraLsp(),
+  charsetHighlight,
 ]
 
 export function createEditor(parent: HTMLElement, onChange?: ChangeCallback): EditorView {

@@ -50,6 +50,7 @@ pub mod accent;
 pub mod analysis;
 pub mod ast;
 pub mod char_type;
+pub mod charset;
 pub mod delimiters;
 pub mod document;
 pub mod encoding;

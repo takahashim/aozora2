@@ -5,6 +5,7 @@ GUI application for aozora2 - Aozora Bunko format previewer and editor.
 ## Features
 
 - Editor with syntax highlighting, completion and diagnostics (CodeMirror 6)
+- Character set highlighting (JIS X 0201 / JIS X 0213 level 3-4 / non-JIS)
 - Real-time HTML preview
 - Drag and drop file conversion
 - Open/Save file dialogs (Shift_JIS / UTF-8 auto detection)

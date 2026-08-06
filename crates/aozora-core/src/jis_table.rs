@@ -32,6 +32,15 @@ pub fn jis_to_unicode(jis_code: &str) -> Option<String> {
     JIS2UCS.get(normalized.as_str()).map(|&s| s.to_string())
 }
 
+/// 表に載っている Unicode 文字列を列挙する（順序は不定）。
+///
+/// 文字集合の所属判定（[`crate::charset`]）が「この文字は JIS X 0213 にあるか」を
+/// 逆引きするために使う。表そのものを公開する代わりに値だけ渡すことで、
+/// 逆引き用の集合の作り方を利用側に閉じ込める。
+pub(crate) fn unicode_values() -> impl Iterator<Item = &'static str> {
+    JIS2UCS.values().copied()
+}
+
 /// JISコードを正規化（区・点を2桁ゼロ埋め）
 ///
 /// # Examples

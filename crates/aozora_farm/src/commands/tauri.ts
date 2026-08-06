@@ -86,6 +86,34 @@ export async function analyze(input: string): Promise<Analysis> {
   return invoke<Analysis>('analyze', { input })
 }
 
+/**
+ * 文字がどの文字集合に属するかの表（aozora_core::charset の mark_table）。
+ *
+ * 判定は Rust 側にあり、フロントは引くだけ。起動時に一度受け取れば以降 IPC は要らない。
+ */
+export interface CharsetTable {
+  /**
+   * BMP（U+0000〜U+FFFF）の 1 文字 2 ビット、下位ビットから詰めた 16,384 バイト。
+   * `bmp[cp >> 2] >> ((cp & 3) * 2) & 3` が下の MARK_* の値になる。
+   */
+  bmp: number[]
+  /** BMP の外にある JIS X 0213 の文字（第4水準の CJK 拡張B など）。 */
+  astral: number[]
+  /** 2 コードポイントで 1 文字になる組（`か゚` など）。 */
+  composed: string[]
+}
+
+/** 表の値（Rust 側の MARK_* と同じ）。 */
+export const MARK_OTHER = 0
+export const MARK_PLAIN = 1
+export const MARK_X0201 = 2
+export const MARK_X0213 = 3
+
+/** 文字集合の表を取り寄せる（起動時に一度だけ呼ぶ）。 */
+export async function charsetTable(): Promise<CharsetTable> {
+  return invoke<CharsetTable>('charset_table')
+}
+
 export async function openTextFile(): Promise<{ content: string; path: string } | null> {
   const selected = await open({
     multiple: false,

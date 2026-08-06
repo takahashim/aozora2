@@ -33,6 +33,10 @@ export const en = {
   "error.sjis-unencodable": "Not saved: these characters cannot be encoded in Shift_JIS: {chars}",
   "error.sjis-unencodable-more": "Not saved: these characters cannot be encoded in Shift_JIS: {chars} and {rest} more",
   "error.sjis-char": "\"{char}\" at line {line}, column {column}",
+  "charset.x0201": "JIS X 0201 (halfwidth) — use the fullwidth form",
+  "charset.x0213": "JIS level 3/4 — can be written as a gaiji note",
+  "charset.other": "Not in any JIS set — needs a descriptive gaiji note",
+
   "error.copy": "Failed to copy: {error}",
   "error.read-file": "Failed to read file: {error}",
   "error.convert": "Error: {error}",

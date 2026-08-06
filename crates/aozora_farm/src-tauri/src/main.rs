@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use aozora_core::analysis::{analyze as analyze_document, Analysis};
+use aozora_core::charset::{mark_table, CharsetTable};
 use aozora_core::encoding::{
     encode_shift_jis, normalize_for_shift_jis, CharsetPolicy, UnencodableChar,
 };
@@ -45,6 +46,17 @@ struct ConvertResult {
 #[tauri::command]
 fn analyze(input: &str) -> Result<Analysis, String> {
     Ok(analyze_document(input))
+}
+
+/// 文字がどの文字集合に属するかの表を返す。
+///
+/// エディタは打鍵のたびに表示中の文字を色分けするので、1 文字ごとに問い合わせては
+/// 間に合わない。BMP 全体を畳んだ 16KB の表を**起動時に一度だけ**渡し、以降は
+/// フロントが自前で引く（IPC も解析も走らない）。判定そのものは
+/// [`aozora_core::charset`] にあり、フロントに複製しない。
+#[tauri::command]
+fn charset_table() -> Result<CharsetTable, String> {
+    Ok(mark_table())
 }
 
 /// Shift_JIS ＋ CRLF で保存する。本文テキストと変換後の HTML の両方で使う。
@@ -114,6 +126,7 @@ fn main() {
             convert_to_html,
             convert_file_to_html,
             analyze,
+            charset_table,
             save_shift_jis,
             get_resource_paths,
         ])
